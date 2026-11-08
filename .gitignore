@@ -5,3 +5,8 @@ build
 
 # Generated working docs (not committed)
 SPEC.md
+
+# Working docs and local-only tests (not committed)
+PLAN.md
+SPIKE.md
+src/test/
