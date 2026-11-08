@@ -1,0 +1,7 @@
+.gradle
+.idea
+.intellijPlatform
+build
+
+# Generated working docs (not committed)
+SPEC.md
