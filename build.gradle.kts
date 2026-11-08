@@ -15,7 +15,20 @@ dependencies {
         intellijIdea("2026.2.4")
         testFramework(TestFrameworkType.Platform)
 
-        // Add plugin dependencies for compilation here:
-        bundledPlugin("org.jetbrains.kotlin")
+        // Add plugin dependencies for compilation here (none needed yet):
+    }
+}
+
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = "262"
+            untilBuild = provider { null }
+        }
+    }
+    pluginVerification {
+        ides {
+            recommended()
+        }
     }
 }

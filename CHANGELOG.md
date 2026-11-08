@@ -1,5 +1,9 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# EditorTabGroups Changelog
+# Better Editor Tabs Changelog
 
 ## [Unreleased]
+
+### Added
+
+- Initial project setup: plugin renamed to Better Editor Tabs (ID dev.willcodes.bettereditortabs), targeting IntelliJ Platform 2026.2+.
