@@ -1,6 +1,7 @@
 .gradle
 .idea
 .intellijPlatform
+.kotlin
 build
 
 # Generated working docs (not committed)

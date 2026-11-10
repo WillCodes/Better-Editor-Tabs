@@ -1,0 +1,8 @@
+<!-- Loaded only when the VCS module is present (optional dependency on com.intellij.modules.vcs in plugin.xml). -->
+<idea-plugin>
+    <actions>
+        <!-- IDE-4: Close Unmodified Tabs is registered by the VCS module. -->
+        <action id="CloseAllUnmodifiedEditors" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseUnmodifiedAction"/>
+    </actions>
+</idea-plugin>

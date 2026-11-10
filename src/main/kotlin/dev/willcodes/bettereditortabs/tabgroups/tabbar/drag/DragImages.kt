@@ -1,0 +1,85 @@
+package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
+
+import com.intellij.ui.awt.RelativePoint
+import com.intellij.ui.tabs.TabInfo
+import com.intellij.ui.tabs.impl.JBEditorTabs
+import com.intellij.util.ui.ImageUtil
+import com.intellij.util.ui.UIUtil
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.GroupTintColor
+import java.awt.Color
+import java.awt.Point
+import java.awt.image.BufferedImage
+import javax.swing.Icon
+import javax.swing.JLabel
+import javax.swing.UIManager
+
+/**
+ * The floating picture of a tab or group drag: the picture the platform shows when a tab is dragged, produced by the platform itself.
+ *
+ * How the platform makes it (`DockableEditorTabbedContainer.processDropOver`, `DockableEditorTabbedContainer.kt:271-282`): a *new*
+ * `TabInfo(JLabel(""))` with the dragged tab's text and icon is handed to `JBTabs.startDropOver`, which creates a fresh tab label for
+ * it and paints that offscreen (`JBTabsImpl.kt:3367-3383`). That label is not the selected tab and not hovered, so it is the plain,
+ * muted tab: icon and name, no selected outline or background, no close button. `DockManagerImpl` then shows the image in an
+ * undecorated dialog at 90 % opacity, centred on the pointer (`DockManagerImpl.kt:235-241`, `:363-364`).
+ *
+ * Calling the same function here makes the picture identical by construction. `startDropOver` also adds the drop target to the strip, so
+ * it is removed again at once with `resetDropOver` (nothing lays out in between). The earlier version painted the *dragged tab's own
+ * label*, which is the selected tab: that is what made the picture look selected (outline, fill, close button).
+ *
+ * The live tint of a drag (DRAG-7) is the `tabColor` of that new `TabInfo`, which the tab painter turns into a tint of the muted tab.
+ *
+ * The platform's image is transparent except for the icon and the name. What the user sees behind them is the background of the
+ * `JDialog` that shows it, and `JDialog.dialogInit` sets that to `UIManager.getColor("control")`. That is not the panel background:
+ * IDE themes override the `*.background` keys but leave `control` at the base look-and-feel's value, which is lighter in dark themes.
+ * [windowBackground] is the same colour, so the picture matches the platform's in every theme.
+ *
+ * Wraps: `JBTabs.startDropOver` / `resetDropOver`, `TabInfo`. EDT only.
+ */
+internal object DragImages {
+    /** The picture of the dragged tab [dragged], tinted when it is previewed into a group. Null if the platform could not make it. */
+    fun tab(tabs: JBEditorTabs, dragged: TabInfo): BufferedImage? =
+        platformImage(tabs, dragged.text, dragged.icon, dragged.tabColor as? GroupTintColor)
+
+    /** The picture of a dragged group: only its pill, as a tab-like chip with the group's name and tint ([tint] from the adapter). */
+    fun group(tabs: JBEditorTabs, name: String, tint: Color): BufferedImage? = platformImage(tabs, name, null, tint)
+
+    private fun platformImage(tabs: JBEditorTabs, text: String, icon: Icon?, tint: Color?): BufferedImage? {
+        val drop = TabInfo(JLabel("")).setText(text).setIcon(icon)
+        if (tint != null) drop.setTabColor(tint)
+        val platform = try {
+            tabs.startDropOver(drop, RelativePoint(tabs.component, Point(0, 0)))
+        }
+        catch (e: Exception) {
+            null
+        }
+        finally {
+            try {
+                tabs.resetDropOver(drop)
+            }
+            catch (e: Exception) {
+                // nothing to remove
+            }
+        }
+        platform ?: return null
+        val w = platform.getWidth(null)
+        val h = platform.getHeight(null)
+        if (w <= 0 || h <= 0) return null
+        val image = ImageUtil.createImage(tabs.graphicsConfiguration, w, h, BufferedImage.TYPE_INT_ARGB)
+        val g = image.createGraphics()
+        try {
+            g.color = windowBackground()
+            g.fillRect(0, 0, w, h)
+            g.drawImage(platform, 0, 0, w, h, null)
+        }
+        finally {
+            g.dispose()
+        }
+        return image
+    }
+
+    /** The background of the platform's drag-image dialog (`JDialog.dialogInit`: the look-and-feel's `control` colour). */
+    fun windowBackground(): Color = UIManager.getColor("control") ?: UIUtil.getPanelBackground()
+
+    /** The size of [image] in layout pixels. */
+    fun sizeOf(image: BufferedImage): java.awt.Dimension = java.awt.Dimension(image.getWidth(null), image.getHeight(null))
+}
