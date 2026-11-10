@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -30,5 +31,14 @@ intellijPlatform {
         ides {
             recommended()
         }
+        // The editor tab bar has no public API, so internal and experimental API usage is expected (kept inside tabbar/)
+        // and only reported. Everything that can break at runtime still fails the build.
+        failureLevel = listOf(
+            FailureLevel.COMPATIBILITY_PROBLEMS,
+            FailureLevel.OVERRIDE_ONLY_API_USAGES,
+            FailureLevel.NON_EXTENDABLE_API_USAGES,
+            FailureLevel.MISSING_DEPENDENCIES,
+            FailureLevel.INVALID_PLUGIN,
+        )
     }
 }

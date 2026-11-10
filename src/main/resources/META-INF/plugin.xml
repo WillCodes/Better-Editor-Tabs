@@ -29,6 +29,8 @@
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
+    <!-- Close Unmodified Tabs is registered by the VCS module, so its override only loads where that module exists. -->
+    <depends optional="true" config-file="bettereditortabs-vcs.xml">com.intellij.modules.vcs</depends>
 
     <!-- User-visible strings live in src/main/resources/messages/BetterEditorTabsBundle.properties -->
     <resource-bundle>messages.BetterEditorTabsBundle</resource-bundle>
@@ -40,4 +42,32 @@
              See https://plugins.jetbrains.com/docs/marketplace/error-handler.html#developers-side for details. -->
         <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
     </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarStartupActivity"/>
+        <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitRestoreWatcher"/>
+        <!-- IDE-3: grouped tabs are exempt from the editor tab limit. -->
+        <editorAutoClosingHandler implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabLimitHandler"/>
+    </extensions>
+
+    <projectListeners>
+        <listener class="dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarEditorListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
+
+    <actions>
+        <!-- Overrides of built-in actions (LIFE-5, IDE-4). Keep these ids exactly. -->
+        <action id="ReopenClosedTab" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.ReopenClosedTabAction"/>
+        <action id="CloseAllEditorsButActive" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseOthersAction"/>
+        <action id="CloseAllEditors" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseAllAction"/>
+        <action id="CloseAllToTheLeft" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseLeftAction"/>
+        <action id="CloseAllToTheRight" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseRightAction"/>
+        <action id="CloseAllUnpinnedEditors" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseUnpinnedAction"/>
+    </actions>
 </idea-plugin>
