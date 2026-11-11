@@ -87,6 +87,9 @@ internal class PillLayout(
         val dragged = platformDraggedFile()
         val dragging = dragged != null
         val list = ArrayList<PillAssignment>()
+        // Pills hosted by their own group's first tab. A collapsed group's pill can share that host label (it stands in front of the
+        // group), so these must come last among the label's leading items, right before their tab, whatever the groups' list order.
+        val ownHost = HashSet<GroupHeader>()
         if (!tabs.isHideTabs) {
             for (g in groups) {
                 val header = headerOf(g.id) ?: continue
@@ -104,6 +107,7 @@ internal class PillLayout(
                 val label = host?.let { tabs.getTabLabel(infos[it.index]) }
                 if (host != null && label != null && (hasVisibleMember || g.collapsed || parked)) {
                     list += PillAssignment(header, label, host.leading, header.pillLength())
+                    if (hasVisibleMember && !parked) ownHost += header
                 }
                 else if (g.collapsed && infos.isEmpty() && collapse.hasAnchor(g.id)) {
                     list += PillAssignment(header, null, true, header.pillLength())
@@ -111,7 +115,7 @@ internal class PillLayout(
             }
         }
         if (!dragging) collapsedBefore.keys.retainAll(groups.filter { it.collapsed }.map { it.id }.toSet())
-        assignments = list
+        assignments = orderSharedPills(list, ownHost, groups)
         lastOrder = files.filterNotNull()
         spacer = resolveSpacer(infos, list)
 
@@ -127,6 +131,40 @@ internal class PillLayout(
             changed = space.set(label, if (horizontal) lead.sumOf { it.length } else 0, if (horizontal) trail.sumOf { it.length } else 0) || changed
         }
         return space.releaseExcept(keep) || changed
+    }
+
+    /** One side of one host label (or the empty strip, [label] null); identity of the label, not equality. */
+    private class Slot(val label: TabLabel?, val leading: Boolean) {
+        override fun equals(other: Any?) = other is Slot && other.label === label && other.leading == leading
+        override fun hashCode() = System.identityHashCode(label) * 31 + leading.hashCode()
+    }
+
+    /**
+     * Orders the pills that share a host label side ([PillHosting.orderShared]) from where each group stood, not from the groups list:
+     * a collapsed group that stood behind another collapsed group's tab follows that group, collapsed groups at the same place keep
+     * the order they collapsed in, and an expanded group's own pill ([ownHost]) is last, right before its tab. Every consumer reads the
+     * order per label side, so the buckets are simply concatenated.
+     */
+    private fun orderSharedPills(list: List<PillAssignment>, ownHost: Set<GroupHeader>, groups: List<GroupDecoration>): List<PillAssignment> {
+        if (list.size < 2) return list
+        val buckets = LinkedHashMap<Slot, MutableList<PillAssignment>>()
+        for (a in list) buckets.getOrPut(Slot(a.label, a.leading)) { ArrayList() } += a
+        val membersOf = groups.associate { it.id to it.members }
+        val result = ArrayList<PillAssignment>(list.size)
+        for (bucket in buckets.values) {
+            val byId = bucket.associateBy { it.header.groupId }
+            result += PillHosting.orderShared(
+                bucket,
+                parentOf = { a -> collapse.anchorParent(a.header.groupId)?.let { (owner, _) -> byId[owner] } },
+                siblingRank = { a ->
+                    val parent = collapse.anchorParent(a.header.groupId)
+                    if (parent != null && parent.first in byId) membersOf[parent.first].orEmpty().indexOf(parent.second).toLong()
+                    else collapse.collapseOrder(a.header.groupId)
+                },
+                isOwn = { it.header in ownHost },
+            )
+        }
+        return result
     }
 
     private fun resolveSpacer(infos: List<com.intellij.ui.tabs.TabInfo>, list: List<PillAssignment>): Spacer? {

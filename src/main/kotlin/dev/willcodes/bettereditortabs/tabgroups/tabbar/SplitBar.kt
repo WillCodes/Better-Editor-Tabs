@@ -20,7 +20,7 @@ import java.awt.event.MouseEvent
  * [TabBarHost]. EDT only, except [groupIdOf].
  */
 internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, parent: Disposable) : Disposable, StripEvents, SplitGroups {
-    val adapter = TabBarAdapter(split.window, this)
+    val adapter = TabBarAdapter(split.window, this) { tabBar.style }
 
     /** The groups last applied to the split (what the strip shows). */
     @Volatile

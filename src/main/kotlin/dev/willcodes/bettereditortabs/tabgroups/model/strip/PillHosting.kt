@@ -37,6 +37,36 @@ object PillHosting {
         return Host(candidates.last(), leading = false)
     }
 
+    /**
+     * The order of the pills that share one side of one host label (left to right). Several pills meet there when collapsed groups
+     * stand next to each other or in front of an expanded group, so their order must come from where each group stood, never from
+     * the order of the groups list:
+     * - an [isOwn] pill (an expanded group hosted by its own first tab) comes last, right before its tab;
+     * - a pill with a parent (a collapsed group that stood right behind a tab of the collapsed group [parentOf] returns) comes
+     *   directly after that parent and the parent's other descendants that rank lower;
+     * - pills without a parent here (roots) and the children of one parent are ordered by [siblingRank]: for roots the order in which
+     *   the groups collapsed (a group collapsing later next to an already collapsed one stood behind it), for children the position of
+     *   their anchor tab in the parent. Ties keep the input order.
+     * A parent cycle (inconsistent bookkeeping) cannot lose an item: whatever was not reached is appended in input order.
+     */
+    fun <K : Any> orderShared(items: List<K>, parentOf: (K) -> K?, siblingRank: (K) -> Long, isOwn: (K) -> Boolean): List<K> {
+        if (items.size < 2) return items
+        val own = items.filter(isOwn)
+        val rest = items.filterNot(isOwn)
+        val parents = rest.associateWith { k -> parentOf(k)?.takeIf { p -> p !== k && p in rest } }
+        val children = rest.groupBy { parents[it] }
+        val out = ArrayList<K>(items.size)
+        val seen = HashSet<K>()
+        fun emit(k: K) {
+            if (!seen.add(k)) return
+            out += k
+            children[k].orEmpty().sortedBy(siblingRank).forEach(::emit)
+        }
+        children[null].orEmpty().sortedBy(siblingRank).forEach(::emit)
+        rest.forEach { if (it !in seen) emit(it) }
+        return out + own
+    }
+
     /** The tabs that stand in front of a collapsed group: [anchor] and everything before it. Empty if there is no anchor. */
     fun <T : Any> tabsBefore(visible: List<T?>, anchor: T?): Set<T> {
         val i = if (anchor == null) -1 else visible.indexOf(anchor)

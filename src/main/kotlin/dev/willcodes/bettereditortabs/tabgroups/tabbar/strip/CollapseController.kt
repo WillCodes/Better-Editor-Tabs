@@ -3,6 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.impl.JBEditorTabs
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabOrderRules
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 
@@ -27,6 +28,13 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     /** For each collapsed group, the tab that stood in front of it when it was collapsed (null: it was the first). */
     private val anchors = HashMap<String, VirtualFile?>()
 
+    /**
+     * When each collapsed group collapsed: a counter, increasing left to right within one pass. Orders pills that end up at the same
+     * place (see [collapseOrder]).
+     */
+    private val collapsedAt = HashMap<String, Long>()
+    private var collapseCounter = 0L
+
     /** The tab that was selected when the last visible tab was collapsed, to bring back if nothing happened in between. */
     private var savedSelection: VirtualFile? = null
 
@@ -42,8 +50,40 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     /** True if collapsed group [groupId] has a remembered place. */
     fun hasAnchor(groupId: String): Boolean = groupId in anchors
 
-    /** The tab in front of collapsed group [groupId], or null. */
-    fun anchorOf(groupId: String): VirtualFile? = anchors[groupId]
+    /**
+     * The visible tab in front of collapsed group [groupId], or null (the group is first). The remembered anchor can itself be hidden:
+     * a collapsed group that stood right behind another group's tab keeps that tab as its anchor when the other group collapses
+     * later. Then the place is the other group's place, so this follows that group's anchor, and so on, to a visible tab. The
+     * remembered anchors are not rewritten, so when the other group expands again this group is back behind its tab.
+     */
+    fun anchorOf(groupId: String): VirtualFile? {
+        var anchor = anchors[groupId]
+        val seen = hashSetOf(groupId)
+        while (anchor != null && anchor in hidden) {
+            val owner = hiddenGroupOf[anchor] ?: break
+            if (!seen.add(owner)) return null
+            anchor = anchors[owner]
+        }
+        return anchor
+    }
+
+    /**
+     * The collapsed group whose tab collapsed group [groupId] stood right behind (its remembered anchor is now hidden by that group),
+     * with that tab; null if the anchor is visible or there is none. Such a group's pill belongs directly behind the other group's.
+     */
+    fun anchorParent(groupId: String): Pair<String, VirtualFile>? {
+        val anchor = anchors[groupId] ?: return null
+        if (anchor !in hidden) return null
+        val owner = hiddenGroupOf[anchor] ?: return null
+        return owner to anchor
+    }
+
+    /**
+     * When collapsed group [groupId] collapsed relative to the others (smaller = earlier; [Long.MAX_VALUE] if unknown). Two collapsed
+     * groups with the same visible anchor stood in this order: a group that collapses next to an already collapsed one (same tab in
+     * front of both) stood behind its pill; within one pass, groups collapse left to right.
+     */
+    fun collapseOrder(groupId: String): Long = collapsedAt[groupId] ?: Long.MAX_VALUE
 
     private fun visibleFiles() = StripReader.visibleFiles(tabs)
     private fun selectedFile() = StripReader.selectedFile(tabs)
@@ -107,10 +147,19 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
      */
     private fun hide(files: List<VirtualFile>, allDesired: Set<VirtualFile>, groupOfFile: Map<VirtualFile, String>) {
         val order = visibleFiles()
-        for (id in files.mapNotNull { groupOfFile[it] }.distinct()) {
+        // left to right, so that collapseOrder ranks the groups of one pass by their place
+        val ids = files.mapNotNull { groupOfFile[it] }.distinct()
+            .sortedBy { id -> order.indexOfFirst { groupOfFile[it] == id }.let { if (it < 0) Int.MAX_VALUE else it } }
+        val alreadyCollapsed = anchors.keys.toSet()
+        for (id in ids) {
             if (id !in anchors) {
                 val members = files.filter { groupOfFile[it] == id }.toSet()
-                anchors[id] = TabOrderRules.anchorBefore(order, members)
+                val visibleBefore = TabOrderRules.anchorBefore(order, members)
+                // Collapsed groups whose pills already stand between that tab and this group: this group stood behind the last of
+                // them, so it remembers that group's last tab (hidden). anchorOf / anchorParent then keep it behind that group, also
+                // when that group expands again.
+                anchors[id] = lastTabOfGroupAt(visibleBefore, alreadyCollapsed) ?: visibleBefore
+                collapsedAt[id] = ++collapseCounter
             }
         }
         val selected = selectedFile()
@@ -142,6 +191,27 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
+     * The last hidden tab of the last collapsed group (among [candidates]) whose pill stands right behind the visible tab [anchor]
+     * (null = at the front), in pill order ([PillHosting.orderShared], as the strip draws them); null if there is none.
+     */
+    private fun lastTabOfGroupAt(anchor: VirtualFile?, candidates: Set<String>): VirtualFile? {
+        val here = candidates.filter { anchorOf(it) == anchor }
+        if (here.isEmpty()) return null
+        val membersOf = hidden.groupBy { hiddenGroupOf[it] }
+        val ordered = PillHosting.orderShared(
+            here,
+            parentOf = { id -> anchorParent(id)?.first?.takeIf { it in here } },
+            siblingRank = { id ->
+                val parent = anchorParent(id)
+                if (parent != null && parent.first in here) membersOf[parent.first].orEmpty().indexOf(parent.second).toLong()
+                else collapseOrder(id)
+            },
+            isOwn = { false },
+        )
+        return membersOf[ordered.last()]?.lastOrNull()
+    }
+
+    /**
      * Expand (COLL-3): show the tabs again, put them back after their anchor and settle the selection.
      *
      * Selection rules (COLL-3 / COLL-4):
@@ -157,17 +227,29 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         val selectedBefore = selectedFile()
         val requested = pendingHiddenSelection?.takeIf { it in files }
         val shownByGroup = LinkedHashMap<String, MutableList<VirtualFile>>()
+        // Where each group comes back, resolved while the hidden bookkeeping is still complete: its own anchor if that tab is shown in
+        // this pass too, otherwise the nearest visible tab in front of it (see anchorOf).
+        val showing = files.toSet()
+        val places = files.mapNotNull { hiddenGroupOf[it] }.distinct().associateWith { id ->
+            anchors[id]?.takeIf { it in showing } ?: anchorOf(id)
+        }
         if (requested != null) infoOf(requested)?.isHidden = false
         for (f in files) {
             infoOf(f)?.isHidden = false
             hidden.remove(f)
             hiddenGroupOf.remove(f)?.let { shownByGroup.getOrPut(it) { ArrayList() } += f }
         }
-        var order = visibleFiles()
-        for ((id, members) in shownByGroup) {
-            val rest = order.filter { it !in members }
-            val anchor = anchors.remove(id)
-            order = TabOrderRules.placeGroup(rest, members, anchor?.takeIf { it in rest })
+        val placing = shownByGroup.values.flatten().toSet()
+        var order = visibleFiles().filter { it !in placing }
+        // A group anchored on a tab of another group that comes back in the same pass is placed after that group.
+        val pending = LinkedHashMap(shownByGroup)
+        while (pending.isNotEmpty()) {
+            val (id, members) = pending.entries.firstOrNull { (id, _) -> places[id].let { it == null || it !in placing || it in order } }
+                ?: pending.entries.first()
+            pending.remove(id)
+            anchors.remove(id)
+            collapsedAt.remove(id)
+            order = TabOrderRules.placeGroup(order, members, places[id]?.takeIf { it in order })
         }
         applyVisibleOrder(order)
         val target = when {
@@ -227,5 +309,6 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         hidden.clear()
         hiddenGroupOf.clear()
         anchors.clear()
+        collapsedAt.clear()
     }
 }

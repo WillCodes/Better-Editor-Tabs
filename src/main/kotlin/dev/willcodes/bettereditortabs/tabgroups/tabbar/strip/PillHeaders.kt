@@ -4,6 +4,7 @@ import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.ui.tabs.impl.TabLabel
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import java.awt.Rectangle
 import javax.swing.JComponent
 
@@ -20,6 +21,7 @@ internal class PillHeaders(
     private val isPlatformDragActive: () -> Boolean,
     private val onHeaderPaint: () -> Unit,
     private val platformDraggedLabel: () -> TabLabel?,
+    private val style: () -> StripStyle = { StripStyle.DEFAULT },
 ) {
     private val byGroup = LinkedHashMap<String, GroupHeader>()
 
@@ -45,7 +47,7 @@ internal class PillHeaders(
         }
         for (g in groups) {
             val header = byGroup.getOrPut(g.id) {
-                GroupHeader(g.id).also {
+                GroupHeader(g.id, style).also {
                     it.transparentToHitTest = isPlatformDragActive
                     it.onPaint = onHeaderPaint
                     tabs.add(it)
@@ -54,6 +56,11 @@ internal class PillHeaders(
             header.listener = listener
             header.decoration = g
         }
+    }
+
+    /** The style changed: every header re-measures its pill (the caller lays the strip out again) and repaints. */
+    fun restyle() {
+        byGroup.values.forEach { it.styleChanged() }
     }
 
     /** Hides (paints nothing for) the pills of [groupIds], the groups being dragged; every other pill is shown. */
