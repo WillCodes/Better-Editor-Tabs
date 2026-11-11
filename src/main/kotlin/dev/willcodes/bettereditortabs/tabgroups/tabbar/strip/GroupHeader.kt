@@ -4,6 +4,7 @@ import com.intellij.ui.ColorUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -25,14 +26,22 @@ import javax.swing.JComponent
  * [bounds] are the *visible* part of the pill in tab-bar coordinates (empty = not shown: scrolled out of the strip). When
  * the pill is cut at the edge of the strip, [setFullArea] tells it how big it really is, and it paints cut instead of squeezed.
  */
-internal class GroupHeader(val groupId: String) : JComponent() {
+internal class GroupHeader(val groupId: String, private val style: () -> StripStyle = { StripStyle.DEFAULT }) : JComponent() {
     var decoration: GroupDecoration? = null
         set(value) {
             field = value
-            toolTipText = value?.name?.takeIf { it.length > MAX_NAME_LENGTH }
-            revalidate()
-            repaint()
+            styleChanged()
         }
+
+    /** The current style changed (or the decoration did): refreshes the tooltip (HDR-3), the length of the pill and the paint. */
+    fun styleChanged() {
+        val max = maxNameLength()
+        toolTipText = decoration?.name?.takeIf { it.length > max }
+        revalidate()
+        repaint()
+    }
+
+    private fun maxNameLength(): Int = style().maxNameLength.coerceAtLeast(1)
 
     var listener: StripEvents? = null
 
@@ -68,8 +77,9 @@ internal class GroupHeader(val groupId: String) : JComponent() {
         }
     }
 
-    private val displayName: String
-        get() = decoration?.name.orEmpty().let { if (it.length > MAX_NAME_LENGTH) it.take(MAX_NAME_LENGTH) + "\u2026" else it }
+    /** The text drawn in the pill: the name, cut at the style's maximum length with an ellipsis (HDR-3). */
+    internal val displayName: String
+        get() = maxNameLength().let { max -> decoration?.name.orEmpty().let { if (it.length > max) it.take(max) + "…" else it } }
 
     private val isDot: Boolean get() = decoration?.name.isNullOrEmpty()
 
@@ -115,7 +125,7 @@ internal class GroupHeader(val groupId: String) : JComponent() {
             else {
                 val w = w0 - 2 * gap
                 val h = h0 - 2 * vInset
-                g2.color = ColorUtil.withAlpha(d.color, FILL_ALPHA)
+                g2.color = ColorUtil.withAlpha(d.color, style().opacity.coerceIn(0.0, 1.0))
                 g2.fill(RoundRectangle2D.Double(gap, vInset, w, h, h, h))
                 g2.font = headerFont()
                 g2.color = UIUtil.getLabelForeground()
@@ -132,8 +142,6 @@ internal class GroupHeader(val groupId: String) : JComponent() {
     }
 
     companion object {
-        const val MAX_NAME_LENGTH = 20
-        const val FILL_ALPHA = 0.25
         private const val PAD = 8
         private const val GAP = 4
         private const val V_INSET = 4

@@ -63,6 +63,21 @@ interface TabBarHost {
      */
     fun tabClosed(split: SplitHandle, file: VirtualFile) {}
 
+    /**
+     * MEM-3: [file] has just been pinned in [split] although the groups last applied there list it as a member (a pin in another split,
+     * or of a file the groups of this split do not list, is not reported; unpinning is not reported). The platform has already changed
+     * the pin state when this is called. The host is expected to remove the file from its group and call [TabBar.refresh].
+     *
+     * Position of the pinned tab: the platform moves it by itself. `JBTabsImpl.getVisibleInfos` (called by every layout and by
+     * [TabBar.visibleFiles]) groups pinned tabs to the front of the strip while the advanced setting `editor.keep.pinned.tabs.on.left`
+     * is on, and `EditorWindow.setFilePinned` does a layout right after publishing the event that leads here, so the tab is at the front
+     * once that layout has run (not yet while this callback runs: the move happens on the next `getVisibleInfos` call).
+     * The host therefore need not reorder the tab; it should not rely on any other order of the unpinned tabs either: the platform's
+     * grouping swaps a pinned tab with the first unpinned one, so the unpinned tabs may change relative order. With the setting off a
+     * pinned tab stays where it is.
+     */
+    fun tabPinned(split: SplitHandle, file: VirtualFile) {}
+
     /** A split appeared (also called once for every existing split when the host is attached). */
     fun splitAppeared(split: SplitHandle) {}
 

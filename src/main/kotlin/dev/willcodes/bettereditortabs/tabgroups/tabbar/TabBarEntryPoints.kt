@@ -12,11 +12,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * Registered as a project listener in `plugin.xml`: keeps [TabBar] aware of new and closed splits (it discovers them from
- * `FileEditorManagerEx.windows`) and reports closed files for MEM-1. Does nothing while no host is attached.
+ * `FileEditorManagerEx.windows`) and reports closed files for MEM-1 and pinned files for MEM-3. Does nothing while no host is attached.
  */
 class TabBarEditorListener(private val project: Project) : FileEditorManagerListener {
     override fun fileOpened(source: FileEditorManager, file: VirtualFile) = project.getService(TabBar::class.java).sync()
     override fun fileClosed(source: FileEditorManager, file: VirtualFile) = project.getService(TabBar::class.java).fileClosed(file)
+    override fun filePinStateChanged(source: FileEditorManager, file: VirtualFile) = project.getService(TabBar::class.java).filePinStateChanged(file)
     override fun selectionChanged(event: FileEditorManagerEvent) = project.getService(TabBar::class.java).sync()
 }
 

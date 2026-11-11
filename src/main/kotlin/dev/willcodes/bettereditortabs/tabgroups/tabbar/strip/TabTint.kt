@@ -6,6 +6,7 @@ import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.JBEditorTabs
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import java.awt.Color
 import java.beans.PropertyChangeListener
@@ -40,7 +41,12 @@ internal class GroupTintColor(
  *
  * EDT only.
  */
-internal class TabTint(private val tabs: JBEditorTabs, parent: Disposable, private val alive: () -> Boolean = { true }) : Disposable {
+internal class TabTint(
+    private val tabs: JBEditorTabs,
+    parent: Disposable,
+    private val alive: () -> Boolean = { true },
+    private val style: () -> StripStyle = { StripStyle.DEFAULT },
+) : Disposable {
     /** [base]: the colour the platform / File Colors last wrote (never one of ours). [tint]: the colour we wrote, if any. */
     private class State(var base: Color?, var tint: Color? = null)
 
@@ -55,6 +61,11 @@ internal class TabTint(private val tabs: JBEditorTabs, parent: Disposable, priva
 
     init {
         com.intellij.openapi.util.Disposer.register(parent, this)
+    }
+
+    /** The style changed: the tint colours read it at paint time, so a repaint is enough. */
+    fun restyle() {
+        if (!disposed) tabs.component.repaint()
     }
 
     /** One tint colour per group, shared by its tabs. */
@@ -178,23 +189,24 @@ internal class TabTint(private val tabs: JBEditorTabs, parent: Disposable, priva
     private fun isIslands(): Boolean = PlatformInternals.isIslandsPainter(tabs.tabPainter)
 
     /**
-     * What to hand to the platform so that the member tab ends up with [OPACITY] of the group colour over the strip background.
+     * What to hand to the platform so that the member tab ends up with the style's opacity (SET-1, read at paint time) of the group colour over the strip background.
      *
      * Classic New UI (`JBEditorTabPainter` / `JBDefaultTabPainter.getCustomBackground`): the tab colour is painted as is
      * (unselected: blended with `inactiveColoredFileBackground`; selected: replaces the selected background), so the group
-     * colour with alpha [OPACITY] is enough. The selected tab stays recognisable through the painter's own underline, which
+     * colour with alpha the opacity is enough. The selected tab stays recognisable through the painter's own underline, which
      * does not depend on the tab colour.
      *
      * Islands (`IslandsTabPainter.paintTab`): an unselected tab paints `withAlpha(tabColor, 0.4)`, whatever the alpha of the
      * colour (`COLOR_TAB_ALPHA`), so the alpha cannot be used to get 25%. Instead the RGB is pre-blended towards the strip
-     * background, `bg + k * (group - bg)` with `k = OPACITY / 0.4`, which gives exactly OPACITY once painted at 40%. The selected
+     * background, `bg + k * (group - bg)` with `k = the opacity / 0.4`, which gives exactly the opacity once painted at 40%. The selected
      * tab keeps its rounded outline and paints the tab colour as an inner fill with its own alpha, so the colour gets alpha
-     * `OPACITY / k` and the selected tab shows the same tint (and stays recognisable through the outline).
-     * For OPACITY above 0.4 the unselected tab is capped at 0.4 by the platform; the selected tab still follows OPACITY.
+     * `the opacity / k` and the selected tab shows the same tint (and stays recognisable through the outline).
+     * For the opacity above 0.4 the unselected tab is capped at 0.4 by the platform; the selected tab still follows the opacity.
      */
     private fun effective(group: Color): Color {
-        val t = OPACITY
+        val t = style().opacity.coerceIn(0.0, 1.0)
         if (!isIslands()) return ColorUtil.withAlpha(group, t)
+        if (t <= 0.0) return Color(group.red, group.green, group.blue, 0)
         val k = minOf(1.0, t / ISLANDS_ALPHA)
         val bg = tabs.tabPainter.getBackgroundColor()
         fun mix(g: Int, b: Int) = (b + k * (g - b)).toInt().coerceIn(0, 255)
@@ -202,9 +214,6 @@ internal class TabTint(private val tabs: JBEditorTabs, parent: Disposable, priva
     }
 
     companion object {
-        /** Tint opacity. SET-1 will make this configurable. */
-        const val OPACITY = GroupHeader.FILL_ALPHA
-
         /** Marker for a preview override that shows a tab as untinted. Compared by identity. */
         private val UNTINTED = Color(0, 0, 0, 0)
 

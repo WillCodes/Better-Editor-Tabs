@@ -15,6 +15,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.TabBarDnd
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripUnit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter
 import java.util.concurrent.ConcurrentHashMap
 
@@ -29,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap
  *                      close scope (IDE-4), split keys and matching. Unit tested without the platform.
  *   tabbar/            the ONLY package that touches IDE-internal APIs (EditorWindow, JBTabsImpl, TabLabel, TabInfo, ...).
  *     TabBar           this facade (project service)          TabBarHost    the contract the service layer implements
- *     SplitHandle, GroupDecoration, HeaderRef                 the public data types
+ *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
  *     strip/           one adapter per split: collapse (hidden tabs), pills hosted in tab labels, tint, drop slot, empty state
  *     drag/            tab drag and group drag inside the strip, hand-over to the platform's drag-out, moving groups between splits
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
@@ -84,6 +85,19 @@ class TabBar(private val project: Project) : Disposable {
             if (value != null) sync()
         }
 
+    /**
+     * How headers and tinted tabs look (SET-1, SET-2); [StripStyle.DEFAULT] until the host sets it. Setting it re-applies the style to every
+     * split at once: headers re-measure (the name is cut at the new length, the pill's reserved width changes, the strip is laid out
+     * again) and repaint, tints repaint with the new opacity. Works with or without a host. EDT only.
+     */
+    var style: StripStyle = StripStyle.DEFAULT
+        set(value) {
+            ThreadingAssertions.assertEventDispatchThread()
+            if (field == value) return
+            field = value
+            for (bar in bars.values.toList()) bar.adapter.restyle()
+        }
+
     init {
         PlatformInternals.logSelfCheckOnce()
         // Programmatic subscription: no plugin.xml entry needed.
@@ -123,6 +137,31 @@ class TabBar(private val project: Project) : Disposable {
         return bars[split.window]?.groupIdOf(file)
     }
 
+    /**
+     * The header of group [groupId] in [split] if it is currently showing (it has a visible area in the strip), else null (unknown group,
+     * scrolled out, no host). Validates the tab component first, so it may be called right after [refresh]: a header is placed in the
+     * layout pass that follows a change, and this call runs that pass now. (A strip that has no size yet, because it is not displayed,
+     * has nothing to place and answers null.) For anchoring a popup (CTX-1).
+     */
+    fun header(split: SplitHandle, groupId: String): HeaderRef? {
+        if (host == null) return null
+        val component = bars[split.window]?.adapter?.showingHeader(groupId) ?: return null
+        return HeaderRef(split, groupId, component)
+    }
+
+    /**
+     * The ids of the groups of [split] in the order their headers stand in the strip (collapsed groups at their place), as laid out
+     * from the groups last applied. [TabBarHost.groupsIn] must list a split's groups in this order: where two pills share a host tab
+     * (collapsed groups next to each other or in front of another group) their order comes from that list. A host that adds a group
+     * by other means than a drag (which reports the new order itself) calls [refresh], reads this and refreshes again if its own
+     * order differs. Groups without a pill in the strip (no tab at all) are left out. Empty without a host.
+     */
+    fun groupOrder(split: SplitHandle): List<String> {
+        if (host == null) return emptyList()
+        val adapter = bars[split.window]?.adapter ?: return emptyList()
+        return adapter.stripUnits().mapNotNull { (it as? StripUnit.Pill)?.groupId }.distinct()
+    }
+
     // ---- splits and tabs --------------------------------------------------------------------------------------------------
 
     /** Every editor split of the project (main area and detached windows). */
@@ -139,6 +178,47 @@ class TabBar(private val project: Project) : Disposable {
 
     /** The selected file of [split], or null if nothing is selected / every tab is hidden. */
     fun selectedFile(split: SplitHandle): VirtualFile? = StripReader.selectedFile(StripReader.tabsOf(split.window))
+
+    /**
+     * Re-orders the visible tabs of [split] to [visibleOrder] (menu operations, e.g. putting a tab next to its new group). Tabs hidden by
+     * collapsed groups are not part of the order: they keep their places (behind the visible tabs, each collapsed group keeping its
+     * header position), so pass only what [visibleFiles] returns. Files of [visibleOrder] that are not visible are ignored; visible
+     * tabs it omits follow the listed ones in their current order. The platform may still put pinned tabs first (see
+     * [TabBarHost.tabPinned]). Needs the split's adapter, i.e. an attached [host]; without one it is a no-op, so that an inert plugin
+     * never touches the tab order. Call [refresh] afterwards if the groups' member order changed.
+     */
+    fun reorder(split: SplitHandle, visibleOrder: List<VirtualFile>) {
+        if (host == null) return
+        bars[split.window]?.adapter?.reorderVisible(visibleOrder)
+    }
+
+    /** True if [file] has a pinned tab in [split]; false if it is not open there. */
+    fun isPinned(split: SplitHandle, file: VirtualFile): Boolean {
+        if (split.window.isDisposed) return false
+        return split.window.getComposite(file)?.isPinned ?: false
+    }
+
+    /** True if [file]'s tab in [split] is a preview tab (italic title, replaced by the next single-click open); false if it is not open there. */
+    fun isPreview(split: SplitHandle, file: VirtualFile): Boolean {
+        if (split.window.isDisposed) return false
+        return split.window.getComposite(file)?.isPreview ?: false
+    }
+
+    /**
+     * Turns the preview tab of [file] in [split] into a normal tab, as a double click on it does (`doProcessDoubleClick` in
+     * `EditorTabbedContainer`: `composite.isPreview = false`, then a refresh of the tab's colours and title). The platform refreshes the
+     * presentation through `scheduleUpdateFileColor`, which a plugin cannot call, so this uses the public
+     * `FileEditorManagerEx.updateFileColor`, which schedules the same update for every split showing the file (it ends in `applyTabColor`,
+     * which draws the italic title only while the composite is a preview). The refresh is asynchronous. No-op if the tab is not a preview
+     * tab or not open there. Each split has its own composite, so other splits showing the file are unaffected.
+     */
+    fun makePermanent(split: SplitHandle, file: VirtualFile) {
+        if (split.window.isDisposed) return
+        val composite = split.window.getComposite(file) ?: return
+        if (!composite.isPreview) return
+        composite.isPreview = false
+        FileEditorManagerEx.getInstanceEx(project).updateFileColor(file)
+    }
 
     /** The right-clicked tab if a tab context menu is showing in [split], otherwise the selected tab. */
     fun contextFile(split: SplitHandle): VirtualFile? = StripReader.contextFile(split.window)
@@ -188,6 +268,19 @@ class TabBar(private val project: Project) : Disposable {
             if (bar.groupIdOf(file) == null) continue
             if (TabClose.openTabs(bar.split.window, listOf(file)).isNotEmpty()) continue // still open in this split
             h.tabClosed(bar.split, file)
+        }
+    }
+
+    /**
+     * [file] was pinned or unpinned somewhere (`FileEditorManagerListener.filePinStateChanged` names no window). MEM-3: tells the host
+     * about every split in which the groups last applied list the file as a member and the file now has a pinned tab. No-op without a host.
+     */
+    internal fun filePinStateChanged(file: VirtualFile) {
+        val h = host ?: return
+        for (bar in bars.values.toList()) {
+            if (bar.groupIdOf(file) == null) continue
+            if (!isPinned(bar.split, file)) continue
+            h.tabPinned(bar.split, file)
         }
     }
 

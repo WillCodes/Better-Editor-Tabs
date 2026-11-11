@@ -8,6 +8,7 @@ import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.TabsListener
 import com.intellij.ui.tabs.impl.TabLabel
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import java.awt.Color
 import java.awt.Rectangle
@@ -42,6 +43,7 @@ import javax.swing.SwingUtilities
 internal class TabBarAdapter(
     internal val window: EditorWindow,
     parent: Disposable,
+    private val style: () -> StripStyle = { StripStyle.DEFAULT },
 ) : Disposable {
     private val tabs = StripReader.tabsOf(window)
     private val disposable = Disposer.newDisposable("TabBarAdapter")
@@ -52,8 +54,8 @@ internal class TabBarAdapter(
 
     private val collapse = CollapseController(tabs, window)
     private val preview = DragPreview(tabs)
-    private val tint = TabTint(tabs, this) { !window.isDisposed }
-    private val headers = PillHeaders(tabs, ::isPlatformTabDragActive, ::pollDragState, ::platformDraggedLabel)
+    private val tint = TabTint(tabs, this, { !window.isDisposed }, style)
+    private val headers = PillHeaders(tabs, ::isPlatformTabDragActive, ::pollDragState, ::platformDraggedLabel, style)
     private val layout = PillLayout(tabs, alive, { groups }, headers::of, preview, collapse, ::platformDraggedFile)
     private val geometry = StripGeometry(tabs, alive, layout, { groups }, preview)
     private val emptyOverlay = EmptyEditorOverlay(tabs, window)
@@ -139,6 +141,40 @@ internal class TabBarAdapter(
     }
 
     /**
+     * The style (see [StripStyle]) changed: headers re-measure (their reserved width depends on the maximum name length) and repaint,
+     * the tint is repainted (its colours read the style at paint time) and the strip is laid out again.
+     */
+    fun restyle() {
+        if (!alive()) return
+        headers.restyle()
+        tint.restyle()
+        updateReservations()
+        tabs.revalidate()
+        tabs.repaint()
+    }
+
+    /**
+     * Re-orders the *visible* tabs to [visibleOrder] and leaves the tabs hidden by collapsed groups where they are (behind the visible
+     * ones, each collapsed group keeping its anchor). Files of [visibleOrder] that are not visible are ignored; visible tabs it does
+     * not list keep their relative order behind the listed ones. Goes through [applyOrder] (the only correct way around hidden tabs).
+     *
+     * [CollapseController.applyOrder] shows every hidden tab, sorts by the given order (a file missing from it sorts last) and hides
+     * them again, re-deriving their order from the strip. Passing only visible files would leave the hidden tabs' relative order to
+     * the order in which the platform re-inserts them, so the full order is built here: visible tabs as asked, hidden ones behind
+     * them in their current order (the invariant the collapse code keeps: hidden tabs at the end of the full tab list).
+     */
+    fun reorderVisible(visibleOrder: List<VirtualFile>) {
+        if (!alive()) return
+        val visible = visibleFiles()
+        val wanted = visibleOrder.toSet()
+        val listed = visibleOrder.filter { it in visible }.distinct()
+        // Our own left-to-right record, not `JBTabsImpl.getTabs()`: that re-inserts hidden tabs by iterating a HashMap, so their order
+        // there is arbitrary, and feeding it back would swap the tabs of a collapsed group when it is expanded.
+        val hiddenNow = collapse.hiddenFiles.toList()
+        applyOrder(listed + visible.filter { it !in wanted } + hiddenNow)
+    }
+
+    /**
      * Re-pins collapsed tabs to the end of the full tab list if new tabs were opened since they were hidden (see
      * [CollapseController.repin]) and refreshes tint and pill placement.
      */
@@ -159,6 +195,17 @@ internal class TabBarAdapter(
         collapse.applyOrder(order)
         updateReservations()
         tabs.revalidate()
+    }
+
+    /**
+     * The header component of [groupId] if it has a visible area in the strip, else null. Lays the strip out first if it is invalid:
+     * [PillHeaders.place] runs from [adjust], i.e. in the layout pass after a change, so right after [setGroups] the header still
+     * has its old (or empty) bounds.
+     */
+    fun showingHeader(groupId: String): GroupHeader? {
+        if (!alive()) return null
+        if (!tabs.component.isValid) tabs.component.validate()
+        return headers.of(groupId)?.takeIf { !it.bounds.isEmpty }
     }
 
     // ---- drag preview (the plugin's own tab drag) ----------------------------------------------------------------------

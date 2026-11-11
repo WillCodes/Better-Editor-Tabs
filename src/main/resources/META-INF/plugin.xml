@@ -69,5 +69,18 @@
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseRightAction"/>
         <action id="CloseAllUnpinnedEditors" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseUnpinnedAction"/>
+
+        <!-- CTX-1..CTX-4: tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
+        <group id="BetterEditorTabs.TabMenu">
+            <separator/>
+            <action id="BetterEditorTabs.AddTabToNewGroup"
+                    class="dev.willcodes.bettereditortabs.tabgroups.actions.AddTabToNewGroupAction"/>
+            <group id="BetterEditorTabs.AddTabToGroup" popup="true"
+                   class="dev.willcodes.bettereditortabs.tabgroups.actions.AddTabToGroupActionGroup"/>
+            <action id="BetterEditorTabs.RemoveTabFromGroup"
+                    class="dev.willcodes.bettereditortabs.tabgroups.actions.RemoveTabFromGroupAction"/>
+            <separator/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="KeepTabOpen"/>
+        </group>
     </actions>
 </idea-plugin>
