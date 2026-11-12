@@ -53,7 +53,7 @@ internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, pare
 
     // ---- StripEvents -----------------------------------------------------------------------------------------------------
 
-    private fun ref(header: GroupHeader) = HeaderRef(split, header.groupId, header)
+    private fun ref(header: GroupHeader) = HeaderRef(split, header.groupId, header, header.pillBounds())
 
     override fun headerClicked(header: GroupHeader, event: MouseEvent) {
         tabBar.host?.headerClicked(ref(header), event)

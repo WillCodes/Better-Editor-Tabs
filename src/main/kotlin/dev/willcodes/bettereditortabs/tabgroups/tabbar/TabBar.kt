@@ -38,6 +38,10 @@ import java.util.concurrent.ConcurrentHashMap
  *     splits/          restart-stable split identity (PERS-3) and the "splits restored" signal
  *     platform/        PlatformInternals: every reflective access, documented one by one, with a start-up self-check
  *   service/, ui/, actions/, rules/, settings/             callers: they may import only the public types of tabbar/ (and splits/)
+ *     service/         TabGroupsService (state + operations, the TabBarHost), TabGroupsSettings; reaches popups and dialogs only
+ *                      through its TabGroupsUi interface, which ui/ implements (ui/ -> service/, never the other way round)
+ *     ui/popup/        the group popup (§6): GroupPopup (open, place, close), GroupPopupContent (sections), PopupPlacement
+ *     actions/         -> service/ and ui/
  * ```
  *
  * Rules:
@@ -146,7 +150,7 @@ class TabBar(private val project: Project) : Disposable {
     fun header(split: SplitHandle, groupId: String): HeaderRef? {
         if (host == null) return null
         val component = bars[split.window]?.adapter?.showingHeader(groupId) ?: return null
-        return HeaderRef(split, groupId, component)
+        return HeaderRef(split, groupId, component, component.pillBounds())
     }
 
     /**

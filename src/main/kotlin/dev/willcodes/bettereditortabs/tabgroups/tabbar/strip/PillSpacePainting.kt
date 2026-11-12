@@ -91,11 +91,15 @@ internal class PillCut(val slot: Rectangle, val band: Rectangle, val selectedHos
  * Installed by [installOn] through [PlatformInternals.setTabBorder] (`JBTabsImpl.tabBorder` is private final: `drawBorder` reads that
  * field and the class is not open). If the field is not there (platform change) nothing is installed and only the underline of a
  * selected host shows under its pill; nothing else depends on it.
+ *
+ * It also draws the strip line along the row a separate pinned row leaves for loose pills ([SpareRow], [spareRow]): the platform
+ * draws the lines of its own rows only.
  */
 internal class PillAwareTabsBorder(
     private val bar: JBTabsImpl,
     val delegate: JBTabsBorder,
     private val cuts: () -> List<PillCut>,
+    private val spareRow: () -> Rectangle? = { null },
 ) : JBTabsBorder(bar) {
     override val effectiveBorder: Insets get() = delegate.effectiveBorder
 
@@ -104,6 +108,32 @@ internal class PillAwareTabsBorder(
     override fun isBorderOpaque(): Boolean = delegate.isBorderOpaque
 
     override fun paintBorder(c: Component, g: Graphics, x: Int, y: Int, width: Int, height: Int) {
+        paintCut(c, g, x, y, width, height)
+        paintSpareRowLine(g, x, width)
+    }
+
+    /**
+     * The line of the spare row ([SpareRow]), drawn like the platform's row lines (`JBEditorTabsBorder.paintBorder`). Top: the platform
+     * draws the line under the pinned row only when the strip has a bottom line, and then it separates the two rows; the spare row gets
+     * the bottom line under it. Without a bottom line the separator between the rows is drawn instead. Bottom: every row has its line
+     * on top, so the spare row (above the pinned row) gets one too.
+     */
+    private fun paintSpareRowLine(g: Graphics, x: Int, width: Int) {
+        val row = spareRow() ?: return
+        if (bar.isHideTabs || bar.isEmptyVisible) return
+        val t = bar.borderThickness
+        val lineY = when (bar.tabsPosition) {
+            JBTabsPosition.top -> {
+                val bottomLine = (bar as? JBEditorTabs)?.shouldPaintBottomBorder() != false
+                if (bottomLine) row.y + row.height - t else row.y - t
+            }
+            JBTabsPosition.bottom -> row.y
+            else -> return
+        }
+        bar.tabPainter.paintBorderLine(g as Graphics2D, t, Point(x, lineY), Point(x + width, lineY))
+    }
+
+    private fun paintCut(c: Component, g: Graphics, x: Int, y: Int, width: Int, height: Int) {
         val all = cuts().filter { !it.slot.isEmpty }
         if (all.isEmpty()) {
             delegate.paintBorder(c, g, x, y, width, height)
@@ -143,10 +173,10 @@ internal class PillAwareTabsBorder(
 
     companion object {
         /** Installs the wrapper on [tabs]; returns it, or null if that is not possible. */
-        fun installOn(tabs: JBTabsImpl, cuts: () -> List<PillCut>): PillAwareTabsBorder? {
+        fun installOn(tabs: JBTabsImpl, cuts: () -> List<PillCut>, spareRow: () -> Rectangle? = { null }): PillAwareTabsBorder? {
             val current = PlatformInternals.tabBorder(tabs) ?: return null
             if (current is PillAwareTabsBorder) return current
-            return PillAwareTabsBorder(tabs, current, cuts).also { PlatformInternals.setTabBorder(tabs, it) }
+            return PillAwareTabsBorder(tabs, current, cuts, spareRow).also { PlatformInternals.setTabBorder(tabs, it) }
         }
 
         fun uninstallFrom(tabs: JBTabsImpl) {

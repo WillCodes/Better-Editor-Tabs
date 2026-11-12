@@ -8,6 +8,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -101,6 +102,27 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         this.offsetX = offsetX
         this.offsetY = offsetY
         repaint()
+    }
+
+    /**
+     * The pill as painted (the filled shape: the rounded rectangle, or the dot of an unnamed group), in this component's coordinates.
+     * The component also covers a small gap on each side of the pill, and the pill may be cut at the edge of the strip, so this can
+     * reach outside the component's bounds. For anchoring the group popup to the pill's leading edge (§6).
+     */
+    fun pillBounds(): Rectangle {
+        val w0 = if (fullWidth > 0) fullWidth else width
+        val h0 = if (fullHeight > 0) fullHeight else height
+        val gap = JBUI.scale(GAP)
+        val vInset = JBUI.scale(V_INSET)
+        val r = if (isDot) {
+            val dot = JBUI.scale(DOT_SIZE)
+            Rectangle((w0 - dot) / 2, (h0 - dot) / 2, dot, dot)
+        }
+        else {
+            Rectangle(gap, vInset, w0 - 2 * gap, h0 - 2 * vInset)
+        }
+        r.translate(-offsetX, -offsetY)
+        return r
     }
 
     private fun headerFont() = JBUI.CurrentTheme.EditorTabs.font()

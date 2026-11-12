@@ -2,15 +2,23 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.vfs.VirtualFile
+import java.awt.Rectangle
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
  * A group header as seen from outside `tabbar/`: enough to anchor a popup or dialog (§6) and to tell which group instance was hit.
- * [component] is the header's Swing component (showing, so `JBPopup.showUnderneathOf(component)` works); it is only valid while the
- * split shows the group.
+ * [component] is the header's Swing component (showing, so a popup can be placed relative to it); it is only valid while the
+ * split shows the group. [pillBounds] is the pill as painted, in [component]'s coordinates, taken when the ref was made: the
+ * component is a little wider than the pill (a gap on each side), so a popup aligned to the pill's leading edge (§6) uses this.
+ * Only `tabbar/` creates refs.
  */
-class HeaderRef(val split: SplitHandle, val groupId: String, val component: JComponent)
+class HeaderRef internal constructor(
+    val split: SplitHandle,
+    val groupId: String,
+    val component: JComponent,
+    val pillBounds: Rectangle = Rectangle(0, 0, component.width, component.height),
+)
 
 /**
  * The single interface the service layer implements to plug into the tab bar (Stage 2: `TabGroupsService`). The tab bar *pulls* state

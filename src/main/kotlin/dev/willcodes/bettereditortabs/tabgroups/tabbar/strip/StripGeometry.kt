@@ -25,6 +25,8 @@ internal class StripGeometry(
     private val layout: PillLayout,
     private val groups: () -> List<GroupDecoration>,
     private val preview: DragPreview,
+    /** The row beside a separate pinned row that holds loose pills ([SpareRow]), or null. */
+    private val spareRow: () -> Rectangle? = { null },
 ) {
     fun stripThickness(horizontal: Boolean): Int {
         val fit = tabs.headerFitSize
@@ -120,12 +122,13 @@ internal class StripGeometry(
                 if (item.header != null) result[item.header] = r else spacer = r.visible
             }
         }
-        // every tab collapsed: there is no label to host the pills, they sit in the (otherwise empty) strip
+        // No label to host these pills: every tab is collapsed (they sit in the otherwise empty strip), or only pinned tabs are left
+        // beside a separate pinned row (they sit in the spare row next to it, see SpareRow).
         val loose = layout.looseItems()
         if (loose.isNotEmpty()) {
-            val strip = emptyStrip(position)
+            val strip = spareRow() ?: emptyStrip(position)
             var at = if (horizontal) strip.x else strip.y
-            val cross = stripThickness(horizontal)
+            val cross = if (horizontal) strip.height else stripThickness(false)
             val rowHeight = JBUI.scale(28)
             val all = Rectangle(0, 0, tabs.width, tabs.height)
             for (item in loose) {

@@ -120,6 +120,16 @@ class GroupsState<S, F>(private val newId: () -> String) {
         return target
     }
 
+    /**
+     * LIFE-1, LIFE-3: removes [split]'s instance of [groupId], whatever its members. Other splits keep theirs. The group identity goes
+     * with the last instance (MEM-6). A no-op for an unknown instance.
+     */
+    fun removeInstance(split: S, groupId: String) {
+        val instances = bySplit[split] ?: return
+        if (!instances.removeAll { it.groupId == groupId }) return
+        prune(listOf(groupId))
+    }
+
     /** The split no longer exists: all its instances go and MEM-6 applies. */
     fun splitRemoved(split: S) {
         val gone = bySplit.remove(split) ?: return

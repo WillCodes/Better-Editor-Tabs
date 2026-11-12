@@ -26,6 +26,7 @@ import javax.swing.SwingUtilities
  * - [DragPreview]: previewed membership, dragged file and the drop slot ([DragGap]) during the plugin's own drag;
  * - [TabTint]: the group colour on member tabs (`TabInfo.setTabColor`);
  * - [EmptyEditorOverlay]: the empty state when every tab is hidden;
+ * - [SpareRow]: the row for pills beside a separate pinned row when no unpinned tab is left to host them;
  * - [CloseSelectionGuard]: keeps a close from selecting a hidden tab;
  * - [PillAwareTabsBorder]: cuts the pills' slots out of the strip border.
  *
@@ -57,10 +58,11 @@ internal class TabBarAdapter(
     private val tint = TabTint(tabs, this, { !window.isDisposed }, style)
     private val headers = PillHeaders(tabs, ::isPlatformTabDragActive, ::pollDragState, ::platformDraggedLabel, style)
     private val layout = PillLayout(tabs, alive, { groups }, headers::of, preview, collapse, ::platformDraggedFile)
-    private val geometry = StripGeometry(tabs, alive, layout, { groups }, preview)
+    private val geometry = StripGeometry(tabs, alive, layout, { groups }, preview) { spareRow.rect }
     private val emptyOverlay = EmptyEditorOverlay(tabs, window)
     private val closeGuard = CloseSelectionGuard(tabs, window, collapse)
     private val verticalRows = VerticalRows(tabs, layout, geometry)
+    private val spareRow = SpareRow(tabs, layout)
     private val hook = LayoutHook()
 
     private var layingOutAgain = false
@@ -77,7 +79,7 @@ internal class TabBarAdapter(
         Disposer.register(parent, this)
         Disposer.register(this, disposable)
         tabs.add(hook)
-        PillAwareTabsBorder.installOn(tabs) { geometry.pillCuts() }
+        PillAwareTabsBorder.installOn(tabs, { geometry.pillCuts() }, { spareRow.rect })
         tabs.add(preview.gap)
         tabs.add(emptyOverlay)
         tabs.addListener(object : TabsListener {
@@ -297,6 +299,9 @@ internal class TabBarAdapter(
     /** The file whose label hosts the pill of [groupId], and whether on its leading side (tests only). Null if the pill is not hosted. */
     internal fun pillHost(groupId: String): Pair<VirtualFile?, Boolean>? = layout.pillHost(groupId)
 
+    /** The row beside a separate pinned row that holds loose pills ([SpareRow]), or null (tests only). */
+    internal fun spareRowRect(): java.awt.Rectangle? = spareRow.rect
+
     /** The space reserved in the label of [file] (leading, trailing), tests only. */
     internal fun reservedSpace(file: VirtualFile): Pair<Int, Int>? =
         StripReader.infoOf(tabs, file)?.let { tabs.getTabLabel(it) }?.let { layout.space.reserved(it) }
@@ -372,6 +377,7 @@ internal class TabBarAdapter(
         }
         dragWasActive = isPlatformTabDragActive()
         verticalRows.apply()
+        spareRow.apply()
         headers.place(geometry.pillAreas(), preview.gap)
         updateGap()
         val showEmpty = !tabs.isHideTabs && tabs.width > 0 && tabs.isEmptyVisible && collapse.hasHiddenFiles()
