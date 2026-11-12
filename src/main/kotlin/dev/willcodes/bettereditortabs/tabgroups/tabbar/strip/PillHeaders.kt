@@ -50,6 +50,7 @@ internal class PillHeaders(
                 GroupHeader(g.id, style).also {
                     it.transparentToHitTest = isPlatformDragActive
                     it.onPaint = onHeaderPaint
+                    it.stripBackground = { g, r -> tabs.tabPainter.fillBackground(tabs, g, r) }
                     tabs.add(it)
                 }
             }

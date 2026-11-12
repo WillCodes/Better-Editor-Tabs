@@ -31,7 +31,8 @@ import java.util.concurrent.ConcurrentHashMap
  *   tabbar/            the ONLY package that touches IDE-internal APIs (EditorWindow, JBTabsImpl, TabLabel, TabInfo, ...).
  *     TabBar           this facade (project service)          TabBarHost    the contract the service layer implements
  *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
- *     strip/           one adapter per split: collapse (hidden tabs), pills hosted in tab labels, tint, drop slot, empty state
+ *     strip/           one adapter per split: collapse (hidden tabs) and its animation, pills hosted in tab labels, tint, drop slot,
+ *                      empty state
  *     drag/            tab drag and group drag inside the strip, hand-over to the platform's drag-out, moving groups between splits
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
  *                      new-tab placement (MEM-2), closing on behalf of group operations
@@ -40,7 +41,8 @@ import java.util.concurrent.ConcurrentHashMap
  *   service/, ui/, actions/, rules/, settings/             callers: they may import only the public types of tabbar/ (and splits/)
  *     service/         TabGroupsService (state + operations, the TabBarHost), TabGroupsSettings; reaches popups and dialogs only
  *                      through its TabGroupsUi interface, which ui/ implements (ui/ -> service/, never the other way round)
- *     ui/popup/        the group popup (§6): GroupPopup (open, place, close), GroupPopupContent (sections), PopupPlacement
+ *     ui/popup/        the group popup (§6): GroupPopup (open, place, close), GroupPopupContent (sections), PopupPlacement;
+ *                      TabListPopup, the hover list of a collapsed group (INT-5)
  *     actions/         -> service/ and ui/
  * ```
  *
@@ -57,6 +59,19 @@ import java.util.concurrent.ConcurrentHashMap
  * setup. The host answers [TabBarHost.groupsIn] with the groups of a split whenever it calls [refresh], and receives header gestures,
  * drag results, COLL-4 and MEM-1 events. With [host] null the plugin is completely inert: no component is added to any tab bar, no
  * drag is taken over, and the built-in actions behave exactly like the platform's.
+ *
+ * # Collapse animation (COLL-7)
+ *
+ * [refresh] passes `animate` (and [StripStyle.animateCollapse], SET-10) down to the split's adapter; every other caller of
+ * `TabBarAdapter.setGroups` (live re-ordering during drags, group moves) passes false, which snaps a running animation to its end. One
+ * `strip/CollapseAnimator` per strip animates Top / Bottom strips by setting the member labels' preferred widths each frame, so the
+ * platform's own layouts slide the following tabs (single and multi row); the tween is pure (`model/strip/CollapseAnimation`). While a
+ * group collapses the adapter's `shown` view treats it as expanded: the selection leaves the group at the start (COLL-2), the tabs are
+ * hidden (`TabInfo.isHidden`) only when the animation ends; an expand shows them at the start and grows them. A flip during the
+ * animation reverses it from its current extent; selecting a tab of a collapsing group is reported as COLL-4, so the host expands it.
+ * Drags call `TabBarAdapter.finishCollapseAnimations` before they read the strip, and drag results refresh without animation. Left /
+ * Right strips animate heights: the platform fixes label heights there, so `strip/VerticalRows` draws animating labels shorter after
+ * the layout and moves the labels behind them up.
  *
  * # Threading
  *
@@ -118,11 +133,18 @@ class TabBar(private val project: Project) : Disposable {
 
     // ---- groups --------------------------------------------------------------------------------------------------------
 
-    /** Pulls [TabBarHost.groupsIn] for [split] and applies it to the strip (headers, collapse, tint). No-op without a host. */
-    fun refresh(split: SplitHandle) {
+    /**
+     * Pulls [TabBarHost.groupsIn] for [split] and applies it to the strip (headers, collapse, tint). No-op without a host.
+     *
+     * COLL-7: a group whose collapsed flag changed since the last refresh collapses or expands with an animation when [animate] is
+     * true and [style] allows it ([StripStyle.animateCollapse], SET-10); a change during a running animation reverses it from where it
+     * is. Selection changes (COLL-2, COLL-3, COLL-4) happen at once, never at the end of the animation. Pass false where nothing may
+     * move (restoring groups at startup, a placement change).
+     */
+    fun refresh(split: SplitHandle, animate: Boolean = true) {
         val h = host ?: return
         val bar = barFor(split) ?: return
-        bar.apply(h.groupsIn(split))
+        bar.apply(h.groupsIn(split), animate && style.animateCollapse)
     }
 
     /** [refresh] for every split. */
@@ -175,6 +197,17 @@ class TabBar(private val project: Project) : Disposable {
     fun splitFor(e: AnActionEvent): SplitHandle? {
         val window = e.getData(EditorWindow.DATA_KEY) ?: FileEditorManagerEx.getInstanceEx(project).currentWindow
         return window?.let { SplitHandle(it) }
+    }
+
+    /**
+     * Selects the tab of [file] in [split] (and focuses its editor if [focus]), as clicking the tab would. A tab hidden by a collapsed
+     * group is selected too; the strip then reports it as COLL-4 ([TabBarHost.hiddenTabSelected]), so a caller that has just expanded
+     * the group itself (INT-5) should expand first and select afterwards. No-op if [file] is not open in [split].
+     */
+    fun selectTab(split: SplitHandle, file: VirtualFile, focus: Boolean) {
+        if (split.window.isDisposed) return
+        if (TabClose.openTabs(split.window, listOf(file)).isEmpty()) return
+        split.window.setSelectedComposite(file, focus)
     }
 
     /** Files of the tabs currently shown in [split]'s strip, in order (tabs hidden by collapsed groups excluded). */

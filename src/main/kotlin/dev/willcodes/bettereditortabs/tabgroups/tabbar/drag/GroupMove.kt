@@ -29,6 +29,17 @@ internal fun TabBarDnd.moveGroupToSplit(
     targetUnits: List<MoveUnit<VirtualFile>>,
     boundary: Int,
 ) {
+    // Closing in the source, opening and re-hiding in the target make the platform move both splits' selections, also onto tabs that
+    // are hidden for a moment: none of that is navigation (COLL-4), so both strips treat the whole move as their own change.
+    adapter.ownChange { target.adapter.ownChange { moveNow(unit, target, targetUnits, boundary) } }
+}
+
+private fun TabBarDnd.moveNow(
+    unit: MoveUnit<VirtualFile>,
+    target: TabBarDnd,
+    targetUnits: List<MoveUnit<VirtualFile>>,
+    boundary: Int,
+) {
     val groupId = unit.groupId ?: return
     val files = unit.keys
     if (files.isEmpty()) return

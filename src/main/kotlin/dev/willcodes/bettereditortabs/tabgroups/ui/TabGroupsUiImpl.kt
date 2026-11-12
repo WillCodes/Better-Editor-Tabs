@@ -4,15 +4,26 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DoNotAskOption
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
 import dev.willcodes.bettereditortabs.tabgroups.service.DeleteAnswer
 import dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsUi
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.HeaderRef
 import dev.willcodes.bettereditortabs.tabgroups.ui.popup.GroupPopup
+import dev.willcodes.bettereditortabs.tabgroups.ui.popup.TabListPopup
 
 /** The real popups and dialogs behind [TabGroupsUi]; registered as the project service for that interface in `plugin.xml`. */
 class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
-    override fun showGroupPopup(header: HeaderRef) = GroupPopup.show(project, header)
+    private val tabList = TabListPopup(project)
+
+    override fun showGroupPopup(header: HeaderRef) {
+        tabList.cancel() // a pending or shown hover list gives way to the group popup
+        GroupPopup.show(project, header)
+    }
+
+    override fun showTabListOnHover(header: HeaderRef, files: List<VirtualFile>) = tabList.hoverStarted(header, files)
+
+    override fun hoverEnded(header: HeaderRef) = tabList.hoverEnded(header)
 
     /** LIFE-3b: warning dialog with Delete / Cancel and a "Don't ask again" box that only counts together with Delete. */
     override fun confirmDelete(groupName: String, tabCount: Int): DeleteAnswer {

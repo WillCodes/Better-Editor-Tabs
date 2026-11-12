@@ -1,9 +1,12 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.JBEditorTabs
+import com.intellij.ui.tabs.impl.TabLabel
 import com.intellij.ui.tabs.impl.singleRow.SingleRowPassInfo
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillRows
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.animatedLength
 import java.awt.Rectangle
 
 /**
@@ -20,6 +23,9 @@ import java.awt.Rectangle
  * are narrowed in the buttons' row and hidden below the end of the strip ([PillRows.fit]); the hidden ones are added to the pass's
  * dropped tabs, so "Show Hidden Tabs" lists them.
  *
+ * Collapse animation (COLL-7): the label of a group that collapses or expands is drawn at the animated part of its height
+ * ([CollapseAnimator.verticalExtentOf]) and the labels behind it move up by the rest, frame by frame (every frame is a new layout pass).
+ *
  * Limits: the platform decides about overflow ("more" button), scrolling and scroll-to-selected from the raw label heights. A strip that
  * fits raw but not with the pill rows shows no "more" button, so the tabs pushed out at its end can only be reached by selecting
  * them another way (the selected tab is always brought into view by [PillRows.extraScroll]); an overflowing strip is corrected by
@@ -33,12 +39,20 @@ internal class VerticalRows(
     private val tabs: JBEditorTabs,
     private val layout: PillLayout,
     private val geometry: StripGeometry,
+    private val extentOf: (VirtualFile) -> Double? = { null },
 ) {
     private var lastPass: Any? = null
+
+    /** The laid-out height of every label the last pass drew shorter (COLL-7); pill rows keep the full row height. */
+    private val naturalHeights = java.util.IdentityHashMap<TabLabel, Int>()
+
+    /** The height of [label]'s row: its laid-out height, also while the animation draws it shorter. */
+    fun rowHeight(label: TabLabel): Int = naturalHeights[label] ?: label.height
 
     /** Moves the labels of the pass that was just laid out. Returns true if something moved. */
     fun apply(): Boolean {
         if (tabs.isHorizontalTabs || tabs.isHideTabs) {
+            naturalHeights.clear()
             lastPass = null
             return false
         }
@@ -53,9 +67,17 @@ internal class VerticalRows(
             lead += l.sumOf { if (it.header != null) label.height else it.length }
             trail += t.sumOf { if (it.header != null) label.height else it.length }
         }
+        // COLL-7: a label of a group that collapses / expands is drawn at its animated height; the labels behind it move up by the rest.
+        val drawn = IntArray(labels.size) { i ->
+            val h = labels[i].height
+            (labels[i].info.`object` as? VirtualFile)?.let(extentOf)?.let { animatedLength(h, it) } ?: h
+        }
+        val shrink = IntArray(labels.size) { labels[it].height - drawn[it] }
+        naturalHeights.clear()
+        for ((i, label) in labels.withIndex()) if (shrink[i] != 0) naturalHeights[label] = label.height
         val total = lead.sum() + trail.sum()
-        if (total == 0) return false
-        val shifts = PillRows.shifts(lead, trail)
+        if (total == 0 && shrink.all { it == 0 }) return false
+        val shifts = PillRows.shifts(lead, trail, shrink)
         val limit = geometry.limitFunction(false)(labels.firstOrNull { !it.bounds.isEmpty }?.bounds ?: return false)
         var selectedEnd: Int? = null
         var lastEnd = 0
@@ -63,7 +85,7 @@ internal class VerticalRows(
         for ((i, label) in labels.withIndex()) {
             val b = label.bounds
             if (b.isEmpty) continue
-            val end = b.y + shifts[i] + b.height
+            val end = b.y + shifts[i] + drawn[i]
             if (label === selected) selectedEnd = end
             lastEnd = maxOf(lastEnd, end + trail[i])
         }
@@ -86,7 +108,12 @@ internal class VerticalRows(
         for ((i, label) in labels.withIndex()) {
             val b = label.bounds
             if (b.isEmpty) continue
-            val fitted = PillRows.fit(Rectangle(b.x, b.y + shifts[i] - back, column, b.height), buttons, tabs.height)
+            if (drawn[i] == 0) {
+                // fully shrunk by the animation: not shown, but not "pushed out" either (it is not listed under Show Hidden Tabs)
+                label.setBounds(b.x, b.y + shifts[i] - back, column, 0)
+                continue
+            }
+            val fitted = PillRows.fit(Rectangle(b.x, b.y + shifts[i] - back, column, drawn[i]), buttons, tabs.height)
             if (fitted == null) {
                 label.setBounds(0, 0, 0, 0)
                 pushedOut += label.info

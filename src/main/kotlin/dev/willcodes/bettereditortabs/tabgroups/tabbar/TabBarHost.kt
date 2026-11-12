@@ -46,6 +46,13 @@ interface TabBarHost {
     /** Middle click on a header (INT-3: delete group). */
     fun headerMiddleClicked(header: HeaderRef, event: MouseEvent) {}
 
+    /**
+     * INT-5: the pointer entered ([hovering] true) or left (false) the header. A press on the header (click or the start of a drag)
+     * also reports false. Called for expanded and collapsed groups alike; the host decides what to show (the tab list of a collapsed
+     * group, after a delay).
+     */
+    fun headerHoverChanged(header: HeaderRef, hovering: Boolean) {}
+
     // ---- results of drag and drop (DRAG-*, INT-6) -------------------------------------------------------------------------
 
     /**

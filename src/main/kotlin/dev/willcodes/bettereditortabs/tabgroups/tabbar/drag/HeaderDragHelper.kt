@@ -137,6 +137,7 @@ internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) 
 
     private fun begin(startScreen: Point): Boolean {
         val group = pressedGroup ?: return false
+        dnd.adapter.finishCollapseAnimations() // a drag starts from a settled strip (COLL-7)
         startUnits = dnd.buildUnits()
         from = startUnits.indexOfFirst { it.groupId == group }
         if (from < 0) return false

@@ -4,6 +4,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.util.ui.ImageUtil
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.StartupUiUtil
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.HeaderDragGeometry
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import java.awt.AlphaComposite
@@ -19,10 +20,12 @@ import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
 import javax.swing.JComponent
 import javax.swing.JLayeredPane
+import javax.swing.SwingUtilities
 
 /**
- * Feedback for a group drag (INT-6): the ghost of the dragged group follows the pointer and an insertion bar (or an outline when
- * merging) shows where it will land.
+ * Feedback for a drag: the floating picture follows the pointer and an outline (merging a group into another split) shows where it
+ * will land. The picture is shown in a window of its own ([GhostWindow], like the platform's) except on Wayland, where it is painted
+ * here; the outline is always painted here.
  *
  * Why a component in the layered pane and not a glass-pane `Painter`: `IdeGlassPaneUtil.installPainter` is racy. Its `Activatable`
  * calls `showNotify` once directly and again for every deferred `SHOWING_CHANGED` hierarchy event; each extra `showNotify` disposes
@@ -91,12 +94,47 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
         }
     }
 
-    fun setGhost(image: BufferedImage?, size: Dimension) = update {
-        ghost = image
-        ghostSize = Dimension(size)
+    /**
+     * The floating picture. Shown in the platform's kind of drag window ([GhostWindow]) wherever a window can be placed on screen;
+     * on Wayland it is painted into this overlay, like the platform's glass-pane view.
+     */
+    fun setGhost(image: BufferedImage?, size: Dimension) {
+        if (!inFrame) {
+            windowGhost = image
+            ghostSize = Dimension(size)
+            if (image == null) GhostWindow.hide(this)
+            else if (windowGhostShown) GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation)
+            if (image == null) windowGhostShown = false
+            return
+        }
+        update {
+            ghost = image
+            ghostSize = Dimension(size)
+        }
     }
 
-    fun moveGhost(screenTopLeft: Point) = update { ghostLocation = Point(screenTopLeft) }
+    fun moveGhost(screenTopLeft: Point) {
+        if (!inFrame) {
+            ghostLocation = Point(screenTopLeft)
+            val image = windowGhost ?: return
+            if (windowGhostShown) GhostWindow.move(this, ghostLocation)
+            else GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation)
+            windowGhostShown = true
+            return
+        }
+        update { ghostLocation = Point(screenTopLeft) }
+    }
+
+    /** The picture in a window of its own (everywhere but Wayland). */
+    private val inFrame: Boolean get() = StartupUiUtil.isWaylandToolkit()
+    private var windowGhost: BufferedImage? = null
+    private var windowGhostShown = false
+
+    private fun hideWindowGhost() {
+        windowGhost = null
+        windowGhostShown = false
+        GhostWindow.hide(this)
+    }
 
     fun setMarker(screenRect: Rectangle?, outline: Boolean = false) {
         if (marker == screenRect && markerOutline == outline) return
@@ -106,13 +144,17 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
         }
     }
 
-    fun clear() = update {
-        ghost = null
-        marker = null
+    fun clear() {
+        hideWindowGhost()
+        update {
+            ghost = null
+            marker = null
+        }
     }
 
     /** Detaches the overlay from the layered pane. */
     fun dispose() {
+        hideWindowGhost()
         ghost = null
         marker = null
         detach(emptyList())
@@ -183,6 +225,9 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
                             val arc = JBUI.scale(8)
                             ghostGraphics.clip = RoundRectangle2D.Float(r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat(), arc.toFloat(), arc.toFloat())
                         }
+                        // the platform's picture is transparent but for icon and name; its window is what shows behind them
+                        ghostGraphics.color = DragImages.windowBackground()
+                        ghostGraphics.fillRect(r.x, r.y, r.width, r.height)
                         ghostGraphics.drawImage(img, r.x, r.y, r.width, r.height, null)
                     }
                     finally {

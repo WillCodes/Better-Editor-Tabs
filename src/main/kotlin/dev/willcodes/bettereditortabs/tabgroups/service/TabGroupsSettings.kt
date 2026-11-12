@@ -42,6 +42,9 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
 
         /** SET-8: ask to move matching open tabs when an auto-group rule is set. */
         var askToMoveMatchingTabs by property(true)
+
+        /** SET-10: animate collapsing and expanding groups (COLL-7). */
+        var animateCollapse by property(true)
     }
 
     /** SET-1 as a fraction, clamped to 0.10..1.0. */
