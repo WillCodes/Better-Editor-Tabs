@@ -11,6 +11,7 @@ import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.project.DumbAware
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 
 /**
  * Wraps the built-in Reopen Closed Tab action (LIFE-5, LIFE-6).
@@ -28,7 +29,15 @@ class ReopenClosedTabAction : AnAction(), OverridingAction, DumbAware {
     /** The attached host, or null while the plugin is inert (then this action is just the built-in one). */
     private fun activeHost(e: AnActionEvent): TabBarHost? = e.project?.serviceIfCreated<TabBar>()?.host
 
-    private fun base(): AnAction? = (ActionManager.getInstance() as? ActionManagerImpl)?.getBaseAction(this)
+    /** The built-in action, loaded once: the platform hands it back as an unloaded `ActionStub` (see [PlatformInternals.unstub]). */
+    @Volatile
+    private var resolvedBase: AnAction? = null
+
+    private fun base(): AnAction? {
+        resolvedBase?.let { return it }
+        val registered = (ActionManager.getInstance() as? ActionManagerImpl)?.getBaseAction(this) ?: return null
+        return PlatformInternals.unstub(registered)?.also { resolvedBase = it }
+    }
 
     override fun getActionUpdateThread(): ActionUpdateThread = base()?.actionUpdateThread ?: ActionUpdateThread.EDT
 

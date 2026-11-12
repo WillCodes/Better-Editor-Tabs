@@ -8,10 +8,14 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.JBColor
 import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteStep
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteTrigger
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupOrder
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.InstanceLayout
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.TabGroup
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.deleteStep
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.nextColor
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.HeaderRef
@@ -19,13 +23,14 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost
-import dev.willcodes.bettereditortabs.tabgroups.ui.GroupNamePopup
 import java.awt.event.MouseEvent
 import java.util.UUID
 
 /**
- * The project's tab groups (§2): the state ([GroupsState]) plus the menu operations (CTX-1..CTX-3), and the [TabBarHost] the [TabBar]
- * reports to. Talks to the editor tab bars only through the [TabBar] facade. EDT only.
+ * The project's tab groups (§2): the state ([GroupsState]) plus the operations (CTX-1..CTX-3 add and remove tabs, SPLIT-3 rename and
+ * recolour, LIFE-1 ungroup, LIFE-3 delete), and the [TabBarHost] the [TabBar] reports to. Talks to the editor tab bars only through the
+ * [TabBar] facade, and to popups and dialogs only through [TabGroupsUi] (implemented in `ui/`, which depends on this package, never
+ * the other way round). EDT only.
  *
  * Attaching: the service attaches itself ([TabBar.host]) on the first group creation and stays attached for the session; detaching when
  * the groups run out would dispose the adapter that is calling it. Stage 5 (persistence) attaches at startup.
@@ -113,6 +118,64 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         val group = state.group(groupId) ?: return
         if (group.name == name) return
         group.name = name
+        refreshSplitsOf(groupId)
+    }
+
+    /** Changes the colour of [groupId] and refreshes every split that shows it (SPLIT-3). */
+    fun recolor(groupId: String, color: GroupColor) {
+        val group = state.group(groupId) ?: return
+        if (group.color == color) return
+        group.color = color
+        refreshSplitsOf(groupId)
+    }
+
+    /**
+     * LIFE-1: removes [split]'s instance of [groupId]. Its tabs stay open where they are, ungrouped; other splits are unaffected. The
+     * tabs of a collapsed group were hidden: the refresh brings them back at the header's place ([TabBar.refresh] shows what is no
+     * longer collapsed, after the tab the group sat behind).
+     */
+    fun ungroup(split: SplitHandle, groupId: String) {
+        if (state.instance(split, groupId) == null) return
+        state.removeInstance(split, groupId)
+        tabBar.refresh(split)
+    }
+
+    /**
+     * LIFE-3: Delete Group for [split]'s instance of [groupId]. A non-empty group asks first (LIFE-3b) unless the setting of [trigger]
+     * is off (SET-4 for [DeleteTrigger.MENU], SET-5 for [DeleteTrigger.MIDDLE_CLICK]); a group without open tabs goes at once (LIFE-3c).
+     * "Don't ask again" switches off the setting of [trigger] only.
+     */
+    fun requestDelete(split: SplitHandle, groupId: String, trigger: DeleteTrigger) {
+        val group = state.group(groupId) ?: return
+        val instance = state.instance(split, groupId) ?: return
+        // Stage 7 (LIFE-3a): with linked instances in other splits a Move / Close / Cancel dialog comes first. Until then the instances
+        // of other splits are left alone.
+        val tabCount = tabBar.openTabs(split, instance.members).size
+        if (deleteStep(tabCount, settings.confirmsDelete(trigger)) == DeleteStep.CONFIRM) {
+            when (TabGroupsUi.getInstance(project).confirmDelete(displayName(group), tabCount)) {
+                DeleteAnswer.CANCEL -> return
+                DeleteAnswer.DELETE_AND_STOP_ASKING -> settings.stopConfirmingDelete(trigger)
+                DeleteAnswer.DELETE -> {}
+            }
+        }
+        deleteInstance(split, groupId)
+    }
+
+    /**
+     * Removes the instance, then closes its open tabs. The state is re-read here because the confirmation is modal and may have
+     * let things change. The instance goes first and the split is refreshed, so no tab is still hidden while it closes and the tab bar
+     * no longer lists the files (MEM-1 [tabClosed] is not reported for them).
+     */
+    private fun deleteInstance(split: SplitHandle, groupId: String) {
+        val instance = state.instance(split, groupId) ?: return
+        val tabs = tabBar.openTabs(split, instance.members)
+        // Stage 10 (LIFE-5): record the deleted group (name, colour, tab paths) here, before its tabs close.
+        state.removeInstance(split, groupId)
+        tabBar.refresh(split)
+        tabBar.closeTabs(split, tabs)
+    }
+
+    private fun refreshSplitsOf(groupId: String) {
         for (split in state.splits()) if (state.instance(split, groupId) != null) tabBar.refresh(split)
     }
 
@@ -192,9 +255,14 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         tabBar.refresh(header.split)
     }
 
+    /** INT-3: Delete Group, with the middle-click confirmation setting (SET-5). */
+    override fun headerMiddleClicked(header: HeaderRef, event: MouseEvent) {
+        requestDelete(header.split, header.groupId, DeleteTrigger.MIDDLE_CLICK)
+    }
+
     /** INT-4: the group popup. */
     override fun headerRightClicked(header: HeaderRef, event: MouseEvent) {
-        GroupNamePopup.show(project, header)
+        TabGroupsUi.getInstance(project).showGroupPopup(header)
     }
 
     override fun splitDisposed(split: SplitHandle) {

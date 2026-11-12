@@ -84,6 +84,10 @@ internal class PillLayout(
         val groups = groups()
         val infos = tabs.getVisibleInfos()
         val files = infos.map { it.`object` as? VirtualFile }
+        // Pinned tabs in a row of their own: a pill never sits in the pinned row (no group is ever pinned). Pinned tabs cannot host;
+        // with no unpinned tab to host it, a collapsed group's pill is loose and gets the row below the pinned row ([SpareRow]).
+        val pinnedApart = SpareRow.pinnedRowApart(tabs)
+        val hostFiles = if (pinnedApart) files.mapIndexed { i, f -> f.takeUnless { infos[i].isPinned } } else files
         val dragged = platformDraggedFile()
         val dragging = dragged != null
         val list = ArrayList<PillAssignment>()
@@ -103,13 +107,14 @@ internal class PillLayout(
                 }
                 else if (parked) preview.tabsBefore(g.id) ?: files.subList(0, files.indexOfFirst { it != null && it in g.members }).filterNotNull().toSet()
                 else emptySet()
-                val host = PillHosting.hostFor(files, if (parked) preview.draggedFile else dragged, { it in members }, before)
+                val host = PillHosting.hostFor(hostFiles, if (parked) preview.draggedFile else dragged, { it in members }, before)
+                    ?.takeUnless { pinnedApart && infos[it.index].isPinned }
                 val label = host?.let { tabs.getTabLabel(infos[it.index]) }
                 if (host != null && label != null && (hasVisibleMember || g.collapsed || parked)) {
                     list += PillAssignment(header, label, host.leading, header.pillLength())
                     if (hasVisibleMember && !parked) ownHost += header
                 }
-                else if (g.collapsed && infos.isEmpty() && collapse.hasAnchor(g.id)) {
+                else if (g.collapsed && (infos.isEmpty() || pinnedApart) && collapse.hasAnchor(g.id)) {
                     list += PillAssignment(header, null, true, header.pillLength())
                 }
             }
@@ -196,7 +201,13 @@ internal class PillLayout(
         return lead to trail
     }
 
-    /** The pills of an all-collapsed strip (no label hosts them), in order, the foreign gap's space among them. */
+    /** True if some pill has no host label (every tab collapsed, or only pinned tabs left beside a separate pinned row). */
+    fun hasLoosePills(): Boolean = assignments.any { it.label == null }
+
+    /**
+     * The pills no label hosts, in order, the foreign gap's space among them: those of an all-collapsed strip, or (pinned tabs in a row
+     * of their own) of collapsed groups with no unpinned tab left to host them.
+     */
     fun looseItems(): List<SpaceItem> {
         val items = assignments.filter { it.label == null }.mapTo(ArrayList()) { SpaceItem(it.header, it.length) }
         spacer?.takeIf { it.label == null }?.let { insertSpacer(items, it) }

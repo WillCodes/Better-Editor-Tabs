@@ -1,7 +1,12 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.platform
 
+import com.intellij.openapi.actionSystem.ActionStub
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.impl.InternalUICustomization
+import com.intellij.openapi.components.ComponentManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.fileEditor.impl.EditorsSplitters
 import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
@@ -206,6 +211,30 @@ internal object PlatformInternals {
         false
     }
 
+    // ---- action stubs ---------------------------------------------------------------------------------------------------------
+
+    /**
+     * The real action behind [action] when it is an `ActionStub` (an action registered in XML whose class has not been loaded yet),
+     * else [action] itself. A stub's `actionPerformed` throws `UnsupportedOperationException`, and `ActionManagerImpl.getBaseAction`
+     * hands back the replaced action as it was registered, i.e. usually still a stub: the platform only converts stubs it looks up
+     * by id (`getAction`), and the id of an overridden action now resolves to the override. Converted the way the platform does it
+     * (`convertActionStub`, `ActionManagerXmlSupport.kt:348`): `ComponentManager.instantiateClass(className, plugin)` (internal) from
+     * the application, then `ActionStub.initAction` (internal) copies the template presentation and shortcuts. The caller caches
+     * the result. Any failure: null (the caller then has no base action and stays disabled rather than throwing).
+     */
+    fun unstub(action: AnAction): AnAction? {
+        if (action !is ActionStub) return action
+        return try {
+            val real = ApplicationManager.getApplication().instantiateClass<AnAction>(action.className, action.plugin)
+            action.initAction(real)
+            real
+        }
+        catch (e: Throwable) {
+            LOG.warn("Could not load action ${action.id} (${action.className})", e)
+            null
+        }
+    }
+
     // ---- self check -----------------------------------------------------------------------------------------------------------
 
     /** The platform members this object reaches by reflection or by name that cannot be resolved in the running IDE; empty = all there. */
@@ -231,6 +260,10 @@ internal object PlatformInternals {
         check("DockWindow.getId()") { Class.forName("com.intellij.ui.docking.impl.DockWindow").getMethod("getId") != null }
         check("FileEditorOpenOptions.<init>()") { FileEditorOpenOptions::class.java.getConstructor() != null }
         check("IslandsTabPainter") { Class.forName(ISLANDS_PAINTER_CLASS).simpleName == ISLANDS_PAINTER }
+        check("ComponentManager.instantiateClass(String, PluginDescriptor)") {
+            ComponentManager::class.java.getMethod("instantiateClass", String::class.java, PluginDescriptor::class.java) != null
+        }
+        check("ActionStub.initAction") { ActionStub::class.java.getMethod("initAction", AnAction::class.java) != null }
         return missing
     }
 

@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.SimplePersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteTrigger
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
 
 /**
@@ -52,6 +53,20 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
     /** SET-3: the fixed colour for new groups, or null for "next unused" (also for an unknown stored name). */
     val fixedNewGroupColor: GroupColor?
         get() = state.newGroupColor?.let { name -> GroupColor.values().firstOrNull { it.name == name } }
+
+    /** LIFE-3b: whether Delete Group from [trigger] asks before closing tabs: SET-4 for the menu, SET-5 for middle-click. */
+    fun confirmsDelete(trigger: DeleteTrigger): Boolean = when (trigger) {
+        DeleteTrigger.MENU -> state.confirmDelete
+        DeleteTrigger.MIDDLE_CLICK -> state.confirmMiddleClickDelete
+    }
+
+    /** LIFE-3b "Don't ask again": switches off the confirmation of [trigger] only. */
+    fun stopConfirmingDelete(trigger: DeleteTrigger) {
+        when (trigger) {
+            DeleteTrigger.MENU -> state.confirmDelete = false
+            DeleteTrigger.MIDDLE_CLICK -> state.confirmMiddleClickDelete = false
+        }
+    }
 
     companion object {
         const val DEFAULT_OPACITY_PERCENT = 25

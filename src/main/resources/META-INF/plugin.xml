@@ -48,6 +48,9 @@
         <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitRestoreWatcher"/>
         <!-- IDE-3: grouped tabs are exempt from the editor tab limit. -->
         <editorAutoClosingHandler implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabLimitHandler"/>
+        <!-- The group popup and the delete confirmation; the service only knows the interface. -->
+        <projectService serviceInterface="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsUi"
+                        serviceImplementation="dev.willcodes.bettereditortabs.tabgroups.ui.TabGroupsUiImpl"/>
     </extensions>
 
     <projectListeners>
