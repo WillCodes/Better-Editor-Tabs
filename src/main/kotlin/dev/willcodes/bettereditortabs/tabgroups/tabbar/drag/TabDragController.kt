@@ -160,6 +160,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         val f = file ?: return false
         val i = info ?: return false
         if (!tabs.isShowing || i.isHidden) return false
+        adapter.finishCollapseAnimations() // a drag starts from a settled strip (COLL-7)
         if (!tabs.isValid) tabs.validate()
         val strip = adapter.stripUnits()
         val at = strip.indexOfFirst { it is StripUnit.Tab && it.file == f }

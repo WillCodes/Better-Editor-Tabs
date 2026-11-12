@@ -20,6 +20,9 @@ import javax.swing.SwingUtilities
  * children and wires the collaborators together; each collaborator owns one concern and wraps its own internal API:
  *
  * - [CollapseController]: hiding and showing the tabs of collapsed groups, anchors, saved selection (`TabInfo.isHidden`, `sortTabs`);
+ * - [CollapseAnimator]: the collapse / expand animation (COLL-7): while a group collapses its tabs are still visible and the
+ *   collaborators see the group as expanded ([shown]); the animator sets the member labels' preferred widths each frame and the
+ *   platform lays the strip out (`TabLabel.preferredSize`). The tabs are hidden when it ends;
  * - [PillLayout]: which tab label hosts each pill and the space reserved there ([TabLabelSpace], `TabLabel.border`);
  * - [StripGeometry]: pill areas, border cuts and [StripUnit]s from the labels' bounds;
  * - [PillHeaders]: the header components, their placement and z-order;
@@ -51,22 +54,37 @@ internal class TabBarAdapter(
     private var disposed = false
     private val alive: () -> Boolean = { !disposed && !window.isDisposed }
 
+    /** The real groups, as last set. */
     private var groups: List<GroupDecoration> = emptyList()
+
+    /**
+     * What the strip shows: [groups], except that a group whose collapse is still animating counts as expanded (its tabs are visible,
+     * tinted, the pill is hosted by its first tab). Every collaborator reads this one.
+     */
+    private val shown: List<GroupDecoration>
+        get() = if (!animator.isActive) groups else groups.map { if (it.collapsed && animator.isCollapsing(it.id)) it.copy(collapsed = false) else it }
 
     private val collapse = CollapseController(tabs, window)
     private val preview = DragPreview(tabs)
     private val tint = TabTint(tabs, this, { !window.isDisposed }, style)
     private val headers = PillHeaders(tabs, ::isPlatformTabDragActive, ::pollDragState, ::platformDraggedLabel, style)
-    private val layout = PillLayout(tabs, alive, { groups }, headers::of, preview, collapse, ::platformDraggedFile)
-    private val geometry = StripGeometry(tabs, alive, layout, { groups }, preview) { spareRow.rect }
+    private val layout = PillLayout(tabs, alive, { shown }, headers::of, preview, collapse, ::platformDraggedFile)
+    private val animator = CollapseAnimator(tabs, layout.space) { if (alive()) own { applyShown() } }
+    private val geometry: StripGeometry = StripGeometry(tabs, alive, layout, { shown }, preview, { spareRow.rect }, { verticalRows.rowHeight(it) })
     private val emptyOverlay = EmptyEditorOverlay(tabs, window)
     private val closeGuard = CloseSelectionGuard(tabs, window, collapse)
-    private val verticalRows = VerticalRows(tabs, layout, geometry)
+    private val verticalRows: VerticalRows = VerticalRows(tabs, layout, geometry, animator::verticalExtentOf)
     private val spareRow = SpareRow(tabs, layout)
     private val hook = LayoutHook()
 
     private var layingOutAgain = false
     private var dragWasActive = false
+
+    /** Whether the strip is on screen (an animation of a strip nobody sees is skipped); a test hook. */
+    internal var isShowing: () -> Boolean = { tabs.component.isShowing }
+
+    /** The animator (tests only: drive frames with [CollapseAnimator.tick] and an injected clock). */
+    internal val collapseAnimator: CollapseAnimator get() = animator
 
     /** Receives header gestures and the COLL-4 event. */
     var events: StripEvents?
@@ -85,12 +103,23 @@ internal class TabBarAdapter(
         tabs.addListener(object : TabsListener {
             override fun selectionChanged(oldSelection: TabInfo?, newSelection: TabInfo?) {
                 val file = newSelection?.`object` as? VirtualFile ?: return
+                if (ownChanges > 0) {
+                    // Our own re-ordering (show, sort, hide again around collapsed groups; collapse and expand) makes the platform move
+                    // the selection, also onto a tab that is still hidden. That is no navigation by the user: reporting it as COLL-4
+                    // would expand the group (animated) in the middle of a drop.
+                    if (!newSelection.isHidden) collapse.visibleTabSelected()
+                    tabs.repaint()
+                    return
+                }
                 if (newSelection.isHidden) {
                     // COLL-4: the group's owner expands the group; show() then selects `file` for real.
                     collapse.hiddenTabSelected(file) { groupId -> events?.hiddenTabSelected(groupId, file) }
                 }
                 else {
                     collapse.visibleTabSelected()
+                    // A tab that is shrinking away was selected (click, Ctrl+E): same as COLL-4, the owner expands the group, which
+                    // reverses the animation. Our own selection change at the start of a collapse never lands here (it leaves the group).
+                    animator.collapsingGroupOf(file)?.let { events?.hiddenTabSelected(it, file) }
                 }
                 tabs.repaint()
             }
@@ -126,13 +155,79 @@ internal class TabBarAdapter(
 
     // ---- group state -----------------------------------------------------------------------------------------------------
 
-    /** Replaces the groups shown in this tab bar. Creates/removes headers and collapses/expands tabs to match. */
-    fun setGroups(newGroups: List<GroupDecoration>) {
+    /**
+     * Replaces the groups shown in this tab bar. Creates/removes headers and collapses/expands tabs to match. [animate]: a group whose
+     * collapsed flag differs from what the strip shows collapses / expands with the COLL-7 animation (only [SplitBar] passes true, for
+     * a host refresh); false snaps every running animation to its end first. A strip that cannot animate (hidden tab bar,
+     * not on screen) is instant. A group that is new or gone never animates.
+     *
+     * A collapse moves the selection off the group now (COLL-2), the tabs are hidden when the animation ends; an expand shows the tabs
+     * at once and the animator grows them from nothing. [before]: the groups a flip is measured against (the host's previous state,
+     * passed by [SplitBar]); null = what this strip was last given, which during a drag can be a temporary all-expanded state.
+     */
+    fun setGroups(newGroups: List<GroupDecoration>, animate: Boolean = false, before: List<GroupDecoration>? = null) = own {
+        if (animate && canAnimate()) startAnimations(newGroups, before ?: groups) else animator.finishAll()
         groups = newGroups
-        headers.sync(newGroups)
-        collapse.sync(newGroups)
+        applyShown()
+        // The tabs of an expanding group were un-hidden by applyShown and must have their first (empty) width before the next paint.
+        animator.applySizes()
+        tabs.revalidate()
+    }
+
+    /** Depth of the adapter's own strip changes; selection events during them are not the user's (see the `selectionChanged` listener). */
+    private var ownChanges = 0
+
+    /**
+     * Runs [block] as a change of the strip's own (no selection made during it is the user's navigation, see the `selectionChanged`
+     * listener). For multi-step operations driven from outside, such as moving a group to another split (`GroupMove`).
+     */
+    fun <T> ownChange(block: () -> T): T {
+        ownChanges++
+        try {
+            return block()
+        }
+        finally {
+            ownChanges--
+        }
+    }
+
+    private inline fun own(block: () -> Unit) {
+        ownChanges++
+        try {
+            block()
+        }
+        finally {
+            ownChanges--
+        }
+    }
+
+    private fun canAnimate(): Boolean = !tabs.isHideTabs && isShowing()
+
+    private fun startAnimations(newGroups: List<GroupDecoration>, before: List<GroupDecoration>) {
+        val collapsingFiles = newGroups.filter { it.collapsed }.flatMapTo(HashSet()) { it.members }
+        val old = before.associateBy { it.id }
+        animator.retain(newGroups.mapTo(HashSet()) { it.id })
+        for (g in newGroups) {
+            val before = old[g.id] ?: continue
+            val running = animator.direction(g.id)
+            if (g.collapsed == (running ?: before.collapsed)) {
+                if (running != null) animator.updateMembers(g.id, g.members)
+                continue
+            }
+            if (g.members.none { StripReader.infoOf(tabs, it) != null }) continue
+            // COLL-2 / COLL-7: the selection changes at the start, the editor never waits for the animation.
+            if (g.collapsed) collapse.selectOutside(collapsingFiles)
+            animator.begin(g.id, g.members, g.collapsed)
+        }
+    }
+
+    /** Brings headers, hidden tabs, tint and pill space in line with [shown]. */
+    private fun applyShown() {
+        val now = shown
+        headers.sync(now)
+        collapse.sync(now)
         val tints = HashMap<VirtualFile, Color>()
-        for (g in newGroups) if (!g.collapsed) {
+        for (g in now) if (!g.collapsed) {
             val color = tint.colorFor(g.color)
             for (f in g.members) tints[f] = color
         }
@@ -140,6 +235,18 @@ internal class TabBarAdapter(
         updateReservations()
         tabs.revalidate()
         tabs.repaint()
+    }
+
+    /**
+     * Snaps every running collapse / expand animation to its end (a drag must start from a settled strip): the tabs of a group that
+     * was collapsing are hidden now.
+     */
+    fun finishCollapseAnimations() {
+        if (!alive() || !animator.isActive) return
+        own {
+            animator.finishAll()
+            applyShown()
+        }
     }
 
     /**
@@ -180,7 +287,7 @@ internal class TabBarAdapter(
      * Re-pins collapsed tabs to the end of the full tab list if new tabs were opened since they were hidden (see
      * [CollapseController.repin]) and refreshes tint and pill placement.
      */
-    fun repinHidden() {
+    fun repinHidden() = own {
         tint.refresh()
         updateReservations()
         if (collapse.repin()) {
@@ -193,7 +300,7 @@ internal class TabBarAdapter(
      * Re-orders all tabs of the split, collapsed ones included, to [order]. Hidden tabs keep their stale remembered index inside
      * `JBTabsImpl`, so this shows everything, sorts and hides again. Use this for any re-order around collapsed groups (drag and drop).
      */
-    fun applyOrder(order: List<VirtualFile>) {
+    fun applyOrder(order: List<VirtualFile>) = own {
         collapse.applyOrder(order)
         updateReservations()
         tabs.revalidate()
@@ -223,7 +330,7 @@ internal class TabBarAdapter(
     fun setDragPreview(file: VirtualFile, groupId: String?) {
         if (!alive()) return
         preview.setMembership(file, groupId)
-        val group = groupId?.let { id -> groups.firstOrNull { it.id == id } }
+        val group = groupId?.let { id -> shown.firstOrNull { it.id == id } }
         if (group != null) tint.setPreview(file, group.color) else tint.setPreviewUntinted(file)
         updateReservations()
         tabs.revalidate()
@@ -237,7 +344,7 @@ internal class TabBarAdapter(
      */
     fun beginTabDrag(file: VirtualFile) {
         if (!alive()) return
-        preview.begin(file, groups, visibleFiles())
+        preview.begin(file, shown, visibleFiles())
     }
 
     /**
@@ -330,7 +437,11 @@ internal class TabBarAdapter(
         val active = isPlatformTabDragActive()
         if (active == dragWasActive) return
         dragWasActive = active
-        SwingUtilities.invokeLater { if (alive()) tabs.revalidate() }
+        SwingUtilities.invokeLater {
+            if (!alive()) return@invokeLater
+            if (active) finishCollapseAnimations()
+            tabs.revalidate()
+        }
     }
 
     // ---- close selection safety -----------------------------------------------------------------------------------------------
@@ -393,6 +504,7 @@ internal class TabBarAdapter(
 
     override fun dispose() {
         disposed = true
+        animator.dispose()
         collapse.releaseAll(showTabs = !window.isDisposed)
         layout.dispose()
         PillAwareTabsBorder.uninstallFrom(tabs)

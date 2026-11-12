@@ -27,6 +27,11 @@ internal class StripGeometry(
     private val preview: DragPreview,
     /** The row beside a separate pinned row that holds loose pills ([SpareRow]), or null. */
     private val spareRow: () -> Rectangle? = { null },
+    /**
+     * Side strips: the height of a row (a pill row is as tall as its host label's row). A label of a group that collapses / expands is
+     * drawn shorter than its row ([VerticalRows], COLL-7), so its own height cannot be used.
+     */
+    private val rowHeightOf: (TabLabel) -> Int = { it.height },
 ) {
     fun stripThickness(horizontal: Boolean): Int {
         val fit = tabs.headerFitSize
@@ -109,9 +114,10 @@ internal class StripGeometry(
                 rects = PillHosting.pillRects(bounds, lead.map { it.length }, trail.map { it.length }, viewport)
             }
             else {
-                if (bounds.isEmpty) continue
+                if (bounds.width <= 0) continue // pushed out; a label shrunk to no height by the animation still hosts its pill rows
                 val viewport = Rectangle(bounds.x, 0, bounds.width, limit)
-                val heights = { l: List<SpaceItem> -> l.map { if (it.header != null) bounds.height else it.length } }
+                val row = rowHeightOf(label)
+                val heights = { l: List<SpaceItem> -> l.map { if (it.header != null) row else it.length } }
                 val blocks = PillRows.blocks(bounds, heights(lead), heights(trail))
                 rects = items.zip(blocks).map { (item, block) ->
                     val full = if (item.header != null) Rectangle(block.x, block.y, minOf(item.length, block.width), block.height) else block

@@ -208,7 +208,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
 
     private fun attach() {
         if (tabBar.host === this) return
-        tabBar.style = StripStyle(settings.opacity, settings.nameLimit)
+        tabBar.style = StripStyle(settings.opacity, settings.nameLimit, settings.state.animateCollapse)
         tabBar.host = this
     }
 
@@ -246,6 +246,35 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         if (!settings.state.autoExpandOnNavigate) return
         state.setCollapsed(split, groupId, false)
         tabBar.refresh(split)
+    }
+
+    /**
+     * INT-5: the pointer rests on (or left) a header. The tab list is offered only for a collapsed group with open tabs, and only while
+     * SET-7 is on; leaving or pressing the header always ends the hover.
+     */
+    override fun headerHoverChanged(header: HeaderRef, hovering: Boolean) {
+        val ui = TabGroupsUi.getInstance(project)
+        if (!hovering) {
+            ui.hoverEnded(header)
+            return
+        }
+        val instance = state.instance(header.split, header.groupId) ?: return
+        if (!instance.collapsed || !settings.state.showHoverList) return
+        val files = tabBar.openTabs(header.split, instance.members)
+        if (files.isNotEmpty()) ui.showTabListOnHover(header, files)
+    }
+
+    /**
+     * INT-5: [file] was picked in the hover list of group [groupId] in [split]. The group expands (animated, COLL-7) and the tab is
+     * selected and focused. Expands even with SET-6 off: picking from the list is an explicit request, not a navigation.
+     */
+    fun openFromTabList(split: SplitHandle, groupId: String, file: VirtualFile) {
+        val instance = state.instance(split, groupId) ?: return
+        if (instance.collapsed) {
+            state.setCollapsed(split, groupId, false)
+            tabBar.refresh(split)
+        }
+        tabBar.selectTab(split, file, true)
     }
 
     /** INT-1: collapse / expand. */

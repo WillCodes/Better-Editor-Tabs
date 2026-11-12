@@ -11,14 +11,18 @@ import java.awt.Rectangle
  * behind it down by its height, and sits right above (leading) or below (trailing) the label that hosts it.
  */
 object PillRows {
-    /** The y shift of every label: the heights of all blocks in front of it, including the leading and trailing blocks of earlier labels. */
-    fun shifts(leading: List<Int>, trailing: List<Int>): IntArray {
+    /**
+     * The y shift of every label: the heights of all blocks in front of it, including the leading and trailing blocks of earlier labels,
+     * less what earlier labels lost to a collapse / expand animation ([shrink]: how much shorter than its laid-out height each label
+     * is drawn, COLL-7; missing entries are 0). Labels behind a shrinking one move up by what it lost.
+     */
+    fun shifts(leading: List<Int>, trailing: List<Int>, shrink: IntArray = IntArray(0)): IntArray {
         val out = IntArray(leading.size)
         var acc = 0
         for (i in leading.indices) {
             acc += leading[i]
             out[i] = acc
-            acc += trailing.getOrElse(i) { 0 }
+            acc += trailing.getOrElse(i) { 0 } - shrink.getOrElse(i) { 0 }
         }
         return out
     }

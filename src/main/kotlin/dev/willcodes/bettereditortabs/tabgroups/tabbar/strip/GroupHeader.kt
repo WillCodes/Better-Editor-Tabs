@@ -52,6 +52,14 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
      */
     internal var transparentToHitTest: () -> Boolean = { false }
 
+    /**
+     * Paints the plain strip background into the given rectangle (component coordinates); set by [PillHeaders]. The pill's slot is
+     * cleared to strip by its host label's border ([ReservedSpaceBorder]), but a label paints its content *after* its border, and a
+     * label squeezed by the collapse animation (COLL-7) lays its content (icon, close button) out over the slot. The pill is above the
+     * labels, so filling its own bounds first keeps the slot plain in every case.
+     */
+    internal var stripBackground: ((Graphics2D, Rectangle) -> Unit)? = null
+
     /** Called at the start of every paint; the adapter uses it to notice that a platform tab drag started. */
     internal var onPaint: (() -> Unit)? = null
 
@@ -135,6 +143,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         val h0 = if (fullHeight > 0) fullHeight else height
         val g2 = g.create() as Graphics2D
         try {
+            stripBackground?.invoke(g2, Rectangle(0, 0, width, height))
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.translate(-offsetX, -offsetY)
             val gap = JBUI.scale(GAP).toDouble()
@@ -181,7 +190,18 @@ internal class HeaderMouseHandler(private val header: GroupHeader) : MouseAdapte
     private var pressPoint: java.awt.Point? = null
     private var pressButton = 0
 
+    /** INT-5: the pointer enters or leaves the pill. Not reported while the group is dragged or a platform tab drag is on. */
+    override fun mouseEntered(e: MouseEvent) {
+        if (header.suppressed || header.transparentToHitTest()) return
+        header.listener?.headerHoverChanged(header, true)
+    }
+
+    override fun mouseExited(e: MouseEvent) {
+        header.listener?.headerHoverChanged(header, false)
+    }
+
     override fun mousePressed(e: MouseEvent) {
+        header.listener?.headerHoverChanged(header, false) // a click or drag never leaves a hover list behind
         pressPoint = e.point
         pressButton = e.button
         e.consume()

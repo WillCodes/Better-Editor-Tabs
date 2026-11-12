@@ -18,6 +18,10 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  * - `JBTabsImpl.sortTabs`: the strip order, including the hidden tabs, which keep a stale remembered index inside `JBTabsImpl`;
  * - `EditorWindow.setSelectedComposite`: moves the selection off a tab that is about to be hidden.
  *
+ * Animation (COLL-7): a collapse is animated by [CollapseAnimator] while the tabs are still visible; the selection moves off the group
+ * at the start ([selectOutside]) and the tabs are hidden here ([sync] / [hide]) only when the animation is over. An expand shows the
+ * tabs at once ([show]); the animator then grows them from nothing. Nothing in this class knows about the animation.
+ *
  * EDT only.
  */
 internal class CollapseController(private val tabs: JBEditorTabs, private val window: EditorWindow) {
@@ -163,15 +167,8 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             }
         }
         val selected = selectedFile()
-        if (selected != null && selected in allDesired) {
-            val target = TabOrderRules.nearestOutside(order, order.indexOf(selected)) { it in allDesired }
-            if (target != null) {
-                window.setSelectedComposite(target, false)
-            }
-            else {
-                savedSelection = selected
-            }
-        }
+        // Usually done already when the collapse animation started ([selectOutside]); then the selected tab is outside the groups.
+        if (selected != null && selected in allDesired && !selectOutside(allDesired)) savedSelection = selected
         val ordered = order.filter { it in files }
         // Keep hidden tabs at the END of JBTabs' full tab list. The editor layer mixes "visible" and "all tabs" indices
         // (EditorWindow.computeIndexToSelect vs EditorTabbedContainer.getTabAt); they only agree if hidden tabs come last.
@@ -188,6 +185,21 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             // (updateContainer only looks at visible tabs), so detach it to get an empty content area.
             for (f in ordered) infoOf(f)?.component?.let { c -> if (c.parent === tabs) tabs.remove(c) }
         }
+    }
+
+    /**
+     * COLL-2: if the selected tab is one of [collapsing], selects the nearest visible tab outside of it (right / below first, then
+     * left / above) and returns true; false if there is no such tab (the selection is left alone). True without doing anything if
+     * the selected tab is not in [collapsing]. Idempotent. Called when a collapse animation *starts*, so the editor never waits for
+     * the animation, and again by [hide].
+     */
+    fun selectOutside(collapsing: Set<VirtualFile>): Boolean {
+        val selected = selectedFile()
+        if (selected == null || selected !in collapsing) return true
+        val order = visibleFiles()
+        val target = TabOrderRules.nearestOutside(order, order.indexOf(selected)) { it in collapsing } ?: return false
+        window.setSelectedComposite(target, false)
+        return true
     }
 
     /**

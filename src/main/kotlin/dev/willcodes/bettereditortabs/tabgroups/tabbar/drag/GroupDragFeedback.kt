@@ -39,9 +39,13 @@ internal class GroupDragFeedback(private val home: TabBarDnd) {
         val current = ghostOwner ?: home
         val wanted = if (over != null && over.tabs.rootPane !== current.tabs.rootPane) over else current
         if (wanted !== ghostOwner) {
-            ghostOwner?.overlay?.setGhost(null, Dimension())
+            // the new owner takes the picture first, so the old one's release no longer removes it (GhostWindow keeps one window)
+            val previous = ghostOwner
             ghostOwner = wanted
             wanted.overlay.setGhost(ghostImage, ghostSize)
+            wanted.overlay.moveGhost(screenTopLeft)
+            previous?.overlay?.setGhost(null, Dimension())
+            return
         }
         wanted.overlay.moveGhost(screenTopLeft)
     }
