@@ -36,9 +36,7 @@ object RestorePlanner {
         current: List<CurrentSplit>,
         keepWithoutInstances: (StoredGroup) -> Boolean = { false },
     ): RestorePlan {
-        val persisted = stored.splits.map { s -> SplitSnapshot(s.splitKey(), (s.order + s.instances.flatMap { it.members }).toSet()) }
-        val live = current.map { SplitSnapshot(it.key, it.files.toSet()) }
-        val matches = SplitMatcher.match(persisted, live)
+        val matches = match(stored, current)
         val known = stored.groups.associateBy { it.id }
 
         val splits = ArrayList<PlannedSplit>()
@@ -60,5 +58,26 @@ object RestorePlanner {
         }
         val used = splits.flatMapTo(HashSet()) { p -> p.instances.map { it.groupId } }
         return RestorePlan(stored.groups.filter { it.id in used || keepWithoutInstances(it) }, splits)
+    }
+
+    private fun match(stored: StoredGroups, current: List<CurrentSplit>): Map<Int, Int> {
+        val persisted = stored.splits.map { s -> SplitSnapshot(s.splitKey(), (s.order + s.instances.flatMap { it.members }).toSet()) }
+        val live = current.map { SplitSnapshot(it.key, it.files.toSet()) }
+        return SplitMatcher.match(persisted, live)
+    }
+
+    /**
+     * PERS-3, detached windows that appear late: the stored splits that no split of [current] claims, with the group identities their
+     * instances use. They stay *pending* for a limited time ([dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService]
+     * decides how long): a window restored after the first pass is matched against them later with [plan]. Same matching as [plan], so
+     * a split that [plan] would restore is not pending. [detachedOnly]: only splits of detached windows can be late (the main area is
+     * restored as a whole before the first pass, and with "Reopen files on startup" off no group of it may survive, PERS-3), so the
+     * splits of the main area are never pending.
+     */
+    fun pending(stored: StoredGroups, current: List<CurrentSplit>, detachedOnly: Boolean = false): StoredGroups {
+        val matched = match(stored, current).keys
+        val splits = stored.splits.filterIndexed { i, s -> i !in matched && (!detachedOnly || s.splitKey().container != SplitKey.MAIN) }
+        val used = splits.flatMapTo(HashSet()) { s -> s.instances.map { it.groupId } }
+        return StoredGroups(stored.groups.filter { it.id in used }, splits)
     }
 }

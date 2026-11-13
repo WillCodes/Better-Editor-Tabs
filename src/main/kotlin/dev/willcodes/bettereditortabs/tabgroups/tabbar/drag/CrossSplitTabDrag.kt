@@ -20,8 +20,8 @@ private val LOG = logger<CrossSplitTabDrag>()
  *
  * While the drag is on another split's strip the tab is **out of its home strip**, as the platform does when a tab is dragged out
  * (`EditorTabbedContainerDragOutDelegate.dragOutStarted`: the editor area selects the tab it would select, then the tab is hidden;
- * `dragOutCancelled` shows it again): the home strip is put back as it was and then [TabBarAdapter.beginTransit] takes the tab out
- * and hands the selection over. Back on the home strip the tab is shown and selected again ([TabBarAdapter.endTransit]) before the home
+ * `dragOutCancelled` shows it again): the home strip is put back as it was and then [StripDragSurface.beginTransit] takes the tab out
+ * and hands the selection over. Back on the home strip the tab is shown and selected again ([StripDragSurface.endTransit]) before the home
  * session resumes; Esc puts everything back, selection included; a copy drop shows it again, a move closes it.
  *
  * A strip that is longer than its window scrolls while the pointer is in its edge zone ([DragAutoScroll]); each tick re-runs [move], so
@@ -116,13 +116,13 @@ internal class CrossSplitTabDrag(private val home: TabBarDnd, private val dragge
     }
 
     private fun beginTransit() {
-        inTransit = home.adapter.beginTransit(dragged.file)
+        inTransit = home.adapter.drag.beginTransit(dragged.file)
     }
 
     private fun endTransit(show: Boolean, reselect: Boolean) {
         if (!inTransit) return
         inTransit = false
-        home.adapter.endTransit(show, reselect)
+        home.adapter.drag.endTransit(show, reselect)
     }
 
     // ---- release, cancel, hand-over ------------------------------------------------------------------------------------------

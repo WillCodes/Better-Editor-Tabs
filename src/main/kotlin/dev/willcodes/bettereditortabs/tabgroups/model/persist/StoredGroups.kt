@@ -53,3 +53,13 @@ fun StoredGroups.rewriteUrls(oldUrl: String, newUrl: String): StoredGroups {
         },
     )
 }
+
+/**
+ * PERS-3 pending splits: this (the live state, captured) plus [pending] stored splits that no live split has claimed yet, so a save
+ * during the waiting time keeps them. Group identities already present here win (the live name and colour); pending splits come last.
+ */
+fun StoredGroups.withPending(pending: StoredGroups): StoredGroups {
+    if (pending.splits.isEmpty()) return this
+    val known = groups.mapTo(HashSet()) { it.id }
+    return StoredGroups(groups + pending.groups.filter { it.id !in known }, splits + pending.splits)
+}

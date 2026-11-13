@@ -21,6 +21,15 @@ interface TabGroupsUi {
     fun confirmDelete(groupName: String, tabCount: Int): DeleteAnswer
 
     /**
+     * LIFE-3a: the group shown as [groupName] has instances in other splits and [tabCount] open tabs in this one: asks whether to move
+     * those tabs to the group's instance in another split ([LinkedDeleteAnswer.MOVE]), close them ([LinkedDeleteAnswer.CLOSE]) or do
+     * nothing ([LinkedDeleteAnswer.CANCEL], also on Escape). Modal. A "Don't ask again" checkbox, ticked together with Move or Close,
+     * answers with [LinkedDeleteChoice.dontAskAgain]; the service then remembers that answer (user request 2026-11-13).
+     * The default answers Cancel, so a test double that does not care never deletes anything.
+     */
+    fun askLinkedDelete(groupName: String, tabCount: Int): LinkedDeleteChoice = LinkedDeleteChoice(LinkedDeleteAnswer.CANCEL)
+
+    /**
      * INT-5: the pointer rests on the header of a collapsed group: after a short delay, show [files] (the group's open tabs, in order)
      * in a list below [header]. Picking an entry calls [TabGroupsService.openFromTabList]. Calling it again for the same header while
      * pending or shown changes nothing.
@@ -40,3 +49,9 @@ interface TabGroupsUi {
 
 /** The answer to [TabGroupsUi.confirmDelete]. "Don't ask again" only counts together with Delete. */
 enum class DeleteAnswer { DELETE, DELETE_AND_STOP_ASKING, CANCEL }
+
+/** The answer to [TabGroupsUi.askLinkedDelete]. */
+enum class LinkedDeleteAnswer { MOVE, CLOSE, CANCEL }
+
+/** The reply of [TabGroupsUi.askLinkedDelete]: the [answer], and whether "Don't ask again" was ticked with it (ignored for Cancel). */
+data class LinkedDeleteChoice(val answer: LinkedDeleteAnswer, val dontAskAgain: Boolean = false)

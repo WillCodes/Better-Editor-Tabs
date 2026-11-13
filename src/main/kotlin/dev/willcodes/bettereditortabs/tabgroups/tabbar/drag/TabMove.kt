@@ -4,7 +4,10 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.vfs.VirtualFile
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.CopyJoin
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.instanceStripOrder
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.Landing
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
@@ -20,6 +23,8 @@ private val LOG = logger<TabBarDnd>()
 internal fun TabBarDnd.runMove(target: TabBarDnd, freezes: List<StripFreeze>, block: () -> Unit) {
     try {
         adapter.ownChange { target.adapter.ownChange(block) }
+        // SPLIT-2: what the move opened in the target is not a user's "open in another split" (membership came from the drop)
+        target.acknowledgeOpened()
     }
     finally {
         releaseLater(freezes)
@@ -113,8 +118,32 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
     val open = StripReader.allFiles(target.tabs)
     val order = flat.filter { it in open }.distinct() + open.filter { it !in flat }
     target.adapter.applyOrder(order)
-    target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order)))
+    val copiedFrom = if (copy && !pinned) sourceGroups.firstOrNull { file in it.members } else null
+    if (copiedFrom != null) target.model.commit(joinOwnGroup(target, targetGroups, copiedFrom, file, order))
+    else target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order)))
     // 5. like the platform's drop: the arrival is the selected, focused tab of the target
     targetWindow.setSelectedComposite(file, true)
-    LOG.info("tab ${file.name} ${if (copy) "copied" else "moved"} to another split: group ${landing.groupId ?: "none"}, slot ${landing.slot}")
+    LOG.info("tab ${file.name} ${if (copy) "copied" else "moved"} to another split: group ${copiedFrom?.id ?: landing.groupId ?: "none"}, slot ${landing.slot}")
+}
+
+/**
+ * SPLIT-2 for a copy: a grouped tab copied into [target] (Ctrl) joins its own group [copiedFrom] there, wherever it was dropped
+ * ([CopyJoin]: behind the group's last tab, or a new instance at the drop place, never inside another group). The target's tabs are
+ * re-ordered to match; the group is shown expanded so the arrival is visible. Returns the target's new groups, in strip order.
+ */
+private fun joinOwnGroup(
+    target: TabBarDnd,
+    targetGroups: List<GroupDecoration>,
+    copiedFrom: GroupDecoration,
+    file: VirtualFile,
+    order: List<VirtualFile>,
+): List<GroupDecoration> {
+    val placed = CopyJoin.place(order, file, targetGroups.map { it.id to it.members }, copiedFrom.id)
+    if (placed.order != order) target.adapter.applyOrder(placed.order)
+    val all = if (targetGroups.any { it.id == copiedFrom.id }) targetGroups else targetGroups + copiedFrom
+    val groups = all.map { g ->
+        g.copy(members = placed.members[g.id].orEmpty(), collapsed = if (g.id == copiedFrom.id) false else g.collapsed)
+    }
+    val ids = instanceStripOrder(groups.map { it.id to it.members }, placed.order)
+    return ids.mapNotNull { id -> groups.firstOrNull { it.id == id } }
 }

@@ -3,6 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
 
@@ -34,8 +35,10 @@ internal fun TabBarDnd.moveGroupToSplit(
     freezes: List<StripFreeze> = freezeStrips(target),
     selectedBefore: VirtualFile? = adapter.selectedFile(),
     expanding: String? = null,
+    copy: Boolean = false,
+    focus: Boolean = true,
 ) {
-    runMove(target, freezes) { moveNow(unit, target, targetUnits, boundary, selectedBefore, expanding) }
+    runMove(target, freezes) { moveNow(unit, target, targetUnits, boundary, selectedBefore, expanding, copy, focus) }
 }
 
 /**
@@ -45,6 +48,9 @@ internal fun TabBarDnd.moveGroupToSplit(
  * and then the result, nothing in between.
  */
 internal fun TabBarDnd.freezeStrips(target: TabBarDnd): List<StripFreeze> = listOfNotNull(freeze(), target.freeze())
+
+/** A picture of this strip only (a move into a split that has no strip yet, [moveGroupToNewSplit]). */
+internal fun TabBarDnd.freezeOwn(): List<StripFreeze> = listOfNotNull(freeze())
 
 /** Removes [freezes] once the events the move left in the queue (late `fileOpened`, layouts) have run. */
 internal fun releaseLater(freezes: List<StripFreeze>) {
@@ -60,13 +66,15 @@ private fun TabBarDnd.freeze(): StripFreeze? {
     return StripFreeze.over(tabs.component, screen)
 }
 
-private fun TabBarDnd.moveNow(
+internal fun TabBarDnd.moveNow(
     unit: MoveUnit<VirtualFile>,
     target: TabBarDnd,
     targetUnits: List<MoveUnit<VirtualFile>>,
     boundary: Int,
     selectedBefore: VirtualFile?,
     expanding: String?,
+    copy: Boolean = false,
+    focus: Boolean = true,
 ) {
     val groupId = unit.groupId ?: return
     val files = unit.keys
@@ -90,13 +98,13 @@ private fun TabBarDnd.moveNow(
     }
     val targetGroups = target.model.groups()
 
-    // 1. source leaves: the group disappears from the source model (this also shows its hidden tabs).
-    model.commit(sourceGroups.filter { it.id != groupId })
+    // 1. source leaves: the group disappears from the source model (this also shows its hidden tabs). A copy leaves the source as it is.
+    if (!copy) model.commit(sourceGroups.filter { it.id != groupId })
     // 2. target: nothing may be hidden while files are added (index spaces of the platform mix hidden and visible tabs).
     if (targetGroups.any { it.collapsed }) target.adapter.setGroups(targetGroups.map { it.copy(collapsed = false) })
 
     for ((i, file) in files.withIndex()) {
-        transferFile(file, target, close = true, keepHistory = false, disposeSource = i == files.lastIndex)
+        transferFile(file, target, close = !copy, keepHistory = false, disposeSource = i == files.lastIndex)
     }
 
     val open = target.tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
@@ -106,6 +114,23 @@ private fun TabBarDnd.moveNow(
     target.model.acceptGroup(
         (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed), expanding,
     )
-    if (selected != null && selected in files && !group.collapsed) targetWindow.setSelectedComposite(selected, true)
-    LOG.info("group $groupId moved: ${files.size} files to another split, merged=${existingUnit != null}")
+    if (focus) focusArrival(targetWindow, if (selected != null && selected in files && !group.collapsed) selected else null)
+    LOG.info("group $groupId ${if (copy) "copied" else "moved"}: ${files.size} files to another split, merged=${existingUnit != null}")
+}
+
+/**
+ * Like the platform's drop of a tab, the split a group was dropped into becomes the current one (new files open there, actions act on
+ * it), with [selected] (the tab that was selected when the drag began, if it is one of the group's and the group is expanded) selected
+ * and focused. Closing the moved tabs in the source and the platform's own focus requests while the split or window is made can leave
+ * the source current, so it is set again once the events the move queued have run. `EditorWindow.setAsCurrentWindow(boolean)` is
+ * public and identical in 262 and 263.
+ */
+internal fun focusArrival(targetWindow: EditorWindow, selected: VirtualFile?) {
+    fun apply() {
+        if (targetWindow.isDisposed) return
+        if (selected != null && targetWindow.getComposite(selected) != null) targetWindow.setSelectedComposite(selected, true)
+        targetWindow.setAsCurrentWindow(true)
+    }
+    apply()
+    ApplicationManager.getApplication().invokeLater({ apply() }, ModalityState.any())
 }

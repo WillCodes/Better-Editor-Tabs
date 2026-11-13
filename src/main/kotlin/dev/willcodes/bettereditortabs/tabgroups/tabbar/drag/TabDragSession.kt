@@ -22,10 +22,10 @@ private val LOG = logger<TabDragSession>()
  * is [CrossSplitTabDrag]'s.
  *
  * The session runs on the [target] strip for the carried [dragged] tab, which comes from `dragged.source`. Three cases:
- * - **own strip** (`target === dragged.source`): the tab's place is the empty slot (`TabBarAdapter.setDragGap`), the strip is
+ * - **own strip** (`target === dragged.source`): the tab's place is the empty slot (`StripDragSurface.setDragGap`), the strip is
  *   re-ordered live under it, membership is previewed (pill and tint) and only committed on release ([commit]);
  * - **another split's strip, tab not open there** (DRAG-5): the strip has no tab for it, so the slot is the foreign gap
- *   (`TabBarAdapter.setForeignGap`, sized like the tab in that strip's orientation by [ForeignGapSession.lengthIn], as for a group
+ *   (`StripDragSurface.setForeignGap`, sized like the tab in that strip's orientation by [ForeignGapSession.lengthIn], as for a group
  *   drag) that opens in front of the cell after the slot and moves with the pointer; nothing in the strip is re-ordered and no
  *   membership is previewed (there is no tab to tint), the picture is tinted instead. Dropping moves the file ([moveTabToSplit]);
  * - **another split's strip, file already open there**: as the own strip (that tab is the one that moves), with the picture made from
@@ -92,8 +92,8 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
             if (at < 0 || strip[at].rect.isEmpty) return false
             slot = at
             if (!keepStay) planner.start(if (foreign) null else origGroups.firstOrNull { file in it.members }?.id)
-            adapter.beginTabDrag(file)
-            adapter.setDragGap(listOf(file), emptyList())
+            adapter.drag.beginTabDrag(file)
+            adapter.drag.setDragGap(listOf(file), emptyList())
         }
         else {
             gapRoom = gapLength() ?: return false
@@ -103,7 +103,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
             openGap(cells, slot)
         }
         if (!snapshot()) {
-            adapter.clearDragPreview()
+            adapter.drag.clearDragPreview()
             return false
         }
         active = true
@@ -129,7 +129,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
 
     /** Opens the foreign gap in front of the cell that follows slot [at], and lays the strip out. */
     private fun openGap(cells: List<StripCell<VirtualFile>>, at: Int) {
-        adapter.setForeignGap(TabDropPlanner.anchorFor(cells, at), gapRoom, dragged.pinned)
+        adapter.drag.setForeignGap(TabDropPlanner.anchorFor(cells, at), gapRoom, dragged.pinned)
         target.validateNow()
     }
 
@@ -187,7 +187,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         target.validateNow()
         val strip = adapter.stripUnits()
         val cells = TabDropPlanner.cellsOf(strip, file)
-        val gap = if (hasTab) strip.filterIsInstance<StripUnit.Tab>().firstOrNull { it.file == file }?.rect else adapter.foreignGapRect()
+        val gap = if (hasTab) strip.filterIsInstance<StripUnit.Tab>().firstOrNull { it.file == file }?.rect else adapter.drag.foreignGapRect()
         val result = planner.landingFor(gap, cells, dragged.pinned, slot, screen)
         val moved = result.slot != slot
         slot = result.slot
@@ -206,7 +206,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
                 shownFlat = flat
             }
             // after the groups were re-applied: the preview (pill placement and tint) follows the previewed membership
-            adapter.setDragPreview(file, landing.groupId)
+            adapter.drag.setDragPreview(file, landing.groupId)
         }
         applied = TabDropPlanner.Applied(landing, flat)
         if (groupChanged) {
@@ -229,7 +229,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
 
     /** The preview is removed and the model learns about the drop (a group left without a member is removed by the model, MEM-5). */
     fun commit(outcome: Outcome) {
-        adapter.clearDragPreview()
+        adapter.drag.clearDragPreview()
         val a = outcome.applied ?: return
         val groups = outcome.groups
         val newGroups = TabDropPlanner.groupsAfterDrop(groups, file, a)
@@ -243,12 +243,12 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
 
     /** The target strip's placeholder and previews go away (the strip keeps the order it shows). */
     fun clearPreview() {
-        adapter.clearDragPreview()
+        adapter.drag.clearDragPreview()
     }
 
     /** Back to the order and membership the drag started with, preview and gap removed. */
     fun restoreOriginal() {
-        adapter.clearDragPreview()
+        adapter.drag.clearDragPreview()
         if (shownFlat != origFlat) {
             target.reorder.reorder(origGroups, origFlat)
             shownFlat = origFlat

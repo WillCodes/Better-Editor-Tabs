@@ -61,11 +61,9 @@ internal class TabTransit(
         // "setting isHidden to true will hide the tab - we must select another tab now" (dragOutStarted)
         if (next != null && next != file) window.setSelectedComposite(next, false)
         state = State(info, file, selected, before)
+        // The platform hides the tab and nothing else: when it was the strip's last showing tab the editor keeps showing its file until
+        // the drop (a move closes the tab, a copy or Esc shows it again), so the user sees only the tab leave (user report 2026-11-13).
         info.isHidden = true
-        if (tabs.isEmptyVisible) {
-            // the tab was the strip's last showing one: like a collapse that hides every tab, the editor area goes empty
-            info.component.let { c -> if (c.parent === tabs) tabs.remove(c) }
-        }
         return true
     }
 

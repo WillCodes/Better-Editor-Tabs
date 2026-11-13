@@ -23,6 +23,7 @@ internal class GroupDragFeedback(private val home: TabBarDnd) {
     private var ghostOwner: TabBarDnd? = null
     private var ownFrame = true
     private var markerOwner: TabBarDnd? = null
+    private var areaOwner: TabBarDnd? = null
 
     /** Size of the floating picture. */
     val size: Dimension get() = ghostSize
@@ -74,24 +75,37 @@ internal class GroupDragFeedback(private val home: TabBarDnd) {
      * [units] are the target's drop units.
      */
     fun showMarker(target: TabBarDnd?, units: List<MoveUnit<*>>, merge: Boolean, groupId: String?) {
-        if (markerOwner != null && markerOwner !== target) markerOwner?.overlay?.setMarker(null)
+        if (markerOwner != null && markerOwner !== target) markerOwner?.overlay?.setOutline(emptyList())
         markerOwner = target
         if (target == null || target === home) return
         val unit = if (merge) units.firstOrNull { it.groupId == groupId } else null
         if (unit == null) {
-            target.overlay.setMarker(null)
+            target.overlay.setOutline(emptyList())
             return
         }
         val origin = target.tabs.locationOnScreen
-        val r = unit.bounds
-        target.overlay.setMarker(Rectangle(origin.x + r.x, origin.y + r.y, r.width, r.height), true)
+        // one outline per row the instance is on: the union of a wrapped group's rows would also take in the other tabs of those rows
+        target.overlay.setOutline(unit.runs.map { r -> Rectangle(origin.x + r.x, origin.y + r.y, r.width, r.height) })
     }
 
-    /** Removes the picture and the marker everywhere. */
+    /**
+     * The platform's drop-area highlight of the editor split [target] ([screenRect], screen coordinates; INT-6: a group dropped at the
+     * edge of an editor area or into it), drawn by that split's frame; null removes it wherever it was.
+     */
+    fun showDropArea(target: TabBarDnd?, screenRect: Rectangle?) {
+        if (areaOwner != null && (areaOwner !== target || screenRect == null)) areaOwner?.overlay?.setDropArea(null)
+        areaOwner = if (screenRect == null) null else target
+        if (target == null || screenRect == null) return
+        target.overlay.setDropArea(screenRect)
+    }
+
+    /** Removes the picture, the marker and the drop area everywhere. */
     fun clear() {
         home.overlay.clear()
         markerOwner?.overlay?.clear()
+        areaOwner?.overlay?.clear()
         ghostOwner?.overlay?.clear()
+        areaOwner = null
         markerOwner = null
         ghostOwner = null
         ghostImage = null

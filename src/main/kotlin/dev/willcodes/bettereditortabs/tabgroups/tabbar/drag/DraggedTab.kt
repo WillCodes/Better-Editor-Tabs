@@ -13,7 +13,7 @@ import com.intellij.ui.tabs.TabInfo
 internal class DraggedTab(val file: VirtualFile, val info: TabInfo, val source: TabBarDnd) {
     /**
      * The tab's label size as it was when the drag began: the preferred width and the height of its row. The label is not laid out while the
-     * tab is out of its strip (the drag is over another split, `TabBarAdapter.beginTransit`), and the gap other strips open for the tab is
+     * tab is out of its strip (the drag is over another split, `StripDragSurface.beginTransit`), and the gap other strips open for the tab is
      * sized from this.
      */
     val labelSize: java.awt.Dimension? = source.tabs.getTabLabel(info)?.let { java.awt.Dimension(it.preferredSize.width, it.height) }

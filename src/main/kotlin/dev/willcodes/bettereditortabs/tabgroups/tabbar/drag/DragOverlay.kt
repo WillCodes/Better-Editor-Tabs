@@ -44,9 +44,11 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
     private var ghostSize = Dimension()
     private var ghostLocation = Point()
 
-    /** Insertion bar or outline, screen coordinates. */
-    private var marker: Rectangle? = null
-    private var markerOutline = false
+    /** The outline of a group instance a dropped group would merge into, one rectangle per row it is on; screen coordinates. */
+    private var outline: List<Rectangle> = emptyList()
+
+    /** The platform's drop-area highlight of an editor split (a group dropped at its edge or into it, INT-6), screen coordinates. */
+    private var dropArea: Rectangle? = null
 
     init {
         isOpaque = false
@@ -144,19 +146,27 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
         GhostWindow.hide(this)
     }
 
-    fun setMarker(screenRect: Rectangle?, outline: Boolean = false) {
-        if (marker == screenRect && markerOutline == outline) return
-        update {
-            marker = screenRect?.let { Rectangle(it) }
-            markerOutline = outline
-        }
+    /** Outlines [screenRects] (a group instance, one rectangle per row; empty removes it). */
+    fun setOutline(screenRects: List<Rectangle>) {
+        if (outline == screenRects) return
+        update { outline = screenRects.map { Rectangle(it) } }
+    }
+
+    /**
+     * The drop area of an editor split ([screenRect]; null removes it), filled with the colour the platform fills its own with
+     * (`DockableEditorTabbedContainer.MyDropAreaPainter`: `JBUI.CurrentTheme.DragAndDrop.Area.BACKGROUND`).
+     */
+    fun setDropArea(screenRect: Rectangle?) {
+        if (dropArea == screenRect) return
+        update { dropArea = screenRect?.let { Rectangle(it) } }
     }
 
     fun clear() {
         hideWindowGhost()
         update {
             ghost = null
-            marker = null
+            outline = emptyList()
+            dropArea = null
         }
     }
 
@@ -164,7 +174,8 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
     fun dispose() {
         hideWindowGhost()
         ghost = null
-        marker = null
+        outline = emptyList()
+        dropArea = null
         detach(emptyList())
     }
 
@@ -172,7 +183,7 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
         val before = dirtyRects()
         change()
         val after = dirtyRects()
-        if (ghost == null && marker == null) {
+        if (ghost == null && outline.isEmpty() && dropArea == null) {
             detach(before)
             return
         }
@@ -212,7 +223,8 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
         if (ghost != null) {
             local(Rectangle(ghostLocation, ghostSize))?.let { result += it.also { r -> r.grow(margin, margin) } }
         }
-        marker?.let { m -> local(m)?.let { result += it.also { r -> r.grow(margin, margin) } } }
+        for (m in outline) local(m)?.let { result += it.also { r -> r.grow(margin, margin) } }
+        dropArea?.let { a -> local(a)?.let { result += it.also { r -> r.grow(margin, margin) } } }
         return result
     }
 
@@ -222,6 +234,13 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
             val accent = JBColor.namedColor("Component.focusColor", JBColor(0x3574F0, 0x548AF7))
+            // under the picture and the marker, as the platform's painter is under its drag image
+            dropArea?.let { a ->
+                local(a)?.let { r ->
+                    g2.color = JBUI.CurrentTheme.DragAndDrop.Area.BACKGROUND
+                    g2.fillRect(r.x, r.y, r.width, r.height)
+                }
+            }
             ghost?.let { img ->
                 local(Rectangle(ghostLocation, ghostSize))?.let { r ->
                     val ghostGraphics = g2.create() as Graphics2D
@@ -246,16 +265,11 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
                     }
                 }
             }
-            marker?.let { m ->
+            for (m in outline) {
                 local(m)?.let { r ->
                     g2.color = accent
-                    if (markerOutline) {
-                        g2.stroke = BasicStroke(JBUI.scale(2).toFloat())
-                        g2.drawRoundRect(r.x, r.y, r.width, r.height, JBUI.scale(8), JBUI.scale(8))
-                    }
-                    else {
-                        g2.fillRoundRect(r.x, r.y, r.width, r.height, JBUI.scale(3), JBUI.scale(3))
-                    }
+                    g2.stroke = BasicStroke(JBUI.scale(2).toFloat())
+                    g2.drawRoundRect(r.x, r.y, r.width, r.height, JBUI.scale(8), JBUI.scale(8))
                 }
             }
         }

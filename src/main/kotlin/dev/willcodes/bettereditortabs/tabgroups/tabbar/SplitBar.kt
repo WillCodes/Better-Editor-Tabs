@@ -19,7 +19,13 @@ import java.awt.event.MouseEvent
  * Bridges the sub-packages to the host: strip events and drag results come in through [StripEvents] and [SplitGroups] and leave through
  * [TabBarHost]. EDT only, except [groupIdOf].
  */
-internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, parent: Disposable) : Disposable, StripEvents, SplitGroups {
+internal class SplitBar(
+    val split: SplitHandle,
+    private val tabBar: TabBar,
+    parent: Disposable,
+    /** The split appeared after the host attached: its first files count as opened in it (SPLIT-2, see [TabPlacement]). */
+    reportInitial: Boolean = false,
+) : Disposable, StripEvents, SplitGroups {
     val adapter = TabBarAdapter(split.window, this) { tabBar.style }
 
     /** The groups last applied to the split (what the strip shows). */
@@ -33,9 +39,17 @@ internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, pare
 
     val dnd = TabBarDnd(adapter, this) { tabBar.dragLayers() }
 
+    /** A report of newly opened tabs ([TabBarHost.tabsOpened]) is queued for this split. */
+    val hasPendingReport: Boolean get() = placement.hasPending
+
+    private val placement: TabPlacement
+
     init {
         Disposer.register(parent, this)
-        TabPlacement(adapter, { groups }, { dnd.isTabDragActive }, dnd)
+        placement = TabPlacement(
+            adapter, { groups }, { dnd.isTabDragActive }, { files -> tabBar.host?.tabsOpened(split, files) }, reportInitial, dnd,
+        )
+        dnd.acknowledgeOpened = placement::acknowledge
         adapter.events = this
     }
 

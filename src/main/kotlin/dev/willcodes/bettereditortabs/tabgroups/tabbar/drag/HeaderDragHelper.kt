@@ -5,6 +5,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.MouseDragHelper
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.tabs.impl.JBEditorTabs
+import com.intellij.util.ui.UIUtil
 import java.awt.Point
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
@@ -50,7 +51,7 @@ internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) 
     override fun processDragFinish(event: MouseEvent, willDragOutStart: Boolean) {
         val finished = drag ?: return
         drag = null
-        finished.finish()
+        finished.finish(UIUtil.isControlKeyDown(event))
     }
 
     override fun processDragCancel() {
