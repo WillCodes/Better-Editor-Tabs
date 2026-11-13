@@ -7,28 +7,46 @@ import java.awt.Rectangle
 import java.awt.image.BufferedImage
 
 /**
- * What the user sees of a group drag besides the strip itself (INT-6): the floating picture of the group and, in another split, the
- * merge outline or insertion bar. Rendering only: it draws through the [DragOverlay] of the frame the pointer is over and decides
- * nothing; the gesture ([HeaderDragHelper]) tells it where the pointer and the target are.
+ * What the user sees of a drag besides the strips themselves: the floating picture and, for a group drag in another split, the
+ * merge outline. Used by the group drag (INT-6, [HeaderDragHelper]) and by the tab drag across splits ([CrossSplitTabDrag]).
+ * Rendering only: it draws through the [DragOverlay] of the frame the pointer is over and decides nothing; the gesture tells it where
+ * the pointer and the target are.
  *
- * The picture is drawn by the overlay of the frame the pointer is over (a target in another frame takes it over), otherwise by the
+ * A group's picture has a frame of its own (the group chip, `GroupChipImage`), so it is shown without the tab picture's window
+ * background and corners ([DragOverlay.setGhost] `ownFrame`, the default); a tab's picture is the platform's and has none
+ * (`ownFrame = false`). The picture is drawn by the overlay of the frame the pointer is over (a target in another frame takes it over), otherwise by the
  * frame it started in ([home]). In [home]'s own strip the live placeholder is the feedback, so no marker is drawn there. EDT only.
  */
 internal class GroupDragFeedback(private val home: TabBarDnd) {
     private var ghostImage: BufferedImage? = null
     private var ghostSize = Dimension()
     private var ghostOwner: TabBarDnd? = null
+    private var ownFrame = true
     private var markerOwner: TabBarDnd? = null
 
     /** Size of the floating picture. */
     val size: Dimension get() = ghostSize
 
     /** Starts showing [image] in the home frame. */
-    fun begin(image: BufferedImage?, size: Dimension) {
+    fun begin(image: BufferedImage?, size: Dimension, ownFrame: Boolean = true) {
+        this.ownFrame = ownFrame
         ghostImage = image
         ghostSize = size
         ghostOwner = home
-        home.overlay.setGhost(image, size)
+        home.overlay.setGhost(image, size, ownFrame)
+    }
+
+    /** Shows [image] where the picture is now (a tab that would join another group is tinted differently), or starts showing it. */
+    fun replace(image: BufferedImage, size: Dimension, ownFrame: Boolean) {
+        val owner = ghostOwner
+        if (owner == null) {
+            begin(image, size, ownFrame)
+            return
+        }
+        this.ownFrame = ownFrame
+        ghostImage = image
+        ghostSize = size
+        owner.overlay.setGhost(image, size, ownFrame)
     }
 
     /** Moves the picture to [screenTopLeft]; [over] is the split the pointer is over, if it is a target. */
@@ -42,7 +60,7 @@ internal class GroupDragFeedback(private val home: TabBarDnd) {
             // the new owner takes the picture first, so the old one's release no longer removes it (GhostWindow keeps one window)
             val previous = ghostOwner
             ghostOwner = wanted
-            wanted.overlay.setGhost(ghostImage, ghostSize)
+            wanted.overlay.setGhost(ghostImage, ghostSize, ownFrame)
             wanted.overlay.moveGhost(screenTopLeft)
             previous?.overlay?.setGhost(null, Dimension())
             return

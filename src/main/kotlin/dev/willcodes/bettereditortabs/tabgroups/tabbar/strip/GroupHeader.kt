@@ -1,10 +1,8 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
 import com.intellij.util.ui.JBUI
-import dev.willcodes.bettereditortabs.tabgroups.model.groups.Contrast
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
-import java.awt.Color
 import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -12,8 +10,6 @@ import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.awt.geom.Ellipse2D
-import java.awt.geom.RoundRectangle2D
 import javax.swing.JComponent
 
 /**
@@ -88,14 +84,13 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
 
     /** The text drawn in the pill: the name, cut at the style's maximum length with an ellipsis (HDR-3). */
     internal val displayName: String
-        get() = maxNameLength().let { max -> decoration?.name.orEmpty().let { if (it.length > max) it.take(max) + "…" else it } }
+        get() = PillPainter.displayName(decoration?.name.orEmpty(), maxNameLength())
 
     private val isDot: Boolean get() = decoration?.name.isNullOrEmpty()
 
     /** Length along the tab strip that this header needs, including a small gap on both sides. This is the space reserved in the host label. */
     fun pillLength(): Int {
-        val pill = if (isDot) JBUI.scale(DOT_SIZE) + JBUI.scale(8) else getFontMetrics(headerFont()).stringWidth(displayName) + JBUI.scale(2 * PAD)
-        return pill + JBUI.scale(2 * GAP)
+        return PillPainter.naturalWidth(getFontMetrics(headerFont()), displayName, isDot) + JBUI.scale(2 * GAP)
     }
 
     override fun getPreferredSize(): Dimension = Dimension(pillLength(), JBUI.scale(28))
@@ -122,7 +117,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         val h0 = if (fullHeight > 0) fullHeight else height
         val gap = JBUI.scale(GAP)
         val r = if (isDot) {
-            val dot = JBUI.scale(DOT_SIZE)
+            val dot = PillPainter.dotSize()
             Rectangle((w0 - dot) / 2, (h0 - dot) / 2, dot, dot)
         }
         else {
@@ -133,14 +128,13 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         return r
     }
 
-    private fun headerFont() = JBUI.CurrentTheme.EditorTabs.font()
+    private fun headerFont() = PillPainter.font()
 
     /**
      * Height of a named pill in a row of height [rowHeight]: the name's line height plus a small margin above and below (user request
      * 2026-11-13: a pill that hugs its name, not one as tall as the tab), never more than the row minus [V_INSET] on each side.
      */
-    private fun namedPillHeight(rowHeight: Int): Int =
-        minOf(rowHeight - 2 * JBUI.scale(V_INSET), getFontMetrics(headerFont()).height + 2 * JBUI.scale(TEXT_V_PAD)).coerceAtLeast(1)
+    private fun namedPillHeight(rowHeight: Int): Int = PillPainter.namedHeight(getFontMetrics(headerFont()), rowHeight - 2 * JBUI.scale(V_INSET))
 
     override fun paintComponent(g: Graphics) {
         onPaint?.invoke()
@@ -155,26 +149,11 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
             g2.translate(-offsetX, -offsetY)
             val gap = JBUI.scale(GAP).toDouble()
             if (isDot) {
-                val dot = JBUI.scale(DOT_SIZE).toDouble()
-                g2.color = d.color
-                g2.fill(Ellipse2D.Double((w0 - dot) / 2, (h0 - dot) / 2, dot, dot))
+                PillPainter.paintDot(g2, d.color, 0.0, 0.0, w0.toDouble(), h0.toDouble())
             }
             else {
-                val w = w0 - 2 * gap
                 val h = namedPillHeight(h0).toDouble()
-                val top = (h0 - h) / 2
-                // HDR-1: fully opaque, like the dot; the tint opacity (SET-1) is for member tabs only. HDR-2: the name colour with the
-                // better contrast on the fill as the current theme resolves it.
-                g2.color = d.color
-                val arc = minOf(JBUI.scale(PILL_ARC).toDouble(), h)
-                g2.fill(RoundRectangle2D.Double(gap, top, w, h, arc, arc))
-                g2.font = headerFont()
-                g2.color = Color(Contrast.textOn(d.color.rgb and 0xFFFFFF))
-                val fm = g2.fontMetrics
-                val text = displayName
-                val tx = gap + (w - fm.stringWidth(text)) / 2
-                val ty = top + (h - fm.height) / 2 + fm.ascent
-                g2.drawString(text, tx.toFloat(), ty.toFloat())
+                PillPainter.paintNamed(g2, d.color, displayName, gap, (h0 - h) / 2, w0 - 2 * gap, h)
             }
         }
         finally {
@@ -183,17 +162,8 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
     }
 
     companion object {
-        /** Space between the pill's edge and the name, each side (user request 2026-11-13: was 8). */
-        private const val PAD = 5
         private const val GAP = 4
         private const val V_INSET = 4
-
-        /** Coloured space above and below the name's line in a named pill. */
-        private const val TEXT_V_PAD = 2
-        private const val DOT_SIZE = 10
-
-        /** Corner arc diameter of a named pill: a rounded rectangle rather than a full capsule (user request, 2026-11-13). */
-        private const val PILL_ARC = 10
     }
 }
 

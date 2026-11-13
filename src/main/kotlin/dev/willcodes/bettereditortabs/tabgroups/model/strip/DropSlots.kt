@@ -106,23 +106,65 @@ object DropSlots {
         while (s < high) {
             val u = cells[s].rect
             if (u.isEmpty) {
-                // Cells scrolled out of the strip (a trailing pill behind the last tab, cut off by the overflow button) cannot be
-                // judged by position: when nothing visible is left behind the gap and the pointer is past it, the end is reached.
+                // A cell scrolled out at the start of the strip (a visible cell follows it): it is behind the pointer, cross it. This is
+                // what lets the slot follow the pointer while the strip scrolls under it (auto-scroll during a drag).
+                if ((s + 1 until n).any { !cells[it].rect.isEmpty }) {
+                    s++
+                    continue
+                }
+                // Cells scrolled out at the end of the strip cannot be judged by position. A trailing pill behind the last tab, cut off
+                // by the overflow button, is the end of the strip: when nothing but such pills is left behind the gap and the pointer is
+                // past it, the end is reached. Hidden tabs are not the end (scroll the strip to reach them).
                 val restEmpty = (s until high).all { cells[it].rect.isEmpty }
+                val onlyPills = (s until n).all { cells[it] is PillCell }
                 val pastGap = liveGap == null || (at >= start(liveGap) + probe && (!rows || pLine >= gapLine))
-                if (restEmpty && pastGap) s = high
+                if (restEmpty && onlyPills && pastGap) s = high
                 break
             }
+            // the last visible cell, with hidden tabs behind it, is cut by the end of the strip: the gap would land out of view
+            if (cutAtTheEnd(cells, s)) break
             if (!passedForward(u)) break
             s++
         }
         if (s != cur) return s
         while (s > low) {
             val u = cells[s - 1].rect
-            if (u.isEmpty || !passedBackward(u)) break
+            if (u.isEmpty || cutAtTheStart(cells, s - 1) || !passedBackward(u)) break
             s--
         }
         return s
+    }
+
+    /**
+     * The slot a tab dragged in from another strip starts in: the number of cells that are before [pointer] in reading order. A cell
+     * is before the pointer when its row is above the pointer's (wrapped strips) or, in the pointer's row, its centre along the strip
+     * is not beyond the pointer. Cells scrolled out of the strip (empty rectangle) before the first visible one count as before the
+     * pointer, those after it are ignored.
+     */
+    fun <T> startSlot(cells: List<StripCell<T>>, pointer: Point, horizontal: Boolean): Int {
+        val bands = if (horizontal) rowBands(cells.map { it.rect }) else emptyList()
+        val rows = bands.size > 1
+        val pLine = if (rows) pointerRow(bands, pointer.y) else 0
+        val at = if (horizontal) pointer.x else pointer.y
+        var slot = 0
+        // cells scrolled out at the start of the strip (a visible cell follows) are before the pointer; those at the end are not
+        val firstVisible = cells.indexOfFirst { !it.rect.isEmpty }
+        for ((i, c) in cells.withIndex()) {
+            val r = c.rect
+            if (r.isEmpty) {
+                if (firstVisible > i) slot = i + 1
+                continue
+            }
+            val line = if (rows) rowIndex(bands, r) else 0
+            val before = when {
+                cutAtTheEnd(cells, i) -> false // cut by the end of the strip: a slot behind it would be out of view
+                line < pLine -> true
+                line > pLine -> false
+                else -> (mainStart(r, horizontal) + mainEnd(r, horizontal)) / 2 <= at
+            }
+            if (before) slot = i + 1
+        }
+        return slot
     }
 
     // ---- hold zone (DRAG-3) -----------------------------------------------------------------------------------------------
@@ -159,6 +201,17 @@ object DropSlots {
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------------------
+
+    /**
+     * Is the visible cell [i] the last one on screen with hidden tabs behind it (a scrolled strip)? Its rectangle is then cut by the end
+     * of the strip, and a slot behind it would be out of view: it is not crossed until the next cell scrolls in.
+     */
+    private fun <T> cutAtTheEnd(cells: List<StripCell<T>>, i: Int): Boolean =
+        i + 1 < cells.size && (i + 1 until cells.size).all { cells[it].rect.isEmpty } && cells[i + 1] is TabCell
+
+    /** Mirror of [cutAtTheEnd]: the first visible cell with hidden tabs in front of it. */
+    private fun <T> cutAtTheStart(cells: List<StripCell<T>>, i: Int): Boolean =
+        i > 0 && (0 until i).all { cells[it].rect.isEmpty } && cells[i - 1] is TabCell
 
     private fun mainStart(r: Rectangle, horizontal: Boolean) = if (horizontal) r.x else r.y
     private fun mainEnd(r: Rectangle, horizontal: Boolean) = if (horizontal) r.x + r.width else r.y + r.height

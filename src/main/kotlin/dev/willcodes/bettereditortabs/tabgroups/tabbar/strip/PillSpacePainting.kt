@@ -40,13 +40,18 @@ internal object PillSpacePainting {
         val w = label.width
         val h = label.height
         if (w <= 0 || h <= 0) return
+        // A label cut at the visible end of a scrolling strip has only the visible part as its bounds; the reserved areas belong to its
+        // whole (uncut) length, so they and the tab's own part are measured from that and painted cut at [w], as the platform cuts the tab
+        // (user report 2026-11-13, Islands: the tab left of a collapsed pill at the end of the strip lost the end of its background).
+        val full = if (tabs.isHorizontalTabs && PlatformInternals.cutsLabelsAtEnd(tabs)) maxOf(w, label.preferredSize.width) else w
         val g2 = g.create() as Graphics2D
         try {
+            g2.clipRect(0, 0, w, h)
             val painter = tabs.tabPainter
             if (isRounded(painter)) {
                 // Islands: the tab is a rounded rectangle. Clear it and paint it again in the part that belongs to the tab.
                 painter.fillBackground(tabs, g2, Rectangle(0, 0, w, h))
-                val rest = Rectangle(leading, 0, w - leading - trailing, h)
+                val rest = Rectangle(leading, 0, full - leading - trailing, h)
                 if (rest.width <= 0) return
                 GraphicsUtil.setupAAPainting(g2)
                 val info = label.info
@@ -61,7 +66,7 @@ internal object PillSpacePainting {
             }
             else {
                 if (leading > 0) painter.fillBackground(tabs, g2, Rectangle(0, 0, minOf(leading, w), h))
-                if (trailing > 0) painter.fillBackground(tabs, g2, Rectangle(maxOf(0, w - trailing), 0, minOf(trailing, w), h))
+                if (trailing > 0 && full - trailing < w) painter.fillBackground(tabs, g2, Rectangle(maxOf(0, full - trailing), 0, minOf(trailing, w), h))
             }
         }
         finally {

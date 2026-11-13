@@ -46,33 +46,11 @@ internal object StripDragGeometry {
     }
 
     /**
-     * The widest band seen so far: [seen] extended by [now]. A live re-order can change the number of rows of a wrapped strip (the
-     * placeholder moves to another row, a row empties), so the strip's band shrinks and grows *because of* the drag. Judging "has
-     * the pointer left the strip" against the live band makes the drag leave, the strip go back, the band grow and the drag come
-     * back, over and over; judging it against the widest band the strip had during this drag cannot do that.
-     */
-    fun widen(seen: IntRange?, now: IntRange?): IntRange? = when {
-        seen == null -> now
-        now == null -> seen
-        else -> minOf(seen.first, now.first)..maxOf(seen.last, now.last)
-    }
-
-    /**
      * [reach] (a strip's rectangle) grown by [margin] across the strip only: a pointer just beside the rows still belongs to the
      * strip, while moving along the strip past its ends does not get any extra room.
      */
     fun beside(reach: Rectangle, horizontal: Boolean, margin: Int): Rectangle =
         Rectangle(reach).also { if (horizontal) it.grow(0, margin) else it.grow(margin, 0) }
-
-    /**
-     * True when [pointer] is more than [margin] beyond [band] across the strip. Only the cross axis counts, like the platform: moving
-     * along the strip never detaches a tab. Null band: never outside.
-     */
-    fun isOutsideBand(band: IntRange?, pointer: Point, horizontal: Boolean, margin: Int): Boolean {
-        if (band == null) return false
-        val c = if (horizontal) pointer.y else pointer.x
-        return c < band.first - margin || c > band.last + margin
-    }
 
     /** True once the pointer moved [threshold] px or more away from where it was pressed (the platform's drag dead zone). */
     fun pastThreshold(press: Point, pointer: Point, threshold: Int): Boolean = press.distance(pointer) >= threshold

@@ -98,12 +98,19 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
      * The floating picture. Shown in the platform's kind of drag window ([GhostWindow]) wherever a window can be placed on screen;
      * on Wayland it is painted into this overlay, like the platform's glass-pane view.
      */
-    fun setGhost(image: BufferedImage?, size: Dimension) {
+    fun setGhost(image: BufferedImage?, size: Dimension) = setGhost(image, size, false)
+
+    /**
+     * Like [setGhost]; [ownFrame] says the picture has a frame of its own (a group chip with rounded corners and a border): then no
+     * background and no corner clip is added around it, neither in the window ([GhostWindow.show]) nor in the frame (Wayland).
+     */
+    fun setGhost(image: BufferedImage?, size: Dimension, ownFrame: Boolean) {
+        ghostOwnFrame = ownFrame
         if (!inFrame) {
             windowGhost = image
             ghostSize = Dimension(size)
             if (image == null) GhostWindow.hide(this)
-            else if (windowGhostShown) GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation)
+            else if (windowGhostShown) GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation, ownFrame)
             if (image == null) windowGhostShown = false
             return
         }
@@ -118,7 +125,7 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
             ghostLocation = Point(screenTopLeft)
             val image = windowGhost ?: return
             if (windowGhostShown) GhostWindow.move(this, ghostLocation)
-            else GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation)
+            else GhostWindow.show(this, SwingUtilities.getWindowAncestor(owner), image, ghostLocation, ghostOwnFrame)
             windowGhostShown = true
             return
         }
@@ -129,6 +136,7 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
     private val inFrame: Boolean get() = StartupUiUtil.isWaylandToolkit()
     private var windowGhost: BufferedImage? = null
     private var windowGhostShown = false
+    private var ghostOwnFrame = false
 
     private fun hideWindowGhost() {
         windowGhost = null
@@ -221,13 +229,16 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
                         // The look of the platform's own drag image (DockManagerImpl.DragImageDialog): the tab picture at 90 % opacity
                         // (alpha mode ratio 0.1, DockManagerImpl.kt:343-348), with rounded corners in Islands; no outline.
                         ghostGraphics.composite = AlphaComposite.SrcOver.derive(GHOST_OPACITY)
-                        if (PlatformInternals.isRoundedTabDuringDrag()) {
+                        if (!ghostOwnFrame && PlatformInternals.isRoundedTabDuringDrag()) {
                             val arc = JBUI.scale(8)
                             ghostGraphics.clip = RoundRectangle2D.Float(r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat(), arc.toFloat(), arc.toFloat())
                         }
                         // the platform's picture is transparent but for icon and name; its window is what shows behind them
-                        ghostGraphics.color = DragImages.windowBackground()
-                        ghostGraphics.fillRect(r.x, r.y, r.width, r.height)
+                        // (a picture with a frame of its own, a group chip, is ARGB with transparent corners: nothing behind it)
+                        if (!ghostOwnFrame) {
+                            ghostGraphics.color = DragImages.windowBackground()
+                            ghostGraphics.fillRect(r.x, r.y, r.width, r.height)
+                        }
                         ghostGraphics.drawImage(img, r.x, r.y, r.width, r.height, null)
                     }
                     finally {

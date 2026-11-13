@@ -5,6 +5,8 @@ import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.util.ui.ImageUtil
 import com.intellij.util.ui.UIUtil
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.GroupTintColor
 import java.awt.Color
 import java.awt.Point
@@ -40,8 +42,22 @@ internal object DragImages {
     fun tab(tabs: JBEditorTabs, dragged: TabInfo): BufferedImage? =
         platformImage(tabs, dragged.text, dragged.icon, dragged.tabColor as? GroupTintColor)
 
-    /** The picture of a dragged group: only its pill, as a tab-like chip with the group's name and tint ([tint] from the adapter). */
-    fun group(tabs: JBEditorTabs, name: String, tint: Color): BufferedImage? = platformImage(tabs, name, null, tint)
+    /**
+     * The picture of a tab that is dragged over a strip it does not belong to (DRAG-5, DRAG-7): made by [tabs], the strip it is over, from
+     * the tab's [text] and [icon] alone, tinted with [tint] (that strip's tint colour of the group it would join, null: untinted).
+     */
+    fun tab(tabs: JBEditorTabs, text: String, icon: Icon?, tint: Color?): BufferedImage? = platformImage(tabs, text, icon, tint)
+
+    /**
+     * The picture of a dragged group (INT-6): a bordered chip with the group's pill and the number of tabs moved ([tabCount], from the
+     * model's `GroupDecoration.members`: a collapsed group's tabs are hidden in the strip). Shown without the dialog's own frame
+     * (see [GroupChipImage], [GhostWindow]).
+     */
+    fun groupChip(tabs: JBEditorTabs, decoration: GroupDecoration, tabCount: Int, style: StripStyle): BufferedImage? =
+        GroupChipImage.create(tabs, decoration, tabCount, style)
+
+    /** The height in layout pixels of the platform's tab picture, so the group chip is as tall; null if the platform made none. */
+    fun tabPictureHeight(tabs: JBEditorTabs): Int? = rawImage(tabs, "M", null, null)?.let { sizeOf(it).height }
 
     private fun platformImage(tabs: JBEditorTabs, text: String, icon: Icon?, tint: Color?): BufferedImage? {
         val image = rawImage(tabs, text, icon, tint) ?: return null

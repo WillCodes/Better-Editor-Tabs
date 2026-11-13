@@ -13,21 +13,36 @@ import java.util.IdentityHashMap
  */
 internal class PillAssignment(val header: GroupHeader, val label: TabLabel?, val leading: Boolean, val length: Int)
 
-/** Where the space for a group that is being dragged in from another split opens: before a tab, before a collapsed group's pill, or at the end. */
+/**
+ * Where the space for a group or tab that is being dragged in from another split opens: before a tab, before a collapsed group's pill,
+ * or at the end. [BeforeTab.afterPills]: behind the pills hosted on that tab's leading side (between a group's pill and its first tab,
+ * or between a collapsed group's pill and the tab behind it); otherwise in front of them.
+ */
 internal sealed class ForeignAnchor {
-    data class BeforeTab(val file: VirtualFile) : ForeignAnchor()
+    data class BeforeTab(val file: VirtualFile, val afterPills: Boolean = false) : ForeignAnchor()
     data class BeforeCollapsedGroup(val groupId: String) : ForeignAnchor()
     object AtEnd : ForeignAnchor()
 }
 
-/** The space [length] (along the strip) that a group dragged in from another split takes in this strip, and where. */
-internal class ForeignGap(val anchor: ForeignAnchor, val length: Int)
+/**
+ * The space [length] (along the strip) that a group or tab dragged in from another split takes in this strip, and where. [pinned]: it is
+ * a pinned tab, which belongs to the pinned row when pinned tabs have a row of their own; everything else (an unpinned tab, a group) is
+ * an unpinned item and belongs to the rows after it.
+ */
+internal class ForeignGap(val anchor: ForeignAnchor, val length: Int, val pinned: Boolean = false)
 
 /** One element reserved next to a label (or in the empty strip): a pill (`header` set) or the foreign gap's space. */
 internal class SpaceItem(val header: GroupHeader?, val length: Int)
 
 /** The foreign gap resolved against the current hosting: [label] null = in the empty strip. [before] null = at the front, unless [atEnd]. */
-internal class Spacer(val label: TabLabel?, val leading: Boolean, val before: PillAssignment?, val atEnd: Boolean, val length: Int)
+internal class Spacer(
+    val label: TabLabel?,
+    val leading: Boolean,
+    val before: PillAssignment?,
+    val atEnd: Boolean,
+    val length: Int,
+    val afterPills: Boolean = false,
+)
 
 /**
  * Pill hosting: decides which tab label hosts each group's pill and reserves the pill's space there ([TabLabelSpace]).
@@ -47,6 +62,8 @@ internal class PillLayout(
     private val preview: DragPreview,
     private val collapse: CollapseController,
     private val platformDraggedFile: () -> VirtualFile?,
+    /** The tab that is out of the strip because its drag is over another split ([TabTransit]), or null. */
+    private val inTransit: () -> TabTransit.State? = { null },
 ) {
     val space = TabLabelSpace(tabs)
 
@@ -90,6 +107,7 @@ internal class PillLayout(
         val hostFiles = if (pinnedApart) files.mapIndexed { i, f -> f.takeUnless { infos[i].isPinned } } else files
         val dragged = platformDraggedFile()
         val dragging = dragged != null
+        val transit = inTransit()
         val list = ArrayList<PillAssignment>()
         // Pills hosted by their own group's first tab. A collapsed group's pill can share that host label (it stands in front of the
         // group), so these must come last among the label's leading items, right before their tab, whatever the groups' list order.
@@ -100,11 +118,14 @@ internal class PillLayout(
                 val members = preview.effectiveMembers(g)
                 val hasVisibleMember = files.any { it != null && it in members }
                 // every visible member is being dragged away by the plugin's drag: the group is parked, its pill stays behind
-                val parked = !g.collapsed && !hasVisibleMember && files.any { it != null && it in g.members }
+                // (also a group whose only tab is out of the strip because its drag is over another split: DRAG-8, the pill stays)
+                val transitParked = transit != null && !g.collapsed && !hasVisibleMember && transit.file in g.members
+                val parked = transitParked || (!g.collapsed && !hasVisibleMember && files.any { it != null && it in g.members })
                 val before: Set<VirtualFile> = if (g.collapsed && !hasVisibleMember) {
                     val snapshot = if (dragging) collapsedBefore[g.id] else null
                     snapshot ?: PillHosting.tabsBefore(files, collapse.anchorOf(g.id)).also { if (!dragging) collapsedBefore[g.id] = it }
                 }
+                else if (transitParked) transit!!.tabsBefore[g.id].orEmpty()
                 else if (parked) preview.tabsBefore(g.id) ?: files.subList(0, files.indexOfFirst { it != null && it in g.members }).filterNotNull().toSet()
                 else emptySet()
                 val host = PillHosting.hostFor(hostFiles, if (parked) preview.draggedFile else dragged, { it in members }, before)
@@ -179,7 +200,7 @@ internal class PillLayout(
         return when (val a = f.anchor) {
             is ForeignAnchor.BeforeTab -> {
                 val label = infos.firstOrNull { it.`object` == a.file }?.let { tabs.getTabLabel(it) } ?: return null
-                Spacer(label, true, null, false, f.length)
+                Spacer(label, true, null, false, f.length, a.afterPills)
             }
             is ForeignAnchor.BeforeCollapsedGroup -> {
                 val pill = list.firstOrNull { it.header.groupId == a.groupId } ?: return null
@@ -187,8 +208,14 @@ internal class PillLayout(
             }
             ForeignAnchor.AtEnd -> {
                 val last = infos.lastOrNull()?.let { tabs.getTabLabel(it) }
-                if (last != null) Spacer(last, false, null, true, f.length)
-                else if (list.all { it.label == null }) Spacer(null, true, null, true, f.length)
+                // Loose pills (no host: every tab collapsed, or only pinned tabs beside a separate pinned row) are the last units of
+                // the strip and sit in a row of their own ([SpareRow]); the end is behind them, in that row, not on the last label
+                // (a pinned tab, in the pinned row above). The same when nothing but pinned tabs is left beside a separate pinned row
+                // and what arrives is unpinned: the platform's drop of an unpinned tab goes to the row after the pinned one, so the
+                // gap opens there, in the spare row, and not at the end of the pinned row.
+                val unpinnedAfterPinned = !f.pinned && SpareRow.pinnedRowApart(tabs) && infos.isNotEmpty() && infos.all { it.isPinned }
+                if (list.any { it.label == null } || unpinnedAfterPinned) Spacer(null, true, null, true, f.length)
+                else if (last != null) Spacer(last, false, null, true, f.length)
                 else null
             }
         }
@@ -205,6 +232,9 @@ internal class PillLayout(
     /** True if some pill has no host label (every tab collapsed, or only pinned tabs left beside a separate pinned row). */
     fun hasLoosePills(): Boolean = assignments.any { it.label == null }
 
+    /** True if the foreign gap sits in the loose row ([looseItems]): the spare row beside a separate pinned row is needed for it as for a pill. */
+    fun hasLooseSpacer(): Boolean = spacer?.label == null && spacer != null
+
     /**
      * The pills no label hosts, in order, the foreign gap's space among them: those of an all-collapsed strip, or (pinned tabs in a row
      * of their own) of collapsed groups with no unpinned tab left to host them.
@@ -218,7 +248,7 @@ internal class PillLayout(
     private fun insertSpacer(items: MutableList<SpaceItem>, sp: Spacer) {
         val at = when {
             sp.before != null -> items.indexOfFirst { it.header === sp.before.header }.coerceAtLeast(0)
-            sp.atEnd -> items.size
+            sp.atEnd || sp.afterPills -> items.size
             else -> 0
         }
         items.add(at, SpaceItem(null, sp.length))

@@ -33,10 +33,10 @@ private val LOG = logger<TabBarDnd>()
  *   drag is handed over to the platform's drag-out ([DragHandOff]).
  * - `IdeGlassPane` preprocessors ([DragObserver], weight 1, ahead of `DragHelper`'s 2) to see and consume the drag events.
  * - `MouseDragHelper` ([HeaderDragHelper]) for dragging a whole group by its header (INT-6).
- * - `EditorWindow` / `FileEditorManagerEx.openFile` / `FileEditorOpenOptions` to move files between splits (see [moveGroupToSplit]).
+ * - `EditorWindow` / `FileEditorManagerEx.openFile` / `FileEditorOpenOptions` to move files between splits (see [moveGroupToSplit], [moveTabToSplit]).
  *
  * This class is the hub of the drag layer: it holds the pieces of one split and the geometry helpers they share.
- * [peers] lists the drag layers of every split of the project (group drags can end in another split).
+ * [peers] lists the drag layers of every split of the project (group and tab drags can continue in and end in another split).
  *
  * EDT only.
  */
@@ -91,6 +91,21 @@ internal class TabBarDnd(
 
     val horizontal: Boolean get() = tabs.isHorizontalTabs
 
+    /**
+     * Where the tab component's top-left is on screen, or null while it is not showing. A seam: the headless tests set it, because a
+     * component that is not on a real screen has no location and the session code works in screen coordinates.
+     */
+    internal var origin: () -> Point? = { if (tabs.isShowing) tabs.locationOnScreen else null }
+
+    /** The tab component is on screen (see [origin]). */
+    val isShowing: Boolean get() = origin() != null
+
+    /** What [validateNow] does. A seam: a component that is not displayable ignores `validate()`, so the headless tests lay the strip out themselves. */
+    internal var validator: () -> Unit = { if (!tabs.isValid) tabs.validate() }
+
+    /** Lays the strip out now if it is invalid (the drag judges the pointer against the strip as it is laid out). */
+    fun validateNow() = validator()
+
     // ---- geometry helpers --------------------------------------------------------------------------------------------
 
     /**
@@ -99,21 +114,26 @@ internal class TabBarDnd(
      * rectangle that does not cover the whole strip (it ends at the last tab or the entry point) does not matter.
      */
     fun stripScreenRect(): Rectangle? {
-        if (!tabs.isShowing || tabs.isHideTabs) return null
+        val origin = origin()
+        if (origin == null || tabs.isHideTabs) return null
         val rects = ArrayList<Rectangle>()
         tabs.lastLayoutPass?.headerRectangle?.let { rects += Rectangle(it) }
         for (u in adapter.stripUnits()) rects += u.rect
+        // the gap that an arriving item opens in the row after a separate pinned row (nothing but pinned tabs) is part of the strip too
+        adapter.foreignGapRect()?.let { rects += it }
         val band = StripDragGeometry.crossBand(rects, horizontal) ?: return null
         val tolerance = JBUI.scale(8)
         val across = band.last - band.first + 1
         val r = if (horizontal) Rectangle(0, band.first - tolerance, tabs.width, across + 2 * tolerance)
         else Rectangle(band.first - tolerance, 0, across + 2 * tolerance, tabs.height)
-        val origin = tabs.locationOnScreen
         r.translate(origin.x, origin.y)
         return r
     }
 
-    fun toTabs(screen: Point): Point = Point(screen).also { SwingUtilities.convertPointFromScreen(it, tabs) }
+    fun toTabs(screen: Point): Point {
+        val origin = origin() ?: return Point(screen).also { SwingUtilities.convertPointFromScreen(it, tabs) }
+        return Point(screen.x - origin.x, screen.y - origin.y)
+    }
 
     fun headerAt(tabsPoint: Point): GroupHeader? =
         adapter.headerComponents().firstOrNull { !it.bounds.isEmpty && it.bounds.contains(tabsPoint) }
@@ -159,12 +179,6 @@ internal class TabBarDnd(
         return units
     }
 
-    /** The natural length along a top / bottom strip of the tabs of [files] in this split: the sum of their labels' preferred widths. */
-    fun naturalLength(files: Collection<VirtualFile>): Int {
-        val wanted = files.toSet()
-        return tabs.getVisibleInfos().filter { it.`object` in wanted }.sumOf { tabs.getTabLabel(it)?.preferredSize?.width ?: 0 }
-    }
-
     /** The length of one tab along this strip (a row's height in a side strip, a tab's width otherwise); 0 if no tab is on screen. */
     fun rowLength(): Int {
         val r = adapter.stripUnits().filterIsInstance<StripUnit.Tab>().firstOrNull { !it.rect.isEmpty }?.rect ?: return 0
@@ -173,13 +187,14 @@ internal class TabBarDnd(
 
     /**
      * The group drag re-ordered the strip live; [flat] is the order it shows. Commits it: every group keeps its members, in that
-     * order ([groups] as they were when the drag began, collapsed flags unchanged).
+     * order ([groups] as they were when the drag began, collapsed flags unchanged). [expanding]: the group that was dragged as its
+     * collapsed header and comes back expanded; it plays the expand animation ([SplitGroups.commit]).
      */
-    fun commitGroupOrder(groups: List<GroupDecoration>, flat: List<VirtualFile>) {
+    fun commitGroupOrder(groups: List<GroupDecoration>, flat: List<VirtualFile>, expanding: String? = null) {
         model.commit(groups.map { g ->
             val members = g.members.toSet()
             g.copy(members = flat.filter { it in members })
-        })
+        }, expanding)
         LOG.info("group move committed: ${groups.map { it.id }}")
     }
 }
