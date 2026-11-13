@@ -37,7 +37,7 @@ internal class SplitBar(
     @Volatile
     private var index: Map<VirtualFile, String> = emptyMap()
 
-    val dnd = TabBarDnd(adapter, this) { tabBar.dragLayers() }
+    val dnd = TabBarDnd(adapter, this) { tabBar.dragLayers() }.also { d -> adapter.dragActive = { d.isDragActive } }
 
     /** A report of newly opened tabs ([TabBarHost.tabsOpened]) is queued for this split. */
     val hasPendingReport: Boolean get() = placement.hasPending
@@ -96,6 +96,19 @@ internal class SplitBar(
 
     override fun hiddenTabSelected(groupId: String, file: VirtualFile) {
         tabBar.host?.hiddenTabSelected(split, groupId, file)
+    }
+
+    // IDE-2: like a drag result, the host takes the new order and the strip is refreshed. A sort never changes a collapsed flag, so
+    // nothing flips; the refresh is an animating one only so that it leaves a running animation alone (the expand of a group dropped
+    // in sorted mode), where a non-animating refresh would snap it to its end.
+    override fun stripSorted(groups: List<GroupDecoration>) {
+        tabBar.host?.groupsReordered(split, groups)
+        tabBar.refresh(split, animate = true)
+    }
+
+    /** COLL-6: a tab of collapsed group [groupId] was picked in the overflow list. */
+    fun collapsedTabChosen(groupId: String, file: VirtualFile) {
+        tabBar.host?.collapsedTabChosen(split, groupId, file)
     }
 
     // ---- SplitGroups -----------------------------------------------------------------------------------------------------

@@ -1,11 +1,14 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
+import com.intellij.ide.ui.UISettings
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.TabsListener
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabOrderRules
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import java.awt.Color
@@ -30,7 +33,9 @@ import javax.swing.JPanel
  * - [EmptyEditorOverlay]: the empty state when every tab is hidden;
  * - [SpareRow]: the row for pills beside a separate pinned row when no unpinned tab is left to host them;
  * - [CloseSelectionGuard]: keeps a close from selecting a hidden tab;
- * - [PillAwareTabsBorder]: cuts the pills' slots out of the strip border.
+ * - [PillAwareTabsBorder]: cuts the pills' slots out of the strip border;
+ * - [StripSort]: IDE-2, the alphabetical order of a strip that has groups (pinned, groups by name, ungrouped; the platform's own sorting
+ *   is off for such a strip and the manual order is remembered and put back).
  *
  * Hosting: all extra components (headers, a layout hook, the drop slot, the empty-state overlay) are direct children of the tab
  * component. A header's *space* is part of a tab label: the host label gets a border inset of the pill's length, so the platform's
@@ -79,12 +84,39 @@ internal class TabBarAdapter(
     /** The drag surface: drag preview, transit and the platform's drag state (see [StripDragSurface]). */
     val drag: StripDragSurface = StripDragSurface(
         tabs, alive, preview, transit, headers, layout, geometry, tint, { shown }, { block -> ownChange(block) }, ::finishCollapseAnimations,
+        { sort.recheckLater() },
     )
     private val emptyOverlay = EmptyEditorOverlay(tabs, window)
     private val closeGuard = CloseSelectionGuard(tabs, window, collapse)
     private val verticalRows: VerticalRows = VerticalRows(tabs, layout, geometry, animator::verticalExtentOf)
     private val spareRow = SpareRow(tabs, layout)
     private val hook = LayoutHook()
+
+    /** A drag of ours is running here (tab or group, set by the drag layer); the sort never re-orders then. */
+    internal var dragActive: () -> Boolean = { false }
+
+    private val sort = StripSort(
+        tabs, alive, { groups }, { logicalOrder() }, { applyOrder(it) }, { applyGroups(it, false, null) },
+        { dragActive() || drag.isForeignBusy() }, { events?.stripSorted(it) },
+    )
+
+    /** True while the plugin sorts this strip (IDE-2: "Sort tabs alphabetically" is on and the strip has groups). */
+    val ownsSort: Boolean get() = sort.isOwning
+
+    /** `UISettings` changed: sorting may have been switched on or off. */
+    fun uiSettingsChanged() = sort.uiSettingsChanged()
+
+    /** A pin or a drag ended: the sorted order may be out of date (looked at after the current event). */
+    fun recheckSort() = sort.recheckLater()
+
+    /** IDE-2: the manual order while the plugin sorts this strip, else null (see [StripSort.manualOrder]). */
+    fun manualOrder(): List<VirtualFile>? = sort.manualOrder()
+
+    /** IDE-2: the manual order stored before a restart (see [StripSort.seedManual]). */
+    fun seedManualOrder(order: List<VirtualFile>) = sort.seedManual(order)
+
+    /** Sorts now if the plugin sorts this strip and it is out of order (a new tab was placed: the sort replaces MEM-2). */
+    fun sortNow() = sort.sync()
 
     private var layingOutAgain = false
 
@@ -177,7 +209,14 @@ internal class TabBarAdapter(
      * at once and the animator grows them from nothing. [before]: the groups a flip is measured against (the host's previous state,
      * passed by [SplitBar]); null = what this strip was last given, which during a drag can be a temporary all-expanded state.
      */
-    fun setGroups(newGroups: List<GroupDecoration>, animate: Boolean = false, before: List<GroupDecoration>? = null) = own {
+    fun setGroups(newGroups: List<GroupDecoration>, animate: Boolean = false, before: List<GroupDecoration>? = null) {
+        sort.beforeGroups(newGroups)
+        applyGroups(newGroups, animate, before)
+        sort.afterGroups()
+    }
+
+    /** [setGroups] without the sort hooks (the sort itself re-orders around collapsed groups with it). */
+    private fun applyGroups(newGroups: List<GroupDecoration>, animate: Boolean, before: List<GroupDecoration>?) = own {
         if (animate && canAnimate()) startAnimations(newGroups, before ?: groups) else animator.finishAll()
         groups = newGroups
         applyShown()
@@ -430,6 +469,7 @@ internal class TabBarAdapter(
                 layingOutAgain = false
             }
         }
+        lastLaidOutOrder = logicalOrder()
         drag.syncDragState()
         verticalRows.apply()
         spareRow.apply()
@@ -441,7 +481,34 @@ internal class TabBarAdapter(
         emptyOverlay.update(showEmpty, geometry.emptyStrip(tabs.tabsPosition))
     }
 
+    /** The logical order as of the last layout pass: the order before a pin change, which the platform applies lazily (see [pinChanged]). */
+    private var lastLaidOutOrder: List<VirtualFile> = emptyList()
+
+    /**
+     * A tab of this strip was pinned or unpinned (`FileEditorManagerListener.filePinStateChanged`, which the platform publishes after
+     * setting the flag and before its next layout). With "keep pinned tabs on the left" the platform groups the pinned tabs first
+     * lazily, in `JBTabsImpl.getVisibleInfos`, by *swapping* a pinned tab with the first unpinned one, so that tab jumps to where the
+     * pinned one was, e.g. behind a group, and the group looks moved. Here the strip is re-ordered first: pinned tabs first, everything
+     * else in the order of the last layout pass ([TabOrderRules.pinnedFirst]); the platform's grouping then finds nothing to swap.
+     * Not while the plugin sorts the strip (the sort puts pinned tabs first itself) or a drag runs.
+     */
+    fun pinChanged() {
+        if (!alive() || sort.isOwning || dragActive() || drag.isForeignBusy()) return
+        // the platform's alphabetical view (a strip without groups) orders pinned tabs itself
+        if (UISettings.getInstance().sortTabsAlphabetically || !keepPinnedTabsFirst()) return
+        // read the raw list without `getVisibleInfos`, which would apply the platform's swap right now
+        val pinned = tabs.tabs.filter { it.isPinned }.mapNotNullTo(HashSet()) { it.`object` as? VirtualFile }
+        val all = tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
+        val wanted = TabOrderRules.pinnedFirst(lastLaidOutOrder, all) { it in pinned }
+        if (wanted != lastLaidOutOrder) applyOrder(wanted)
+    }
+
+    /** The platform setting "keep pinned tabs on the left" (`AdvancedSettings`, public API); on if it cannot be read. */
+    private fun keepPinnedTabsFirst(): Boolean =
+        try { AdvancedSettings.getBoolean("editor.keep.pinned.tabs.on.left") } catch (e: Exception) { true }
+
     override fun dispose() {
+        sort.release(windowAlive = !window.isDisposed)
         disposed = true
         animator.dispose()
         transit.end(show = !window.isDisposed, reselect = false)

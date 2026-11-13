@@ -16,6 +16,7 @@ import com.intellij.ui.docking.DockManager
 import com.intellij.ui.tabs.JBTabsBorder
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.DragHelper
+import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.ui.tabs.impl.JBTabsImpl
 import com.intellij.ui.tabs.impl.TabLayout
 import com.intellij.ui.tabs.impl.multiRow.ScrollableMultiRowLayout
@@ -319,6 +320,32 @@ internal object PlatformInternals {
         false
     }
 
+    // ---- JBEditorTabs.isAlphabeticalModeChanged (IDE-2) -------------------------------------------------------------------------
+
+    /**
+     * `JBEditorTabs.isAlphabeticalModeChanged` (private boolean, `JBEditorTabs.kt:23`). `JBEditorTabs.isAlphabeticalMode()` follows
+     * `UISettings.sortTabsAlphabetically` only until `setAlphabeticalMode(..)` is called once on the strip; this flag is then set for
+     * good (`JBEditorTabs.kt:71-77`) and the strip ignores the setting. IDE-2 with groups switches the platform's view sorting off for
+     * a strip whose order the plugin sorts itself (`setAlphabeticalMode(false)`), and clears the flag again to give the strip back to
+     * the platform. Missing: [followUiSettings] returns false and the caller sets the mode by hand (`setAlphabeticalMode(UISettings...)`),
+     * which then has to be repeated whenever the setting changes.
+     */
+    private val alphabeticalChangedField: Field? by lazy {
+        field(JBEditorTabs::class.java, "isAlphabeticalModeChanged")?.takeIf { it.type == Boolean::class.javaPrimitiveType }
+    }
+
+    /** Makes [tabs] follow `UISettings.sortTabsAlphabetically` again (see [alphabeticalChangedField]); false if that is not possible. */
+    fun followUiSettings(tabs: JBEditorTabs): Boolean {
+        val f = alphabeticalChangedField ?: return false
+        return try {
+            f.setBoolean(tabs, false)
+            true
+        }
+        catch (e: Throwable) {
+            false
+        }
+    }
+
     // ---- action stubs ---------------------------------------------------------------------------------------------------------
 
     /**
@@ -362,6 +389,7 @@ internal object PlatformInternals {
         check("JBTabsImpl.tabBorder") { tabBorderField != null }
         check("JBTabsImpl.effectiveLayout") { effectiveLayoutField != null }
         check("JBTabsImpl.isMouseInsideTabsArea") { mouseInsideField?.type == Boolean::class.javaPrimitiveType }
+        check("JBEditorTabs.isAlphabeticalModeChanged") { alphabeticalChangedField != null }
         check("EditorWindow.getTabToSelect") { tabToSelectMethod != null }
         check("EditorWindow.removedTabs") { removedTabsField != null }
         check("RemovedTabInfo.file") { Class.forName("com.intellij.openapi.fileEditor.impl.RemovedTabInfo").getDeclaredField("file") != null }

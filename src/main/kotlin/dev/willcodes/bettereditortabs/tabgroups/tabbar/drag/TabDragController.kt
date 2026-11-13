@@ -48,8 +48,10 @@ private val LOG = logger<TabDragController>()
  *   restored and the gesture is handed over to the platform's drag-out ([DragHandOff]); from then on it is exactly the platform drag
  *   (split edges, a new window, tool windows). If the pointer comes back onto any strip the platform's session is cancelled and the
  *   drag continues here (a new drag), so a release over a strip always commits there.
- * - With the platform's alphabetical sorting on, the press is ignored and the platform's own drag runs (it re-sorts the strip itself
- *   and turns sorting off after a manual drag); so does a drag the platform starts itself (a file from the Project view).
+ * - With the platform's alphabetical sorting on and no group in the strip, the press is ignored and the platform's own drag runs (it
+ *   re-sorts the strip itself and turns sorting off after a manual drag); so does a drag the platform starts itself (a file from the
+ *   Project view). A strip with groups is sorted by the plugin ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripSort],
+ *   IDE-2): the drag runs as usual with join / leave of groups, and after the drop the sort puts the tab where it belongs.
  *
  * Internal APIs wrapped: `JBTabsImpl` (tab labels, `TabInfo.dragOutDelegate`, `DragHelper` press state). EDT only.
  */
@@ -83,8 +85,10 @@ internal class TabDragController(private val dnd: TabBarDnd) {
     fun mousePressed(e: MouseEvent) {
         if (phase != Phase.IDLE) abort()
         if (e.button != MouseEvent.BUTTON1 || e.isConsumed || !MouseDragHelper.checkModifiers(e)) return
-        // Sorted alphabetically, the platform re-sorts the strip itself and turns sorting off after a manual drag: leave it alone.
-        if (UISettings.getInstance().sortTabsAlphabetically) return
+        // Sorted alphabetically with no groups here, the platform re-sorts the strip itself and turns sorting off after a manual drag:
+        // leave it alone. A strip with groups is sorted by the plugin (IDE-2, StripSort): the drag runs, and its drop (a new membership)
+        // is followed by the sort, which decides the position.
+        if (UISettings.getInstance().sortTabsAlphabetically && !dnd.adapter.ownsSort) return
         val screen = RelativePoint(e).screenPoint
         val p = dnd.toTabs(screen)
         if (!tabs.isShowing || dnd.headerAt(p) != null) return
@@ -266,6 +270,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         removeDispatcher()
         handOff = null
         if (!keepPhase) phase = Phase.IDLE
+        dnd.adapter.recheckSort() // IDE-2: a cancelled or handed-over drag ends sorted too
     }
 
     private fun removeDispatcher() {

@@ -62,6 +62,13 @@ interface TabBarHost {
     fun groupsChangedByDrag(split: SplitHandle, groups: List<GroupDecoration>)
 
     /**
+     * IDE-2: the strip re-sorted itself alphabetically (a tab opened or was renamed, a group was renamed, sorting was switched on or
+     * off), so the order of [split]'s groups and of their members changed; [groups] is the complete new state (membership and
+     * collapsed flags unchanged). Like [groupsChangedByDrag], the tab bar refreshes the split itself afterwards (never animated).
+     */
+    fun groupsReordered(split: SplitHandle, groups: List<GroupDecoration>) = groupsChangedByDrag(split, groups)
+
+    /**
      * A whole group instance arrived from another split (INT-6, SPLIT-5). [group] is already merged with the split's instance of the
      * same group, if it had one. The source split has been told about its new groups through [groupsChangedByDrag] before.
      */
@@ -71,6 +78,13 @@ interface TabBarHost {
 
     /** COLL-4: [file], a tab hidden by collapsed group [groupId], was selected (navigation, Ctrl+E, ...). Expand the group and [TabBar.refresh]. */
     fun hiddenTabSelected(split: SplitHandle, groupId: String, file: VirtualFile) {}
+
+    /**
+     * COLL-6: [file], a tab hidden by collapsed group [groupId], was picked in the strip's overflow ("more") list. An explicit request
+     * like picking it in the hover list (INT-5): expand the group whatever SET-6 says, [TabBar.refresh] and select the tab. The tab bar
+     * selects nothing itself. Default: treated like a navigation ([hiddenTabSelected]).
+     */
+    fun collapsedTabChosen(split: SplitHandle, groupId: String, file: VirtualFile) = hiddenTabSelected(split, groupId, file)
 
     /**
      * MEM-1: [file] no longer has a tab in [split] although the groups last applied there list it as a member. Not reported for the

@@ -84,6 +84,9 @@
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseRightAction"/>
         <action id="CloseAllUnpinnedEditors" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseUnpinnedAction"/>
+        <!-- COLL-6: the "more" button's list of hidden tabs shows grouped and collapsed tabs under group headings. -->
+        <action id="TabList" overrides="true"
+                class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabListOverride"/>
 
         <!-- CTX-1..CTX-4: tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
         <group id="BetterEditorTabs.TabMenu">

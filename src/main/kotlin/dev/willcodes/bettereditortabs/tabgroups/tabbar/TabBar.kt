@@ -1,6 +1,9 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar
 
+import com.intellij.ide.ui.UISettings
+import com.intellij.ide.ui.UISettingsListener
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -47,8 +50,11 @@ import javax.swing.SwingUtilities
  *                      window outside every editor; EditorAreaTargets: the platform's drop side and drop-area highlight); DragAutoScroll
  *                      (edge auto-scroll and the wheel during a drag); GroupChipImage (the group's picture)
  *     strip/TabTransit a tab whose drag is over another split is out of its source strip, as in the platform's drag-out
+ *     strip/StripSort  IDE-2: with "Sort tabs alphabetically" on, a strip that has groups is sorted by the plugin (pinned, groups by name,
+ *                      ungrouped); the platform's view sorting is off for it, and the manual order comes back when it stops
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
- *                      new-tab placement (MEM-2), closing on behalf of group operations
+ *                      new-tab placement (MEM-2), closing on behalf of group operations, the overflow ("more") list with group
+ *                      headings (COLL-6: TabListOverride replaces the `TabList` action for strips with groups, OverflowList)
  *     splits/          restart-stable split identity (PERS-3) and the "splits restored" signal
  *     platform/        PlatformInternals: every reflective access, documented one by one, with a start-up self-check
  *   service/, ui/, actions/, rules/, settings/             callers: they may import only the public types of tabbar/ (and splits/)
@@ -163,6 +169,15 @@ class TabBar(private val project: Project) : Disposable {
     init {
         PlatformInternals.logSelfCheckOnce()
         // Programmatic subscription: no plugin.xml entry needed.
+        // IDE-2: "Sort tabs alphabetically" is switched on or off (application setting, so the application bus)
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            UISettingsListener.TOPIC,
+            object : UISettingsListener {
+                override fun uiSettingsChanged(uiSettings: UISettings) {
+                    for (bar in bars.values.toList()) bar.adapter.uiSettingsChanged()
+                }
+            },
+        )
         project.messageBus.connect(this).subscribe(
             FileEditorManagerListener.Before.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener.Before {
@@ -316,6 +331,22 @@ class TabBar(private val project: Project) : Disposable {
         bars[split.window]?.adapter?.reorderVisible(visibleOrder)
     }
 
+    /**
+     * IDE-2: while the plugin sorts [split] alphabetically, the manual order the strip goes back to when sorting is switched off (or
+     * its last group goes); null otherwise. The host stores it (PERS-1) so that it survives a restart. Without a host null.
+     */
+    fun manualOrder(split: SplitHandle): List<VirtualFile>? = if (host == null) null else bars[split.window]?.adapter?.manualOrder()
+
+    /**
+     * IDE-2: [files] is [split]'s manual order as stored before a restart. Call it before the split's groups are refreshed: when the
+     * plugin starts sorting the split it remembers this order instead of the current (sorted) one; when sorting is off, the next
+     * refresh puts the tabs in this order. Needs an attached [host]; a no-op otherwise.
+     */
+    fun setManualOrder(split: SplitHandle, files: List<VirtualFile>) {
+        if (host == null) return
+        barFor(split)?.adapter?.seedManualOrder(files)
+    }
+
     /** True if [file] has a pinned tab in [split]; false if it is not open there. */
     fun isPinned(split: SplitHandle, file: VirtualFile): Boolean {
         if (split.window.isDisposed) return false
@@ -376,6 +407,9 @@ class TabBar(private val project: Project) : Disposable {
     /** The strip adapter of [split] (null without a host or for an unknown split). Tests and the sub-packages only. */
     internal fun adapterOf(split: SplitHandle): TabBarAdapter? = bars[split.window]?.adapter
 
+    /** The split bar of [window] while a host is attached (null otherwise): the overflow list (COLL-6) reads its groups and reports picks. */
+    internal fun splitBarOf(window: EditorWindow): SplitBar? = if (host == null) null else bars[window]
+
     /** The drag layers of every split, for group drags that end in another split. */
     internal fun dragLayers(): List<TabBarDnd> = bars.values.map { it.dnd }
 
@@ -425,6 +459,10 @@ class TabBar(private val project: Project) : Disposable {
      */
     internal fun filePinStateChanged(file: VirtualFile) {
         val h = host ?: return
+        for (bar in bars.values.toList()) {
+            if (TabClose.openTabs(bar.split.window, listOf(file)).isNotEmpty()) bar.adapter.pinChanged() // no group shifts (see pinChanged)
+            bar.adapter.recheckSort() // IDE-2: pinned tabs sort first
+        }
         for (bar in bars.values.toList()) {
             if (bar.groupIdOf(file) == null) continue
             if (!isPinned(bar.split, file)) continue
