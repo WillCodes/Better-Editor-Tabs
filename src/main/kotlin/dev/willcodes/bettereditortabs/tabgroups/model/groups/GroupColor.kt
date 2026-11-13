@@ -5,7 +5,11 @@ package dev.willcodes.bettereditortabs.tabgroups.model.groups
  * [messageKey] is the bundle key of the user-visible colour name.
  */
 enum class GroupColor(val light: Int, val dark: Int, val messageKey: String) {
-    GREY(0x5F6368, 0xBDC1C6, "color.grey"),
+    /**
+     * COL-3: pushed away from the strip background (darker in light themes, lighter in dark ones), so its tint stays visible on the
+     * strip and while a tab is held to join (DRAG-3, DRAG-7).
+     */
+    GREY(0x70757A, 0xE8EAED, "color.grey"),
     BLUE(0x1A73E8, 0x8AB4F8, "color.blue"),
     RED(0xD93025, 0xF28B82, "color.red"),
     YELLOW(0xF9AB00, 0xFDD663, "color.yellow"),

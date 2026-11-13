@@ -133,7 +133,8 @@ internal class PillLayout(
             val label = tabs.getTabLabel(info) ?: continue
             keep += label
             val (lead, trail) = itemsOf(label)
-            changed = space.set(label, if (horizontal) lead.sumOf { it.length } else 0, if (horizontal) trail.sumOf { it.length } else 0) || changed
+            val trailing = if (horizontal) PillHosting.trailingReserve(trail.map { it.length }, tabs.tabHGap) else 0
+            changed = space.set(label, if (horizontal) lead.sumOf { it.length } else 0, trailing) || changed
         }
         return space.releaseExcept(keep) || changed
     }

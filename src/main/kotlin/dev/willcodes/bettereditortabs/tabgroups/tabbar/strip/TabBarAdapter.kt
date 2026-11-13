@@ -147,6 +147,9 @@ internal class TabBarAdapter(
     /** The selected file, or null if nothing is selected / everything is hidden. */
     fun selectedFile(): VirtualFile? = StripReader.selectedFile(tabs)
 
+    /** The split's whole tab order with the hidden tabs of collapsed groups at their headers' places (see [CollapseController.logicalOrder]). */
+    fun logicalOrder(): List<VirtualFile> = collapse.logicalOrder(visibleFiles())
+
     /** The right-clicked tab if a tab context menu is showing, otherwise the selected tab. */
     fun contextFile(): VirtualFile? = StripReader.contextFile(window)
 

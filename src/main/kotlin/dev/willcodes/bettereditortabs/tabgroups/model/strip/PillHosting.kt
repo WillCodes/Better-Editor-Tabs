@@ -103,6 +103,18 @@ object PillHosting {
         return result
     }
 
+    /**
+     * The space to reserve on a label's trailing side for items of [lengths]: their sum plus [labelGap], the platform's step between
+     * neighbouring labels (`next.x = label.x + label.width + labelGap`; -1 in the New UI, labels overlap by a pixel). Trailing items end
+     * at the label's right edge, so they then start exactly where a following label (whose leading items start at its left edge) would
+     * start: a collapsed group at the end of the strip, hosted on the last tab's trailing side, does not move when a tab or group
+     * lands behind it and it moves to that label's leading side. The overlap pixel lies under the first item, inside the label.
+     */
+    fun trailingReserve(lengths: List<Int>, labelGap: Int): Int {
+        val sum = lengths.sum()
+        return if (sum <= 0) 0 else maxOf(0, sum + labelGap)
+    }
+
     private fun rect(label: Rectangle, x: Int, length: Int, viewport: Rectangle): PillRect {
         val full = Rectangle(x, label.y, length, label.height)
         val visible = full.intersection(label).intersection(viewport)

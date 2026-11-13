@@ -1,5 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
@@ -28,10 +30,38 @@ internal fun TabBarDnd.moveGroupToSplit(
     target: TabBarDnd,
     targetUnits: List<MoveUnit<VirtualFile>>,
     boundary: Int,
+    freezes: List<StripFreeze> = freezeStrips(target),
 ) {
     // Closing in the source, opening and re-hiding in the target make the platform move both splits' selections, also onto tabs that
     // are hidden for a moment: none of that is navigation (COLL-4), so both strips treat the whole move as their own change.
-    adapter.ownChange { target.adapter.ownChange { moveNow(unit, target, targetUnits, boundary) } }
+    try {
+        adapter.ownChange { target.adapter.ownChange { moveNow(unit, target, targetUnits, boundary) } }
+    }
+    finally {
+        releaseLater(freezes)
+    }
+}
+
+/**
+ * Pictures of this strip and [target]'s, shown over them until [releaseLater] ([StripFreeze]). The platform lets the event queue run
+ * while it closes and opens the editors, so both strips would otherwise be painted half-way through the move. A drop takes them
+ * *before* it puts the source strip back and closes the target's drop gap, so the user sees the strips as they were at the release
+ * and then the result, nothing in between.
+ */
+internal fun TabBarDnd.freezeStrips(target: TabBarDnd): List<StripFreeze> = listOfNotNull(freeze(), target.freeze())
+
+/** Removes [freezes] once the events the move left in the queue (late `fileOpened`, layouts) have run. */
+internal fun releaseLater(freezes: List<StripFreeze>) {
+    if (freezes.isEmpty()) return
+    ApplicationManager.getApplication().invokeLater({ freezes.forEach { it.release() } }, ModalityState.any())
+}
+
+/** A [StripFreeze] over this split's tab rows (null if the strip is not showing). */
+private fun TabBarDnd.freeze(): StripFreeze? {
+    val screen = stripScreenRect() ?: return null
+    val origin = tabs.component.locationOnScreen
+    screen.translate(-origin.x, -origin.y)
+    return StripFreeze.over(tabs.component, screen)
 }
 
 private fun TabBarDnd.moveNow(

@@ -1,10 +1,10 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
-import com.intellij.ui.ColorUtil
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.Contrast
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
+import java.awt.Color
 import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -121,19 +121,26 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         val w0 = if (fullWidth > 0) fullWidth else width
         val h0 = if (fullHeight > 0) fullHeight else height
         val gap = JBUI.scale(GAP)
-        val vInset = JBUI.scale(V_INSET)
         val r = if (isDot) {
             val dot = JBUI.scale(DOT_SIZE)
             Rectangle((w0 - dot) / 2, (h0 - dot) / 2, dot, dot)
         }
         else {
-            Rectangle(gap, vInset, w0 - 2 * gap, h0 - 2 * vInset)
+            val h = namedPillHeight(h0)
+            Rectangle(gap, (h0 - h) / 2, w0 - 2 * gap, h)
         }
         r.translate(-offsetX, -offsetY)
         return r
     }
 
     private fun headerFont() = JBUI.CurrentTheme.EditorTabs.font()
+
+    /**
+     * Height of a named pill in a row of height [rowHeight]: the name's line height plus a small margin above and below (user request
+     * 2026-11-13: a pill that hugs its name, not one as tall as the tab), never more than the row minus [V_INSET] on each side.
+     */
+    private fun namedPillHeight(rowHeight: Int): Int =
+        minOf(rowHeight - 2 * JBUI.scale(V_INSET), getFontMetrics(headerFont()).height + 2 * JBUI.scale(TEXT_V_PAD)).coerceAtLeast(1)
 
     override fun paintComponent(g: Graphics) {
         onPaint?.invoke()
@@ -147,7 +154,6 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.translate(-offsetX, -offsetY)
             val gap = JBUI.scale(GAP).toDouble()
-            val vInset = JBUI.scale(V_INSET).toDouble()
             if (isDot) {
                 val dot = JBUI.scale(DOT_SIZE).toDouble()
                 g2.color = d.color
@@ -155,15 +161,19 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
             }
             else {
                 val w = w0 - 2 * gap
-                val h = h0 - 2 * vInset
-                g2.color = ColorUtil.withAlpha(d.color, style().opacity.coerceIn(0.0, 1.0))
-                g2.fill(RoundRectangle2D.Double(gap, vInset, w, h, h, h))
+                val h = namedPillHeight(h0).toDouble()
+                val top = (h0 - h) / 2
+                // HDR-1: fully opaque, like the dot; the tint opacity (SET-1) is for member tabs only. HDR-2: the name colour with the
+                // better contrast on the fill as the current theme resolves it.
+                g2.color = d.color
+                val arc = minOf(JBUI.scale(PILL_ARC).toDouble(), h)
+                g2.fill(RoundRectangle2D.Double(gap, top, w, h, arc, arc))
                 g2.font = headerFont()
-                g2.color = UIUtil.getLabelForeground()
+                g2.color = Color(Contrast.textOn(d.color.rgb and 0xFFFFFF))
                 val fm = g2.fontMetrics
                 val text = displayName
                 val tx = gap + (w - fm.stringWidth(text)) / 2
-                val ty = vInset + (h - fm.height) / 2 + fm.ascent
+                val ty = top + (h - fm.height) / 2 + fm.ascent
                 g2.drawString(text, tx.toFloat(), ty.toFloat())
             }
         }
@@ -173,10 +183,17 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
     }
 
     companion object {
-        private const val PAD = 8
+        /** Space between the pill's edge and the name, each side (user request 2026-11-13: was 8). */
+        private const val PAD = 5
         private const val GAP = 4
         private const val V_INSET = 4
+
+        /** Coloured space above and below the name's line in a named pill. */
+        private const val TEXT_V_PAD = 2
         private const val DOT_SIZE = 10
+
+        /** Corner arc diameter of a named pill: a rounded rectangle rather than a full capsule (user request, 2026-11-13). */
+        private const val PILL_ARC = 10
     }
 }
 

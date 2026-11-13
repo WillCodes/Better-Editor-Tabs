@@ -56,7 +56,19 @@
     <projectListeners>
         <listener class="dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarEditorListener"
                   topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+        <!-- PERS-3: restore the groups once the restored editor layout has settled. -->
+        <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsRestoreListener"
+                  topic="dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitsRestoredListener"/>
     </projectListeners>
+
+    <applicationListeners>
+        <!-- PERS-1: freeze the stored groups before the project closes (closing closes every tab). -->
+        <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsCloseListener"
+                  topic="com.intellij.openapi.project.ProjectCloseListener"/>
+        <!-- MEM-4: renamed and moved files keep their group; stored URLs follow. -->
+        <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsVfsListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </applicationListeners>
 
     <actions>
         <!-- Overrides of built-in actions (LIFE-5, IDE-4). Keep these ids exactly. -->
