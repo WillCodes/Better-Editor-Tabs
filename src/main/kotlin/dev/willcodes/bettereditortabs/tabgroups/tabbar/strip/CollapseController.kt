@@ -209,8 +209,13 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     private fun lastTabOfGroupAt(anchor: VirtualFile?, candidates: Set<String>): VirtualFile? {
         val here = candidates.filter { anchorOf(it) == anchor }
         if (here.isEmpty()) return null
+        return hidden.groupBy { hiddenGroupOf[it] }[pillOrder(here).last()]?.lastOrNull()
+    }
+
+    /** Collapsed groups that stand at one place, in the order of their pills ([PillHosting.orderShared], as the strip draws them). */
+    private fun pillOrder(here: List<String>): List<String> {
         val membersOf = hidden.groupBy { hiddenGroupOf[it] }
-        val ordered = PillHosting.orderShared(
+        return PillHosting.orderShared(
             here,
             parentOf = { id -> anchorParent(id)?.first?.takeIf { it in here } },
             siblingRank = { id ->
@@ -220,7 +225,35 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             },
             isOwn = { false },
         )
-        return membersOf[ordered.last()]?.lastOrNull()
+    }
+
+    /**
+     * The split's tab order with every collapsed group's hidden tabs put at their header's place: [visible] (the strip's visible
+     * files in order) with, behind each anchor tab (at the front for a group that stood first), the groups collapsed there in pill
+     * order, each with its tabs in tab order. This is the order the user sees the groups in, and the one to persist (PERS-1): the
+     * platform keeps hidden tabs at the end of its own list. Built from this controller's bookkeeping only, never from a layout. A group
+     * whose anchor is no longer visible (inconsistent bookkeeping) goes last, so no tab is lost.
+     */
+    fun logicalOrder(visible: List<VirtualFile>): List<VirtualFile> {
+        if (hidden.isEmpty()) return visible
+        val membersOf = hidden.groupBy { hiddenGroupOf[it] }
+        val visibleSet = visible.toHashSet()
+        val atAnchor = HashMap<VirtualFile?, MutableList<String>>()
+        val stray = ArrayList<String>()
+        for (id in membersOf.keys.filterNotNull()) {
+            val anchor = anchorOf(id)
+            if (anchor == null || anchor in visibleSet) atAnchor.getOrPut(anchor) { ArrayList() } += id else stray += id
+        }
+        fun placed(anchor: VirtualFile?): List<VirtualFile> =
+            atAnchor[anchor]?.let { ids -> pillOrder(ids).flatMap { membersOf[it].orEmpty() } }.orEmpty()
+        val result = ArrayList<VirtualFile>(visible.size + hidden.size)
+        result += placed(null)
+        for (file in visible) {
+            result += file
+            result += placed(file)
+        }
+        for (id in stray) result += membersOf[id].orEmpty()
+        return result
     }
 
     /**

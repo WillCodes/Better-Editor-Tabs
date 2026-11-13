@@ -27,7 +27,8 @@ import java.util.concurrent.ConcurrentHashMap
  * ```
  * tabgroups/
  *   model/             pure Kotlin, no com.intellij import: drop rules, slot selection, pill hosting, order and placement rules,
- *                      close scope (IDE-4), split keys and matching. Unit tested without the platform.
+ *                      close scope (IDE-4), split keys and matching, the stored form of the groups and the startup restore rules
+ *                      (model/persist, PERS-1, PERS-3). Unit tested without the platform.
  *   tabbar/            the ONLY package that touches IDE-internal APIs (EditorWindow, JBTabsImpl, TabLabel, TabInfo, ...).
  *     TabBar           this facade (project service)          TabBarHost    the contract the service layer implements
  *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
@@ -39,8 +40,10 @@ import java.util.concurrent.ConcurrentHashMap
  *     splits/          restart-stable split identity (PERS-3) and the "splits restored" signal
  *     platform/        PlatformInternals: every reflective access, documented one by one, with a start-up self-check
  *   service/, ui/, actions/, rules/, settings/             callers: they may import only the public types of tabbar/ (and splits/)
- *     service/         TabGroupsService (state + operations, the TabBarHost), TabGroupsSettings; reaches popups and dialogs only
- *                      through its TabGroupsUi interface, which ui/ implements (ui/ -> service/, never the other way round)
+ *     service/         TabGroupsService (state + operations, the TabBarHost, and the project's PersistentStateComponent in the
+ *                      workspace file: GroupsPersistence converts the model to XML beans, the listeners restore at startup, save before
+ *                      close and follow renames and moves), TabGroupsSettings; reaches popups and dialogs only through its
+ *                      TabGroupsUi interface, which ui/ implements (ui/ -> service/, never the other way round)
  *     ui/popup/        the group popup (§6): GroupPopup (open, place, close), GroupPopupContent (sections), PopupPlacement;
  *                      TabListPopup, the hover list of a collapsed group (INT-5)
  *     actions/         -> service/ and ui/
@@ -59,6 +62,12 @@ import java.util.concurrent.ConcurrentHashMap
  * setup. The host answers [TabBarHost.groupsIn] with the groups of a split whenever it calls [refresh], and receives header gestures,
  * drag results, COLL-4 and MEM-1 events. With [host] null the plugin is completely inert: no component is added to any tab bar, no
  * drag is taken over, and the built-in actions behave exactly like the platform's.
+ *
+ * # Persistence (PERS-1, PERS-3)
+ *
+ * The tab bar stores nothing. The host asks [logicalOrder] for each split it saves (the order including hidden tabs of collapsed groups
+ * at their headers), and at startup, once the `splits/` signal says the layout is restored, re-orders each split with [reorder] and
+ * applies its groups with `refresh(split, animate = false)`: restoring is never animated (COLL-7).
  *
  * # Collapse animation (COLL-7)
  *
@@ -212,6 +221,18 @@ class TabBar(private val project: Project) : Disposable {
 
     /** Files of the tabs currently shown in [split]'s strip, in order (tabs hidden by collapsed groups excluded). */
     fun visibleFiles(split: SplitHandle): List<VirtualFile> = StripReader.visibleFiles(StripReader.tabsOf(split.window))
+
+    /**
+     * Every open tab of [split] in the order the user sees it: [visibleFiles], with the tabs hidden by each collapsed group put at the
+     * place of the group's header (PERS-1: this is the order to store, because the platform keeps hidden tabs at the end of its own list
+     * and would reopen them there). Built from the adapter's own bookkeeping, so it needs no laid-out strip; where two collapsed groups
+     * stand together it agrees with [groupOrder]. Without a host (or an adapter) nothing is hidden and it is the platform's tab order.
+     */
+    fun logicalOrder(split: SplitHandle): List<VirtualFile> {
+        if (split.window.isDisposed) return emptyList()
+        val adapter = if (host == null) null else bars[split.window]?.adapter
+        return adapter?.logicalOrder() ?: StripReader.allFiles(StripReader.tabsOf(split.window))
+    }
 
     /** The selected file of [split], or null if nothing is selected / every tab is hidden. */
     fun selectedFile(split: SplitHandle): VirtualFile? = StripReader.selectedFile(StripReader.tabsOf(split.window))

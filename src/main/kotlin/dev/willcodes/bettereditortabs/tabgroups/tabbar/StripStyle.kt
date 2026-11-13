@@ -3,8 +3,8 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar
 /**
  * How the group headers and tinted tabs look, from the settings (SET-1, SET-2, SET-10). Set through [TabBar.style]; the tab bar applies it to every split.
  *
- * @param opacity how much of the group colour shows: the fill of the header pill (HDR-1) and the tint of member tabs (LINE-1), 0.0 to 1.0.
- *   Values outside the range are clamped where they are used.
+ * @param opacity how much of the group colour shows in the tint of member tabs (LINE-1, SET-1), 0.0 to 1.0. Headers ignore it: pills
+ *   and dots are always fully opaque (HDR-1, HDR-4). Values outside the range are clamped where they are used.
  * @param maxNameLength longest group name shown in a header; a longer name is cut and ends with "…", the full name is the header's
  *   tooltip (HDR-3). Values below 1 are treated as 1.
  * @param animateCollapse whether collapsing and expanding a group is animated (COLL-7, SET-10). Off: every toggle is instant.

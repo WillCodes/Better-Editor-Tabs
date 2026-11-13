@@ -2,7 +2,11 @@ package dev.willcodes.bettereditortabs.tabgroups.service
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
@@ -17,12 +21,16 @@ import dev.willcodes.bettereditortabs.tabgroups.model.groups.InstanceLayout
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.TabGroup
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.deleteStep
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.nextColor
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.CurrentSplit
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.RestorePlanner
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.colorFromName
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.HeaderRef
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 import java.awt.event.MouseEvent
 import java.util.UUID
 
@@ -32,14 +40,22 @@ import java.util.UUID
  * [TabBar] facade, and to popups and dialogs only through [TabGroupsUi] (implemented in `ui/`, which depends on this package, never
  * the other way round). EDT only.
  *
- * Attaching: the service attaches itself ([TabBar.host]) on the first group creation and stays attached for the session; detaching when
- * the groups run out would dispose the adapter that is calling it. Stage 5 (persistence) attaches at startup.
+ * Attaching: the service attaches itself ([TabBar.host]) on the first group creation (or when a restart restores groups) and stays
+ * attached for the session; detaching when the groups run out would dispose the adapter that is calling it.
+ *
+ * Persistence (PERS-1, PERS-3): the project's [PersistentStateComponent] in the workspace file. [getState] may run on a background
+ * thread, so it returns the immutable snapshot kept by [SavedGroups], which every change refreshes on the EDT (through [refresh]).
+ * [restore] applies the loaded state once the restored editor layout has settled.
  */
 @Service(Service.Level.PROJECT)
-class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
+@State(name = "BetterEditorTabsGroups", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class TabGroupsService(private val project: Project) : Disposable, TabBarHost, PersistentStateComponent<GroupsStateBean> {
     private val state = GroupsState<SplitHandle, VirtualFile> { UUID.randomUUID().toString() }
     private val tabBar get() = project.service<TabBar>()
     private val settings get() = TabGroupsSettings.getInstance()
+
+    /** What [getState] returns (see [SavedGroups]). */
+    private val saved = SavedGroups(project, state)
 
     // ---- queries -----------------------------------------------------------------------------------------------------------
 
@@ -70,7 +86,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         leaveGroup(split, file)
         val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor)
         val group = state.createGroup(split, file, color)
-        tabBar.refresh(split)
+        refresh(split)
         arrange(split)
         return group
     }
@@ -89,18 +105,18 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
             if (target.members.last() == file) return false
             leaveGroup(split, file)
             state.addToGroup(split, groupId, file)
-            tabBar.refresh(split)
+            refresh(split)
             return true
         }
         if (target != null && target.collapsed) {
             state.setCollapsed(split, groupId, false)
-            tabBar.refresh(split) // the group's tabs are visible again, so they take part in the order below
+            refresh(split) // the group's tabs are visible again, so they take part in the order below
             target = state.instance(split, groupId)
         }
         leaveGroup(split, file)
         if (target != null) tabBar.reorder(split, GroupOrder.orderForJoin(tabBar.visibleFiles(split), file, target.members))
         state.addToGroup(split, groupId, file)
-        tabBar.refresh(split)
+        refresh(split)
         if (target == null) arrange(split)
         return true
     }
@@ -110,7 +126,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         if (state.groupOf(split, file) == null) return
         leaveGroup(split, file)
         state.removeFromGroup(split, file)
-        tabBar.refresh(split)
+        refresh(split)
     }
 
     /** Renames [groupId] (empty = unnamed) and refreshes every split that shows it (SPLIT-3). */
@@ -137,7 +153,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
     fun ungroup(split: SplitHandle, groupId: String) {
         if (state.instance(split, groupId) == null) return
         state.removeInstance(split, groupId)
-        tabBar.refresh(split)
+        refresh(split)
     }
 
     /**
@@ -171,12 +187,18 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         val tabs = tabBar.openTabs(split, instance.members)
         // Stage 10 (LIFE-5): record the deleted group (name, colour, tab paths) here, before its tabs close.
         state.removeInstance(split, groupId)
-        tabBar.refresh(split)
+        refresh(split)
         tabBar.closeTabs(split, tabs)
     }
 
+    /** Every change of a split's groups ends here: refreshes the strip, then updates the snapshot that is saved ([SavedGroups.capture]). */
+    private fun refresh(split: SplitHandle, animate: Boolean = true) {
+        tabBar.refresh(split, animate)
+        saved.capture()
+    }
+
     private fun refreshSplitsOf(groupId: String) {
-        for (split in state.splits()) if (state.instance(split, groupId) != null) tabBar.refresh(split)
+        for (split in state.splits()) if (state.instance(split, groupId) != null) refresh(split)
     }
 
     /** Pinned tabs are refused (INV-3), so are tabs that are not showing; a preview tab becomes permanent (MEM-7). Attaches the host. */
@@ -199,17 +221,87 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
      * re-sorted to the order of the headers in the strip ([TabBar.groupOrder]) and the split is refreshed again if that changed it.
      * Drag results need none of this: they report the new order themselves.
      */
-    private fun arrange(split: SplitHandle) {
+    private fun arrange(split: SplitHandle, animate: Boolean = true) {
         val order = tabBar.groupOrder(split)
         if (order.isEmpty() || state.instancesIn(split).map { it.groupId } == order) return
         state.reorderInstances(split, order)
-        tabBar.refresh(split)
+        refresh(split, animate)
     }
 
     private fun attach() {
         if (tabBar.host === this) return
         tabBar.style = StripStyle(settings.opacity, settings.nameLimit, settings.state.animateCollapse)
         tabBar.host = this
+    }
+
+    // ---- persistence (PERS-1, PERS-3, MEM-4) ----------------------------------------------------------------------------
+
+    /** The state of the workspace file: an immutable snapshot, safe to read on any thread (see the class comment). */
+    override fun getState(): GroupsStateBean = saved.bean
+
+    /** The platform loads the stored state once, before anything else uses the service; [restore] applies it later. */
+    override fun loadState(state: GroupsStateBean) = saved.loaded(state)
+
+    /**
+     * Startup (PERS-3), called once the restored editor layout has settled ([dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitsRestoredListener]).
+     * Matches the stored splits to [splits] and, for each match, re-orders the tabs to the stored logical order (the platform reopened
+     * the tabs of collapsed groups at the end), puts the instances with the members that reopened into the state in strip order, and
+     * refreshes the split without animation (COLL-7). The stored state is replaced by what survived, so groups whose tabs did not
+     * reopen are gone for good, also with "Reopen files on startup" off. Rules do not run on restored tabs (RULE-5).
+     * One pass: a detached window that appears after the layout has settled is not restored (Stage 7 re-checks multiple splits).
+     * A split in which the user already made a group before this ran is left as it is. EDT only; later calls do nothing.
+     */
+    internal fun restore(splits: List<SplitInfo>) {
+        if (saved.restored) return
+        val stored = saved.stored()
+        saved.markRestored()
+        val plan = RestorePlanner.plan(
+            stored,
+            splits.map { s -> CurrentSplit(s.key, s.files.map { it.url }) },
+            keepWithoutInstances = { false }, // Stage 10: stashed groups survive a restart whatever reopened
+        )
+        if (plan.splits.isNotEmpty()) attach()
+        val groups = plan.groups.associateBy { it.id }
+        for (planned in plan.splits) {
+            val info = splits[planned.current]
+            val split = info.handle
+            if (state.instancesIn(split).isNotEmpty()) continue
+            val byUrl = info.files.associateBy { it.url }
+            tabBar.reorder(split, planned.order.mapNotNull { byUrl[it] })
+            for (inst in planned.instances) {
+                val group = groups[inst.groupId] ?: continue
+                val members = inst.members.mapNotNull { byUrl[it] }
+                state.acceptInstance(split, group.id, group.name, colorFromName(group.color), members, inst.collapsed)
+                // INV-4: a restored preview tab cannot be a member.
+                for (file in members) if (tabBar.isPreview(split, file)) tabBar.makePermanent(split, file)
+            }
+            refresh(split, animate = false)
+            arrange(split, animate = false)
+        }
+        saved.capture()
+    }
+
+    /** The project is about to be saved and closed: the saved state is taken now and kept (see [SavedGroups.freeze]). */
+    internal fun prepareForClose() = saved.freeze()
+
+    /**
+     * MEM-4: files or directories were renamed or moved (old URL to new URL). The live state holds `VirtualFile`s, which keep their
+     * identity, and the platform keeps the tab open (`FileEditorManagerImpl.MyVirtualFileListener`), so the groups follow by themselves;
+     * only the stored form names files by URL. EDT only.
+     */
+    internal fun filesMoved(moves: List<Pair<String, String>>) = saved.filesMoved(moves)
+
+    /**
+     * MEM-4: files were deleted. The platform has closed their tabs (which removed them from their groups, MEM-1); this makes sure no
+     * member is left whose `VirtualFile` is invalid, and that an emptied group goes (MEM-5). EDT only.
+     */
+    internal fun dropInvalidMembers() {
+        for (split in state.splits()) {
+            val invalid = state.instancesIn(split).flatMap { inst -> inst.members.filter { !it.isValid } }
+            if (invalid.isEmpty()) continue
+            for (file in invalid) state.removeFromGroup(split, file)
+            refresh(split)
+        }
     }
 
     // ---- TabBarHost ----------------------------------------------------------------------------------------------------------
@@ -223,11 +315,13 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
     override fun groupsChangedByDrag(split: SplitHandle, groups: List<GroupDecoration>) {
         state.replaceSplit(split, groups.map { InstanceLayout(it.id, it.members, it.collapsed) })
         for (group in groups) for (file in group.members) if (tabBar.isPreview(split, file)) tabBar.makePermanent(split, file)
+        saved.captureLater()
     }
 
     /** INT-6, SPLIT-5: the tab bar refreshes the split itself afterwards. */
     override fun groupMovedIn(split: SplitHandle, group: GroupDecoration) {
         state.acceptInstance(split, group.id, group.name, GroupColors.colorOf(group.color), group.members, group.collapsed)
+        saved.captureLater()
     }
 
     /** MEM-1. */
@@ -238,14 +332,14 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
 
     private fun removeAfterEvent(split: SplitHandle, file: VirtualFile) {
         state.removeFromGroup(split, file)
-        tabBar.refresh(split)
+        refresh(split)
     }
 
     /** COLL-4, unless SET-6 (auto-expand on navigate) is off. */
     override fun hiddenTabSelected(split: SplitHandle, groupId: String, file: VirtualFile) {
         if (!settings.state.autoExpandOnNavigate) return
         state.setCollapsed(split, groupId, false)
-        tabBar.refresh(split)
+        refresh(split)
     }
 
     /**
@@ -272,7 +366,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
         val instance = state.instance(split, groupId) ?: return
         if (instance.collapsed) {
             state.setCollapsed(split, groupId, false)
-            tabBar.refresh(split)
+            refresh(split)
         }
         tabBar.selectTab(split, file, true)
     }
@@ -281,7 +375,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost {
     override fun headerClicked(header: HeaderRef, event: MouseEvent) {
         val instance = state.instance(header.split, header.groupId) ?: return
         state.setCollapsed(header.split, header.groupId, !instance.collapsed)
-        tabBar.refresh(header.split)
+        refresh(header.split)
     }
 
     /** INT-3: Delete Group, with the middle-click confirmation setting (SET-5). */

@@ -112,21 +112,28 @@ internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) 
         val flat = shownFlat
         val unchanged = flat == origFlat
         val ownTarget = t != null && t.dnd === dnd
+        // A move to another split: both strips are frozen as they look now (drop gap open) before anything below changes them.
+        val moving = t != null && !ownTarget && group != null && index >= 0
+        val freezes = if (moving) dnd.freezeStrips(t!!.dnd) else emptyList()
         // the strip shows the result already for a drop in this split; for anything else it goes back first
         if (!ownTarget) restoreOwn()
         val groups = origGroups
         cleanup()
-        if (t == null || group == null || index < 0) return
+        if (t == null || group == null || index < 0) {
+            releaseLater(freezes)
+            return
+        }
         try {
             if (t.dnd === dnd) {
                 if (!unchanged) dnd.commitGroupOrder(groups, flat)
             }
             else {
-                dnd.moveGroupToSplit(unitsAtStart[index], t.dnd, t.units, t.boundary)
+                dnd.moveGroupToSplit(unitsAtStart[index], t.dnd, t.units, t.boundary, freezes)
             }
         }
         catch (e: Exception) {
             LOG.error("Moving group $group failed", e)
+            releaseLater(freezes)
         }
     }
 
