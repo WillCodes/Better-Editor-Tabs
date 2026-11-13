@@ -15,6 +15,9 @@ import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteStep
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteTrigger
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.LinkedJoin
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.instanceStripOrder
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.linkedMoveTarget
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupOrder
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.InstanceLayout
@@ -22,6 +25,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.groups.TabGroup
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.deleteStep
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.nextColor
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.CurrentSplit
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.RestorePlan
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.RestorePlanner
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.colorFromName
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
@@ -30,6 +34,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.StripStyle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitIdentity
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 import java.awt.event.MouseEvent
 import java.util.UUID
@@ -56,6 +61,20 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
 
     /** What [getState] returns (see [SavedGroups]). */
     private val saved = SavedGroups(project, state)
+
+    /** PERS-3 for detached windows restored after the first pass (see [restore]). Internal for tests. */
+    internal val lateRestore = LateSplitRestore(
+        this,
+        saved,
+        liveSplits = { SplitIdentity.allSplits(project) },
+        isLive = { it in tabBar.splits() },
+        hasInstances = { state.instancesIn(it).isNotEmpty() },
+        apply = { plan, splits ->
+            if (plan.splits.isNotEmpty()) attach()
+            applyPlan(plan, splits)
+        },
+        joinLinked = ::joinLinked,
+    )
 
     // ---- queries -----------------------------------------------------------------------------------------------------------
 
@@ -108,17 +127,54 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
             refresh(split)
             return true
         }
+        joinInstance(split, file, groupId, leave = true)
+        return true
+    }
+
+    /**
+     * [file] becomes the last member of [groupId]'s instance in [split] (created, at the tab's position, if the split has none) and its
+     * tab moves behind the instance's last tab (INV-2). A collapsed instance is expanded first (CTX-2: the user sees where the tab
+     * went). [leave]: the file leaves its current group first (CTX-2); false for a file that has none (SPLIT-2).
+     */
+    private fun joinInstance(split: SplitHandle, file: VirtualFile, groupId: String, leave: Boolean) {
+        var target = state.instance(split, groupId)
         if (target != null && target.collapsed) {
             state.setCollapsed(split, groupId, false)
             refresh(split) // the group's tabs are visible again, so they take part in the order below
             target = state.instance(split, groupId)
         }
-        leaveGroup(split, file)
+        if (leave) leaveGroup(split, file)
         if (target != null) tabBar.reorder(split, GroupOrder.orderForJoin(tabBar.visibleFiles(split), file, target.members))
         state.addToGroup(split, groupId, file)
         refresh(split)
         if (target == null) arrange(split)
-        return true
+    }
+
+    /**
+     * SPLIT-2: [files] were opened in [split] and are not members of a group there. A file that belongs to a group in another split
+     * joins that group's instance here (created if the split has none); with different groups in different splits the one of the
+     * most recently focused split wins ([LinkedJoin.pickGroup]). Pinned tabs (INV-3) and preview tabs (INV-4) stay out.
+     */
+    private fun joinLinked(split: SplitHandle, files: List<VirtualFile>) {
+        if (tabBar.host !== this) return
+        val others = state.splits().filter { it != split }
+        if (others.isEmpty()) return
+        val recent by lazy { tabBar.recentSplits() }
+        val picks = ArrayList<LinkedJoin.Pick<VirtualFile>>()
+        for (file in files) {
+            if (!file.isValid) continue
+            val candidates = others.mapNotNull { s -> state.groupOf(s, file)?.let { s to it.groupId } }
+            if (candidates.isEmpty() || tabBar.openTabs(split, listOf(file)).isEmpty()) continue
+            if (!LinkedJoin.eligible(tabBar.isPinned(split, file), tabBar.isPreview(split, file), state.groupOf(split, file) != null)) continue
+            if (file !in tabBar.visibleFiles(split)) continue
+            val groupId = LinkedJoin.pickGroup(candidates, recent) ?: continue
+            val from = candidates.first { it.second == groupId }.first
+            picks += LinkedJoin.Pick(file, groupId, state.instance(from, groupId)?.members?.indexOf(file) ?: Int.MAX_VALUE)
+        }
+        // several files at once (an unsplit): each group gets them at its end in the order they had where they came from
+        for (pick in LinkedJoin.joinOrder(picks)) {
+            if (state.groupOf(split, pick.file) == null) joinInstance(split, pick.file, pick.groupId, leave = false)
+        }
     }
 
     /** CTX-3: [file] leaves its group in [split] and moves to just after the group. */
@@ -160,21 +216,67 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
      * LIFE-3: Delete Group for [split]'s instance of [groupId]. A non-empty group asks first (LIFE-3b) unless the setting of [trigger]
      * is off (SET-4 for [DeleteTrigger.MENU], SET-5 for [DeleteTrigger.MIDDLE_CLICK]); a group without open tabs goes at once (LIFE-3c).
      * "Don't ask again" switches off the setting of [trigger] only.
+     *
+     * LIFE-3a: if the group also has instances in other splits and this one has open tabs, a Move / Close / Cancel dialog is asked
+     * instead, always (it is a choice, not a confirmation: SET-4, SET-5 and "don't ask again" do not apply). Move sends the tabs to the
+     * instance in the most recently focused other split ([moveToLinked]); Close deletes this instance as usual; other splits' instances
+     * are never touched by a delete.
      */
     fun requestDelete(split: SplitHandle, groupId: String, trigger: DeleteTrigger) {
         val group = state.group(groupId) ?: return
         val instance = state.instance(split, groupId) ?: return
-        // Stage 7 (LIFE-3a): with linked instances in other splits a Move / Close / Cancel dialog comes first. Until then the instances
-        // of other splits are left alone.
         val tabCount = tabBar.openTabs(split, instance.members).size
-        if (deleteStep(tabCount, settings.confirmsDelete(trigger)) == DeleteStep.CONFIRM) {
-            when (TabGroupsUi.getInstance(project).confirmDelete(displayName(group), tabCount)) {
+        val ui = TabGroupsUi.getInstance(project)
+        when (deleteStep(tabCount, settings.confirmsDelete(trigger), linkedSplits(split, groupId).isNotEmpty())) {
+            DeleteStep.DELETE_NOW -> {}
+            DeleteStep.CONFIRM -> when (ui.confirmDelete(displayName(group), tabCount)) {
                 DeleteAnswer.CANCEL -> return
                 DeleteAnswer.DELETE_AND_STOP_ASKING -> settings.stopConfirmingDelete(trigger)
                 DeleteAnswer.DELETE -> {}
             }
+            DeleteStep.LINKED_CHOICE -> when (linkedDeleteAnswer(displayName(group), tabCount)) {
+                LinkedDeleteAnswer.CANCEL -> return
+                LinkedDeleteAnswer.CLOSE -> {}
+                LinkedDeleteAnswer.MOVE -> {
+                    moveToLinked(split, groupId)
+                    return
+                }
+            }
         }
         deleteInstance(split, groupId)
+    }
+
+    /** LIFE-3a: the remembered answer ("Don't ask again"), or the dialog's; a "Don't ask again" ticked with Move or Close is remembered. */
+    private fun linkedDeleteAnswer(groupName: String, tabCount: Int): LinkedDeleteAnswer {
+        settings.linkedDeleteChoice?.let { return it }
+        val choice = TabGroupsUi.getInstance(project).askLinkedDelete(groupName, tabCount)
+        if (choice.dontAskAgain) settings.rememberLinkedDelete(choice.answer)
+        return choice.answer
+    }
+
+    /** The live splits other than [split] that have an instance of [groupId]. */
+    private fun linkedSplits(split: SplitHandle, groupId: String): List<SplitHandle> {
+        val live = tabBar.splits().toSet()
+        return state.splits().filter { it != split && it in live && state.instance(it, groupId) != null }
+    }
+
+    /**
+     * LIFE-3a "Move": the tabs of [split]'s instance go to the instance in the most recently focused other split. Re-reads the state
+     * (the dialog was modal). The files that are open in the target already are just closed here (a normal close); the rest moves as a
+     * group move (no Reopen Closed Tab history, merged at the end of the target's instance, which keeps its collapsed flag). Nothing
+     * is done if no other split has the group any more.
+     */
+    private fun moveToLinked(split: SplitHandle, groupId: String) {
+        val instance = state.instance(split, groupId) ?: return
+        val target = linkedMoveTarget(tabBar.recentSplits(), linkedSplits(split, groupId), split) ?: return
+        val duplicates = tabBar.openTabs(target, tabBar.openTabs(split, instance.members))
+        if (duplicates.isNotEmpty()) {
+            for (file in duplicates) state.removeFromGroup(split, file)
+            refresh(split)
+            tabBar.closeTabs(split, duplicates)
+        }
+        if (state.instance(split, groupId) == null) return
+        tabBar.moveGroup(split, groupId, target)
     }
 
     /**
@@ -248,19 +350,30 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
      * the tabs of collapsed groups at the end), puts the instances with the members that reopened into the state in strip order, and
      * refreshes the split without animation (COLL-7). The stored state is replaced by what survived, so groups whose tabs did not
      * reopen are gone for good, also with "Reopen files on startup" off. Rules do not run on restored tabs (RULE-5).
-     * One pass: a detached window that appears after the layout has settled is not restored (Stage 7 re-checks multiple splits).
      * A split in which the user already made a group before this ran is left as it is. EDT only; later calls do nothing.
+     *
+     * Late splits (a detached window that is restored after the layout settled): the stored splits of detached windows that no split
+     * claimed stay pending for a while and are matched against splits that appear later ([LateSplitRestore]).
      */
     internal fun restore(splits: List<SplitInfo>) {
         if (saved.restored) return
         val stored = saved.stored()
         saved.markRestored()
+        val current = splits.map { s -> CurrentSplit(s.key, s.files.map { it.url }) }
         val plan = RestorePlanner.plan(
             stored,
-            splits.map { s -> CurrentSplit(s.key, s.files.map { it.url }) },
+            current,
             keepWithoutInstances = { false }, // Stage 10: stashed groups survive a restart whatever reopened
         )
-        if (plan.splits.isNotEmpty()) attach()
+        val pending = RestorePlanner.pending(stored, current, detachedOnly = true)
+        if (plan.splits.isNotEmpty() || pending.splits.isNotEmpty()) attach()
+        lateRestore.start(splits, pending)
+        applyPlan(plan, splits)
+        saved.capture()
+    }
+
+    /** Applies a [plan] made for [splits] (the index of a planned split is its place in the list): order, instances, refresh without animation (COLL-7). */
+    private fun applyPlan(plan: RestorePlan, splits: List<SplitInfo>) {
         val groups = plan.groups.associateBy { it.id }
         for (planned in plan.splits) {
             val info = splits[planned.current]
@@ -278,7 +391,6 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
             refresh(split, animate = false)
             arrange(split, animate = false)
         }
-        saved.capture()
     }
 
     /** The project is about to be saved and closed: the saved state is taken now and kept (see [SavedGroups.freeze]). */
@@ -318,10 +430,26 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
         saved.captureLater()
     }
 
-    /** INT-6, SPLIT-5: the tab bar refreshes the split itself afterwards. */
+    /**
+     * INT-6, SPLIT-5: the tab bar refreshes the split itself afterwards. The arrival is appended to the state's list, but
+     * [groupsIn] must list a split's groups in strip order (collapsed neighbours share a host tab and are drawn in list order), so
+     * the instances are put in the order of their first members in the split's tab order: the tab bar has re-ordered the target's
+     * strip with everything visible before it reports the arrival.
+     */
     override fun groupMovedIn(split: SplitHandle, group: GroupDecoration) {
         state.acceptInstance(split, group.id, group.name, GroupColors.colorOf(group.color), group.members, group.collapsed)
+        val order = tabBar.logicalOrder(split)
+        state.reorderInstances(split, instanceStripOrder(state.instancesIn(split).map { it.groupId to it.members.toList() }, order))
         saved.captureLater()
+    }
+
+    /**
+     * SPLIT-2: files opened in [split] that are members of a group in another split join that group here ([joinLinked]). While [split]
+     * could still be restored from a pending stored split (a late detached window, see [restore]) its files are held back until the
+     * restore check has run, so a restored window is not first filled by SPLIT-2.
+     */
+    override fun tabsOpened(split: SplitHandle, files: List<VirtualFile>) {
+        if (!lateRestore.tabsOpened(split, files)) joinLinked(split, files)
     }
 
     /** MEM-1. */
@@ -388,8 +516,19 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
         TabGroupsUi.getInstance(project).showGroupPopup(header)
     }
 
+    override fun splitAppeared(split: SplitHandle) {
+        lateRestore.splitAppeared(split)
+    }
+
+    /**
+     * The split's instances go (MEM-6 may end groups). The tab bar calls this after the queued [tabsOpened] reports of the other splits
+     * when there are any, so an unsplit (which moves the tabs of the merged-away split into the surviving one) still finds the
+     * disposed split's instances when SPLIT-2 looks for the groups of those files; the disposed window is no longer in
+     * [TabBar.recentSplits], so it ranks last among the candidates.
+     */
     override fun splitDisposed(split: SplitHandle) {
         state.splitRemoved(split)
+        lateRestore.splitDisposed(split)
     }
 
     override fun dispose() {

@@ -43,6 +43,12 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
         /** SET-8: ask to move matching open tabs when an auto-group rule is set. */
         var askToMoveMatchingTabs by property(true)
 
+        /**
+         * LIFE-3a "Don't ask again": the remembered answer to the linked-instances delete dialog, `MOVE` or `CLOSE`; null asks every time.
+         * (Added 2026-11-13, user request; the settings page binds it in Stage 12.)
+         */
+        var linkedDeleteChoice by string(null)
+
         /** SET-10: animate collapsing and expanding groups (COLL-7). */
         var animateCollapse by property(true)
     }
@@ -69,6 +75,19 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
             DeleteTrigger.MENU -> state.confirmDelete = false
             DeleteTrigger.MIDDLE_CLICK -> state.confirmMiddleClickDelete = false
         }
+    }
+
+    /** LIFE-3a: the remembered answer of the linked-instances delete dialog, or null to ask. */
+    val linkedDeleteChoice: LinkedDeleteAnswer?
+        get() = when (state.linkedDeleteChoice) {
+            LinkedDeleteAnswer.MOVE.name -> LinkedDeleteAnswer.MOVE
+            LinkedDeleteAnswer.CLOSE.name -> LinkedDeleteAnswer.CLOSE
+            else -> null
+        }
+
+    /** LIFE-3a "Don't ask again": remembers [answer] ([LinkedDeleteAnswer.MOVE] or [LinkedDeleteAnswer.CLOSE]). */
+    fun rememberLinkedDelete(answer: LinkedDeleteAnswer) {
+        if (answer == LinkedDeleteAnswer.MOVE || answer == LinkedDeleteAnswer.CLOSE) state.linkedDeleteChoice = answer.name
     }
 
     companion object {

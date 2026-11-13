@@ -30,7 +30,7 @@ internal class DraggedGroupSize(val horizontal: Boolean, val length: Int, val na
  * Opening the gap can add a row to a wrapped strip, so that strip's rectangle grows and shrinks because of the drag. Like the own
  * strip, "is the pointer still over it" is judged against the widest that strip has been while the gap was open ([claims]).
  *
- * Wraps [TabBarAdapter.setForeignGap] / `foreignGapRect` of the other split. EDT only.
+ * Wraps [StripDragSurface.setForeignGap] / `foreignGapRect` of the other split. EDT only.
  */
 internal class ForeignGapSession {
     /** The strip's units as laid out with the gap open, and the boundary (unit index) the gap is at. */
@@ -63,7 +63,7 @@ internal class ForeignGapSession {
             units = open(other, units, room)
         }
         repeat(SETTLE_STEPS) {
-            val gap = other.adapter.foreignGapRect() ?: return@repeat
+            val gap = other.adapter.drag.foreignGapRect() ?: return@repeat
             val cells = units.mapIndexed { i, u -> TabCell(i, u.groupId, u.pinned, Rectangle(u.bounds)) as StripCell<Int> }
             val slot = DropSlots.select(
                 cells, gap, boundary, p, other.horizontal, low.coerceAtMost(cells.size), cells.size,
@@ -78,7 +78,7 @@ internal class ForeignGapSession {
 
     /** Closes the gap, if one is open. */
     fun close() {
-        host?.adapter?.setForeignGap(null, 0, false)
+        host?.adapter?.drag?.setForeignGap(null, 0, false)
         host = null
         reach = null
         boundary = -1
@@ -92,7 +92,7 @@ internal class ForeignGapSession {
             at.collapsed -> ForeignAnchor.BeforeCollapsedGroup(at.groupId ?: return units)
             else -> ForeignAnchor.BeforeTab(at.keys.firstOrNull() ?: return units)
         }
-        other.adapter.setForeignGap(anchor, room, false)
+        other.adapter.drag.setForeignGap(anchor, room, false)
         other.validateNow()
         other.stripScreenRect()?.let { reach = reach?.union(it) ?: Rectangle(it) }
         return other.buildUnits()

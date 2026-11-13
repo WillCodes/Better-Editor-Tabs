@@ -38,4 +38,9 @@ data class MoveUnit<T>(
     val pill: Rectangle? = null,
     /** A collapsed group (only its pill is on screen). */
     val collapsed: Boolean = false,
+    /**
+     * What the unit covers on screen, one rectangle per row it is on (a group that wraps over rows in multi-row mode); [bounds] is
+     * their union, which also covers other tabs of those rows. An outline of the unit draws these.
+     */
+    val runs: List<Rectangle> = listOf(bounds),
 )

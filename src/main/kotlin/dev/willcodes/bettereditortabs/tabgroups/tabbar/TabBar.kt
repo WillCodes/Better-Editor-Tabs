@@ -13,11 +13,14 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.ThreadingAssertions
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.TabBarDnd
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
+import dev.willcodes.bettereditortabs.tabgroups.model.splits.SplitRecency
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.moveGroupToSplit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripUnit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter
 import java.util.concurrent.ConcurrentHashMap
+import javax.swing.SwingUtilities
 
 /**
  * The tab bar facade: the one object the rest of the plugin uses to put groups into the editor tab bars and to hear about gestures.
@@ -33,13 +36,16 @@ import java.util.concurrent.ConcurrentHashMap
  *     TabBar           this facade (project service)          TabBarHost    the contract the service layer implements
  *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
  *     strip/           one adapter per split: collapse (hidden tabs) and its animation, pills hosted in tab labels, tint, drop slot,
- *                      empty state
+ *                      empty state; StripDragSurface (`adapter.drag`): drag preview, gaps, transit,
+ *                      the platform's drag state
  *     drag/            tab drag: TabDragController (the gesture, hand-over to and back from the platform's drag-out), CrossSplitTabDrag
  *                      (which strip, of any split, the pointer is over: TabDragTargets; the live work there), TabDragSession (one tab
  *                      on one strip: own gap and live re-order, or a foreign gap in another split's strip), TabDropPlanner (where it
  *                      lands), TabMove (moving the file to another split on a drop, DRAG-5); group drag: HeaderDragHelper (gesture),
  *                      GroupDrag (the group is its pill while dragged, comes back expanded with the animation), ForeignGapSession,
- *                      GroupMove; DragAutoScroll (edge auto-scroll and the wheel during a drag); GroupChipImage (the group's picture)
+ *                      GroupMove, and its targets that make the split first: GroupSplitMove (a new split at the edge of an editor area, a new
+ *                      window outside every editor; EditorAreaTargets: the platform's drop side and drop-area highlight); DragAutoScroll
+ *                      (edge auto-scroll and the wheel during a drag); GroupChipImage (the group's picture)
  *     strip/TabTransit a tab whose drag is over another split is out of its source strip, as in the platform's drag-out
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
  *                      new-tab placement (MEM-2), closing on behalf of group operations
@@ -68,6 +74,14 @@ import java.util.concurrent.ConcurrentHashMap
  * setup. The host answers [TabBarHost.groupsIn] with the groups of a split whenever it calls [refresh], and receives header gestures,
  * drag results, COLL-4 and MEM-1 events. With [host] null the plugin is completely inert: no component is added to any tab bar, no
  * drag is taken over, and the built-in actions behave exactly like the platform's.
+ *
+ * # Splits (SPLIT-2, LIFE-3a)
+ *
+ * Every split's MEM-2 placement ([TabBarHost.tabsOpened]) reports the files that are new in it, before it applies MEM-2 itself, so the
+ * host can make a file that is grouped in another split join that group here; a split that appears after the host attached reports
+ * the files it starts with, and the files our own drag code opens in a target split are acknowledged, not reported. [recentSplits]
+ * orders the splits by focus (the host picks the winning group and the target of a group deletion with it); [moveGroup] moves a
+ * whole group instance to another split like a drop would.
  *
  * # Persistence (PERS-1, PERS-3)
  *
@@ -104,6 +118,12 @@ import java.util.concurrent.ConcurrentHashMap
 class TabBar(private val project: Project) : Disposable {
     private val bars = ConcurrentHashMap<EditorWindow, SplitBar>()
 
+    /** Splits in the order they were last seen as the current window, most recent first (see [recentSplits]); dead ones are pruned on the way. */
+    private var focusHistory: List<EditorWindow> = emptyList()
+
+    /** True while [host]'s setter creates the bars of the splits that exist already (they must not report their files as opened). */
+    private var attaching = false
+
     /**
      * The host the tab bar reports to and pulls groups from; null = the plugin is inert. Setting it attaches (every current split gets
      * its adapter, drag layer and placement, and [TabBarHost.splitAppeared] is called for each) or detaches (all of that is
@@ -116,7 +136,15 @@ class TabBar(private val project: Project) : Disposable {
             if (field === value) return
             if (field != null) detach()
             field = value
-            if (value != null) sync()
+            if (value != null) {
+                attaching = true
+                try {
+                    sync()
+                }
+                finally {
+                    attaching = false
+                }
+            }
         }
 
     /**
@@ -219,6 +247,27 @@ class TabBar(private val project: Project) : Disposable {
     /** Every editor split of the project (main area and detached windows). */
     fun splits(): List<SplitHandle> = FileEditorManagerEx.getInstanceEx(project).windows.map { SplitHandle(it) }
 
+    /**
+     * Every live split (main area and detached windows), the most recently focused first (SPLIT-2: the group of the most recently
+     * focused split wins; LIFE-3a: where a deleted group's tabs go). Splits that were never seen focused follow in their stable
+     * [splits] order. The platform has no public "focus history of windows" (its `currentWindowFlow` is internal), so it is tracked
+     * here: the current window (`FileEditorManagerEx.currentWindow`, the active container's current window) is noted on every
+     * selection change, file open and close ([sync], which [TabBarEditorListener] calls; the platform fires a selection change when
+     * the user moves to another split, because every split has its own editor) and again right here. Tracking starts when the host
+     * attaches. EDT only.
+     */
+    fun recentSplits(): List<SplitHandle> {
+        noteCurrentWindow()
+        val live = splits().map { it.window }.filter { !it.isDisposed }
+        return SplitRecency.order(live, focusHistory).map { SplitHandle(it) }
+    }
+
+    private fun noteCurrentWindow() {
+        val current = FileEditorManagerEx.getInstanceEx(project).currentWindow ?: return
+        if (current.isDisposed) return
+        focusHistory = SplitRecency.touch(focusHistory.filter { !it.isDisposed }, current)
+    }
+
     /** The split an action was invoked in: the tab bar the event comes from, else the current split. */
     fun splitFor(e: AnActionEvent): SplitHandle? {
         val window = e.getData(EditorWindow.DATA_KEY) ?: FileEditorManagerEx.getInstanceEx(project).currentWindow
@@ -304,6 +353,24 @@ class TabBar(private val project: Project) : Disposable {
     /** Closes [files] in [split] the normal way: each one is added to Reopen Closed Tab history. */
     fun closeTabs(split: SplitHandle, files: List<VirtualFile>) = TabClose.closeTabs(split.window, files)
 
+    /**
+     * Moves the whole instance of group [groupId] from [from] to [to] the way a group drop on the other split's strip does (SPLIT-5,
+     * INT-6): the tabs move (no Reopen Closed Tab history), merged into [to]'s instance of the same group, appended at its end (a new
+     * instance at the end of the strip if it has none), and the target keeps its collapsed flag. Nothing is selected or focused in
+     * [to]. The host hears about it as for a drop: [TabBarHost.groupsChangedByDrag] for [from] (which loses the group; a split left
+     * without tabs closes) and [TabBarHost.groupMovedIn] for [to]; both splits are refreshed afterwards. Returns false if nothing
+     * moved (no host, unknown split or group). Used by LIFE-3a's "Move". EDT only.
+     */
+    fun moveGroup(from: SplitHandle, groupId: String, to: SplitHandle): Boolean {
+        if (host == null || from == to) return false
+        val source = barFor(from) ?: return false
+        val target = barFor(to) ?: return false
+        val unit = source.dnd.buildUnits().firstOrNull { it.groupId == groupId && it.keys.isNotEmpty() } ?: return false
+        val targetUnits = target.dnd.buildUnits()
+        source.dnd.moveGroupToSplit(unit, target.dnd, targetUnits, targetUnits.size, selectedBefore = null, focus = false)
+        return true
+    }
+
     // ---- internal ---------------------------------------------------------------------------------------------------------
 
     /** The strip adapter of [split] (null without a host or for an unknown split). Tests and the sub-packages only. */
@@ -319,13 +386,19 @@ class TabBar(private val project: Project) : Disposable {
      */
     internal fun sync() {
         val h = host ?: return
+        noteCurrentWindow()
         bars.values.forEach { it.adapter.repinHidden() }
         val current = FileEditorManagerEx.getInstanceEx(project).windows.toSet()
         for ((w, bar) in bars.entries.toList()) {
             if (w !in current || w.isDisposed) {
                 bars.remove(w)
                 Disposer.dispose(bar)
-                h.splitDisposed(SplitHandle(w))
+                // An unsplit adds the tabs of the merged-away split to the surviving one in the same event, and that split's report of them
+                // (SPLIT-2) is queued: the host must still know the disposed split's groups when it gets it, so it hears of the disposal after.
+                if (bars.values.any { it.hasPendingReport }) {
+                    SwingUtilities.invokeLater { if (host === h) h.splitDisposed(SplitHandle(w)) }
+                }
+                else h.splitDisposed(SplitHandle(w))
             }
         }
         for (w in current) if (!w.isDisposed) ensureBar(w)
@@ -368,7 +441,7 @@ class TabBar(private val project: Project) : Disposable {
     /** The bar of [window], created (and announced to the host) if the split is new. */
     private fun ensureBar(window: EditorWindow): SplitBar {
         bars[window]?.let { return it }
-        val bar = SplitBar(SplitHandle(window), this, this)
+        val bar = SplitBar(SplitHandle(window), this, this, reportInitial = !attaching)
         bars[window] = bar
         host?.splitAppeared(bar.split)
         return bar

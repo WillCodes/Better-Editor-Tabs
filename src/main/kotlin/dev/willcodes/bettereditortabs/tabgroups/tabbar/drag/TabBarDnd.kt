@@ -51,6 +51,13 @@ internal class TabBarDnd(
     val reorder = LiveReorder(this)
     val controller = TabDragController(this)
     val observer = DragObserver(controller)
+
+    /**
+     * Set by `SplitBar`: tells this split's MEM-2 placement that the tabs it has now are not "newly opened" ([runMove] calls it on the
+     * target after a move: the files our own drag code opened there already got their membership from the drop, so SPLIT-2 must not
+     * see them as files opened by the user).
+     */
+    var acknowledgeOpened: () -> Unit = {}
     private var attached = false
     private var disposed = false
 
@@ -120,7 +127,7 @@ internal class TabBarDnd(
         tabs.lastLayoutPass?.headerRectangle?.let { rects += Rectangle(it) }
         for (u in adapter.stripUnits()) rects += u.rect
         // the gap that an arriving item opens in the row after a separate pinned row (nothing but pinned tabs) is part of the strip too
-        adapter.foreignGapRect()?.let { rects += it }
+        adapter.drag.foreignGapRect()?.let { rects += it }
         val band = StripDragGeometry.crossBand(rects, horizontal) ?: return null
         val tolerance = JBUI.scale(8)
         val across = band.last - band.first + 1
@@ -148,7 +155,7 @@ internal class TabBarDnd(
     }
 
     /** True while a tab drag of ours is running or the platform is dragging a tab of this strip. */
-    val isTabDragActive: Boolean get() = controller.isActive || adapter.isPlatformTabDragActive()
+    val isTabDragActive: Boolean get() = controller.isActive || adapter.drag.isPlatformTabDragActive()
 
     /**
      * The drop units of this split in display order (one per ungrouped tab, one per group instance; a collapsed group is its pill
@@ -171,8 +178,8 @@ internal class TabBarDnd(
                     // a collapsed group's members are hidden tabs: they come from the model
                     val keys = if (u.collapsed) group?.members.orEmpty() else shown.map { it.file }
                     val rects = (listOf(u.rect) + shown.map { it.rect }).filter { !it.isEmpty }
-                    val lead = GapRuns.merge(rects, horizontal).firstOrNull() ?: rect
-                    units += MoveUnit(u.groupId, keys, rect, false, lead, Rectangle(u.rect), u.collapsed)
+                    val runs = GapRuns.merge(rects, horizontal).ifEmpty { listOf(rect) }
+                    units += MoveUnit(u.groupId, keys, rect, false, runs.first(), Rectangle(u.rect), u.collapsed, runs)
                 }
             }
         }

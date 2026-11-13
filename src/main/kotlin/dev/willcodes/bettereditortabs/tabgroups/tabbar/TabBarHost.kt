@@ -93,6 +93,17 @@ interface TabBarHost {
      */
     fun tabPinned(split: SplitHandle, file: VirtualFile) {}
 
+    /**
+     * SPLIT-2: [files] have just got a tab in [split] (opened there by the user or by the platform: Split Right, Open in Split, a copy,
+     * a file merged by an unsplit), and [split] is not showing them as group members. The host may make them members of a group; it
+     * must then call [TabBar.refresh] for [split] itself. The tab bar applies MEM-2 (a new tab never lands inside a group) afterwards,
+     * only to the files that are still not members, reading the groups again. Not reported: the tabs of the splits that exist when the
+     * host attaches, tabs that arrive while a drag runs, and the files our own drag and group-move code opens in a target split (they
+     * already got their membership from the drop). A split that appears later reports the files it starts with, in the first call
+     * after the split is announced with [splitAppeared].
+     */
+    fun tabsOpened(split: SplitHandle, files: List<VirtualFile>) {}
+
     /** A split appeared (also called once for every existing split when the host is attached). */
     fun splitAppeared(split: SplitHandle) {}
 

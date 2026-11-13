@@ -71,7 +71,7 @@ internal class PillLayout(
     var assignments: List<PillAssignment> = emptyList()
         private set
 
-    /** The space for a group dragged in from another split (see [ForeignGap]); set by [TabBarAdapter.setForeignGap]. */
+    /** The space for a group dragged in from another split (see [ForeignGap]); set by [StripDragSurface.setForeignGap]. */
     var foreign: ForeignGap? = null
 
     /** [foreign] resolved against the hosting of the last [update]. */

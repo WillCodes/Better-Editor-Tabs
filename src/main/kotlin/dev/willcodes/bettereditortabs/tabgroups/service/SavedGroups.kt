@@ -7,6 +7,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredGroups
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.rewriteUrls
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.withPending
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitIdentity
@@ -20,7 +21,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitIdentity
  * Lifecycle:
  * - until the startup restore has run ([restored]) the bean is the loaded state itself, unchanged, so an early save loses nothing,
  *   and file renames re-address it ([filesMoved]);
- * - after it, every [capture] reflects the live state;
+ * - after it, every [capture] reflects the live state, plus the stored splits that are still [pending] (PERS-3: no live split has
+ *   claimed them yet, a detached window may still be restoring), so a save during that time loses nothing;
  * - [freeze] (project closing): the platform then closes every tab, which would empty the groups (MEM-1), so later captures are ignored.
  */
 internal class SavedGroups(private val project: Project, private val state: GroupsState<SplitHandle, VirtualFile>) {
@@ -35,11 +37,22 @@ internal class SavedGroups(private val project: Project, private val state: Grou
     private var frozen = false
     private var captureQueued = false
 
+    /** Stored splits (and their group identities) that no live split has claimed yet; empty once restored for good or expired. */
+    var pending: StoredGroups = StoredGroups.EMPTY
+        private set
+
+    /** Sets what stays pending after a restore pass (or an empty state to end the waiting time) and captures. */
+    fun setPending(value: StoredGroups) {
+        pending = value
+        capture()
+    }
+
     /** The stored state as loaded by the platform; a later restore applies it. */
     fun loaded(loaded: GroupsStateBean) {
         bean = loaded
         restored = false
         frozen = false
+        pending = StoredGroups.EMPTY
     }
 
     /** The loaded state in model form, for the restore planner. */
@@ -55,7 +68,8 @@ internal class SavedGroups(private val project: Project, private val state: Grou
         if (!restored || frozen || project.isDisposed) return
         try {
             val tabBar = project.getService(TabBar::class.java)
-            bean = GroupsPersistence.toBean(GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder))
+            val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder)
+            bean = GroupsPersistence.toBean(live.withPending(pending))
         }
         catch (e: Exception) {
             LOG.warn("Could not capture the tab groups for saving; keeping the last snapshot", e)
@@ -84,6 +98,9 @@ internal class SavedGroups(private val project: Project, private val state: Grou
             var stored = stored()
             for ((oldUrl, newUrl) in moves) stored = stored.rewriteUrls(oldUrl, newUrl)
             bean = GroupsPersistence.toBean(stored)
+        }
+        else {
+            for ((oldUrl, newUrl) in moves) pending = pending.rewriteUrls(oldUrl, newUrl)
         }
         capture()
     }

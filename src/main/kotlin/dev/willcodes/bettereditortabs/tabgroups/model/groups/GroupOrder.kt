@@ -28,3 +28,16 @@ object GroupOrder {
         return rest
     }
 }
+
+/**
+ * The order in which the instances of a split must be listed so that they agree with the strip: by the position of each instance's
+ * first member in [order] (the split's tab order with hidden tabs at their header's place). Instances with no member in [order] keep
+ * their relative order after the others. [instances] are (group id, members) pairs in their current list order.
+ */
+fun <T> instanceStripOrder(instances: List<Pair<String, List<T>>>, order: List<T>): List<String> {
+    val position = HashMap<T, Int>()
+    order.forEachIndexed { i, f -> position.putIfAbsent(f, i) }
+    return instances.withIndex()
+        .sortedWith(compareBy({ iv -> iv.value.second.minOfOrNull { position[it] ?: Int.MAX_VALUE } ?: Int.MAX_VALUE }, { it.index }))
+        .map { it.value.first }
+}

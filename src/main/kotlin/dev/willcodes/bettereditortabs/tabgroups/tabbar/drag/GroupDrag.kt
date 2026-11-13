@@ -5,6 +5,9 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.ui.JBUI
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.DropRules
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.DropSlots
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorSide
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.GroupDropRules
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.GroupLanding
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.HeaderDragGeometry
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripCell
@@ -39,9 +42,19 @@ private val LOG = logger<GroupDrag>()
  * - this split's strip: the slot above, never inside a group; dropping commits the order;
  * - another split's strip: a pill-sized gap opens there and follows the pointer ([ForeignGapSession]), or, if that split already has an
  *   instance of the group, that instance is outlined (the drop merges);
- * - anywhere else: no target.
+ * - the edge of an editor area, of any split (also this one) or window: the platform's drop-area highlight shows the half that becomes
+ *   a new split, and the drop makes it with the group in it ([moveGroupToNewSplit]); the middle of another split's area: the group
+ *   moves into that split ([moveGroupToSplit], appended, merged if it has the group); the middle of this split's own area: no target;
+ * - outside every editor area (and strip), also outside the IDE window: no highlight, the drop makes a detached editor window around the
+ *   pointer ([moveGroupToNewWindow]);
+ * - the divider between splits: no target.
+ * With Ctrl held at the release (the platform's copy modifier for a tab) every target outside this split's strip gets a copy: the
+ * files open there as a linked instance of the group (SPLIT-2) and the group stays in this split as it was.
+ * After a move or copy the split that received the group is the current one ([focusArrival]).
+ * The choice is pure ([GroupDropRules]: strip > edge > centre > new window); the platform's own geometry decides the side
+ * ([dropSideAt], `TabsUtil.getDropSideFor`) and the highlight ([dropAreaScreen]).
  *
- * **While the pointer is not over (or beside) this split's strip, the group is out of this strip** ([TabBarAdapter.setGroupTransit], as a
+ * **While the pointer is not over (or beside) this split's strip, the group is out of this strip** ([StripDragSurface.setGroupTransit], as a
  * dragged tab is while its drag is over another split, [TabTransit]): no pill, no reserved space, no placeholder, the neighbours close up,
  * and over this strip again the pill-sized placeholder comes back where the pointer is. A drop, Esc or a lost drag ends it before the group
  * comes back (expanded, animated) or moves; the model is untouched until the drop.
@@ -50,13 +63,40 @@ private val LOG = logger<GroupDrag>()
  * Wraps [TabBarDnd] and its adapter ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter.setGroups], `setDragGap`). EDT only.
  */
 internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) {
-    private class Target(val dnd: TabBarDnd, val units: List<MoveUnit<VirtualFile>>, val boundary: Int, val merge: Boolean)
+    /** What a release would do now. */
+    private sealed class Target {
+        /** The split whose frame the pointer is over (draws the picture), null where there is none. */
+        abstract val over: TabBarDnd?
+
+        /** A tab strip: this split's own (the live order) or another split's (gap or merge outline). */
+        class Strip(val dnd: TabBarDnd, val units: List<MoveUnit<VirtualFile>>, val boundary: Int, val merge: Boolean) : Target() {
+            override val over: TabBarDnd get() = dnd
+        }
+
+        /** The edge [side] of the editor area of [dnd]: a new split. */
+        class SplitEdge(val dnd: TabBarDnd, val side: EditorSide) : Target() {
+            override val over: TabBarDnd get() = dnd
+        }
+
+        /** The middle of another split's editor area: the group joins that split. */
+        class IntoSplit(val dnd: TabBarDnd) : Target() {
+            override val over: TabBarDnd get() = dnd
+        }
+
+        /** Outside every editor area: a detached window. */
+        object NewWindow : Target() {
+            override val over: TabBarDnd? get() = null
+        }
+    }
 
     /** The units as they were when the drag began (the live strip is re-ordered while the group is dragged inside this split). */
     private var startUnits: List<MoveUnit<VirtualFile>> = emptyList()
     private var from = -1
     private var minBoundary = 0
     private var target: Target? = null
+
+    /** Where the pointer was last (the release point: a new window is centred on it). */
+    private var lastPointer = Point()
     private val feedback = GroupDragFeedback(dnd)
 
     /** Scrolls the strip under the pointer near its ends, and by the mouse wheel. */
@@ -125,6 +165,8 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         selectedBefore = dnd.adapter.selectedFile()
         dragGroups = origGroups.map { if (it.id == group) it.copy(collapsed = true) else it }
         if (wasExpanded) {
+            // only the pill and the tabs leave the strip; the editor keeps showing even if the group was all of the split
+            dnd.adapter.keepEditorDuringDrag(true)
             dnd.adapter.setGroups(dragGroups)
             dnd.validateNow()
         }
@@ -153,34 +195,42 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** The pointer is at [screen]: the target follows, the strip under it may scroll, and the picture goes to it (centred, like the platform's). */
     fun move(screen: Point) {
         if (from < 0) return
+        lastPointer = Point(screen)
         follow(screen)
         val picture = feedback.size
-        feedback.moveGhost(Point(screen.x - picture.width / 2, screen.y - picture.height / 2), target?.dnd)
+        feedback.moveGhost(Point(screen.x - picture.width / 2, screen.y - picture.height / 2), target?.over)
     }
 
     /** The pointer is at [screen] (it moved, or the strip under it scrolled): the target follows, and the strip under it may scroll. */
     private fun follow(screen: Point) {
         updateTarget(screen)
-        autoScroll.update(target?.dnd, screen)
+        autoScroll.update((target as? Target.Strip)?.dnd, screen)
     }
 
     /** The release: the group is dropped where the live strip shows it, in another split's strip, or nowhere (it goes back). */
-    fun finish() {
+    fun finish(copy: Boolean = false) {
         autoScroll.stop()
         val t = target
         val unitsAtStart = startUnits
         val index = from
         val flat = shownFlat
         val unchanged = flat == origFlat
-        val ownTarget = t != null && t.dnd === dnd
-        // A move to another split: both strips are frozen as they look now (drop gap open) before anything below changes them.
+        val ownTarget = t is Target.Strip && t.dnd === dnd
+        // A move to another split: both strips are frozen as they look now (drop gap open) before anything below changes them. A move
+        // to a split that does not exist yet has only this strip to freeze.
         val moving = t != null && !ownTarget && index >= 0
-        val freezes = if (moving) dnd.freezeStrips(t!!.dnd) else emptyList()
+        val freezes = when {
+            !moving -> emptyList()
+            t is Target.Strip -> dnd.freezeStrips(t.dnd)
+            t is Target.IntoSplit -> dnd.freezeStrips(t.dnd)
+            else -> dnd.freezeOwn()
+        }
         // the strip shows the result already for a drop in this split; for anything else it goes back first
         if (!ownTarget) restoreOwn()
         val groups = origGroups
         val selected = selectedBefore
         val expand = expanding
+        val release = Point(lastPointer)
         cleanup()
         if (t == null || index < 0) {
             backExpanded()
@@ -188,18 +238,49 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
             return
         }
         try {
-            if (t.dnd === dnd) {
-                if (unchanged) backExpanded() else dnd.commitGroupOrder(groups, flat, expand)
-                dnd.adapter.reselect(selected)
-            }
-            else {
-                dnd.moveGroupToSplit(unitsAtStart[index], t.dnd, t.units, t.boundary, freezes, selected, expand)
+            val unit = unitsAtStart[index]
+            when (t) {
+                is Target.Strip -> if (t.dnd === dnd) {
+                    if (unchanged) backExpanded() else dnd.commitGroupOrder(groups, flat, expand)
+                    dnd.adapter.reselect(selected)
+                }
+                else {
+                    dnd.moveGroupToSplit(unit, t.dnd, t.units, t.boundary, freezes, selected, expand, copy)
+                    if (copy) backInSource()
+                }
+                is Target.IntoSplit -> {
+                    // INT-6: the middle of another split's area is a drop on the split, not at a slot: merged, or appended at the end
+                    val units = t.dnd.buildUnits()
+                    dnd.moveGroupToSplit(unit, t.dnd, units, units.size, freezes, selected, expand, copy)
+                    if (copy) backInSource()
+                }
+                is Target.SplitEdge ->
+                    if (!dnd.moveGroupToNewSplit(unit, t.dnd, t.side, freezes, selected, expand, copy)) notMoved(freezes)
+                    else if (copy) backInSource()
+                Target.NewWindow ->
+                    if (!dnd.moveGroupToNewWindow(unit, release, freezes, selected, expand, copy)) notMoved(freezes)
+                    else if (copy) backInSource()
             }
         }
         catch (e: Exception) {
             LOG.error("Moving group $group failed", e)
             releaseLater(freezes)
         }
+    }
+
+    /**
+     * A copy (Ctrl held at the release, the platform's copy modifier for a tab): the target got a linked instance of the group
+     * (SPLIT-2), and the group comes back in this split as it was, expanded again if it was, without taking the focus from the target.
+     */
+    private fun backInSource() {
+        if (wasExpanded) dnd.adapter.expandDropped(origGroups, group)
+        dnd.adapter.reselect(selectedBefore) // without focus: the target stays the current split
+    }
+
+    /** The group could not be moved (no split or window was made): it stays where it was, expanded again. */
+    private fun notMoved(freezes: List<StripFreeze>) {
+        backExpanded()
+        releaseLater(freezes)
     }
 
     /** Esc (or the drag was lost): everything goes back, the group expanded again. */
@@ -218,6 +299,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
 
     /** The collapse of [begin] is taken back at once (the drag could not start). */
     private fun undoCollapse() {
+        dnd.adapter.keepEditorDuringDrag(false)
         if (wasExpanded) dnd.adapter.setGroups(origGroups)
         dnd.adapter.reselect(selectedBefore)
     }
@@ -226,7 +308,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     private fun showOwnGap(on: Boolean) {
         if (on == gapShown) return
         gapShown = on
-        if (on) dnd.adapter.setDragGap(emptyList(), listOf(group)) else dnd.adapter.setDragGap(emptyList(), emptyList())
+        if (on) dnd.adapter.drag.setDragGap(emptyList(), listOf(group)) else dnd.adapter.drag.setDragGap(emptyList(), emptyList())
     }
 
     private fun updateTarget(screen: Point) {
@@ -245,7 +327,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                 setTransit(false)
                 showOwnGap(true)
                 val live = settleOwn(dnd.toTabs(screen))
-                Target(dnd, live, shownBoundary(live), merge = false)
+                Target.Strip(dnd, live, shownBoundary(live), merge = false)
             }
             else -> {
                 // the group leaves this strip: it goes back to where it was while the pointer is elsewhere
@@ -253,7 +335,8 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                 setTransit(true)
                 if (foreign.isElsewhere(other)) foreign.close()
                 val groupSize = size
-                if (other == null || groupSize == null) null
+                if (other == null) editorTarget(screen)
+                else if (groupSize == null) null
                 else {
                     val otherUnits = other.buildUnits()
                     if (otherUnits.any { it.groupId == group }) {
@@ -261,14 +344,42 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                         foreign.close()
                         val p = other.toTabs(screen)
                         val b = DropRules.nearestBoundary(otherUnits.map { it.bounds }, other.horizontal, p, DropRules.leadingPinned(otherUnits))
-                        Target(other, otherUnits, b, true)
+                        Target.Strip(other, otherUnits, b, true)
                     }
-                    else foreign.settle(other, screen, groupSize).let { Target(other, it.units, it.boundary, false) }
+                    else foreign.settle(other, screen, groupSize).let { Target.Strip(other, it.units, it.boundary, false) }
                 }
             }
         }
         target = resolved
-        feedback.showMarker(resolved?.dnd, resolved?.units.orEmpty(), resolved?.merge ?: false, group)
+        val strip = resolved as? Target.Strip
+        feedback.showMarker(strip?.dnd, strip?.units.orEmpty(), strip?.merge ?: false, group)
+        showDropArea(resolved)
+    }
+
+    /**
+     * The pointer is over no strip: the edge or the middle of an editor area, the divider between splits, or outside every editor
+     * (INT-6). The decision is [GroupDropRules.resolve].
+     */
+    private fun editorTarget(screen: Point): Target? {
+        val hit = dnd.editorAreaAt(screen)
+        val landing = GroupDropRules.resolve(
+            overStrip = false, side = hit?.side, ownSplit = hit?.dnd === dnd, overEditorRegion = hit == null && dnd.overEditorRegion(screen),
+        )
+        return when (landing) {
+            GroupLanding.SPLIT_EDGE -> Target.SplitEdge(hit!!.dnd, hit.side)
+            GroupLanding.INTO_SPLIT -> Target.IntoSplit(hit!!.dnd)
+            GroupLanding.NEW_WINDOW -> Target.NewWindow
+            GroupLanding.STRIP, GroupLanding.NONE -> null
+        }
+    }
+
+    /** The platform's drop-area highlight for [t] (the half that becomes a split, the whole area for a move into a split); nothing for the other targets. */
+    private fun showDropArea(t: Target?) {
+        when (t) {
+            is Target.SplitEdge -> feedback.showDropArea(t.dnd, t.dnd.dropAreaScreen(t.side))
+            is Target.IntoSplit -> feedback.showDropArea(t.dnd, t.dnd.dropAreaScreen(EditorSide.CENTER))
+            else -> feedback.showDropArea(null, null)
+        }
     }
 
     /**
@@ -304,7 +415,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     private fun setTransit(out: Boolean) {
         if (out == inTransit) return
         inTransit = out
-        dnd.adapter.setGroupTransit(if (out) group else null)
+        dnd.adapter.drag.setGroupTransit(if (out) group else null)
         if (!out) dnd.validateNow()
     }
 
@@ -318,6 +429,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     }
 
     private fun cleanup() {
+        dnd.adapter.keepEditorDuringDrag(false)
         autoScroll.release()
         foreign.close()
         setTransit(false)

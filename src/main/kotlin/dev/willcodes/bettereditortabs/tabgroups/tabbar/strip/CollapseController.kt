@@ -25,6 +25,12 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  * EDT only.
  */
 internal class CollapseController(private val tabs: JBEditorTabs, private val window: EditorWindow) {
+    /**
+     * True while a group drag shows its group collapsed (INT-6): hiding every tab of the split then keeps the editor showing, as the
+     * platform's drag-out keeps it while the tab is hidden; only a real collapse empties the editor area (COLL-2).
+     */
+    var keepEditor = false
+
     /** Files hidden by us, in left-to-right order at the time they were hidden. */
     private val hidden = LinkedHashSet<VirtualFile>()
     private val hiddenGroupOf = HashMap<VirtualFile, String>()
@@ -180,7 +186,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         for (f in ordered.asReversed()) {
             infoOf(f)?.isHidden = true
         }
-        if (tabs.isEmptyVisible) {
+        if (tabs.isEmptyVisible && !keepEditor) {
             // Every tab is hidden. The platform keeps the previously selected editor component attached to the tab bar
             // (updateContainer only looks at visible tabs), so detach it to get an empty content area.
             for (f in ordered) infoOf(f)?.component?.let { c -> if (c.parent === tabs) tabs.remove(c) }

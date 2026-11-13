@@ -30,15 +30,24 @@ private val LOG = logger<TabPlacement>()
  * Group membership comes from [groups] (the groups last applied to the split). Wraps `JBTabsImpl` (internal API, tab labels and the
  * tab list) and [TabBarAdapter.applyOrder]. [isDragActive] tells that a drag is running (then nothing is placed: re-orders by the
  * drag are not new tabs).
+ *
+ * SPLIT-2: the files that are new in this split are reported to [opened] first (the host may make them members of a group; it
+ * refreshes the split itself), then MEM-2 is applied to the ones that are still not members. [reportInitial]: the split appeared after
+ * the host attached (Split Right, Open in Split, a new window): the platform adds the first tab's label before the split's bar exists
+ * (`EditorWindow.split` adds the window, then `openFileInNewCompositeInEdt` inserts the tab; our bar is created from the `fileOpened`
+ * that follows), so the files it already has count as opened here. Splits that exist when the host attaches (a restart, the first
+ * group) do not report what they show. [acknowledge] marks the current tabs as known (our own moves, see `TabBarDnd.acknowledgeOpened`).
  */
 internal class TabPlacement(
     private val adapter: TabBarAdapter,
     private val groups: () -> List<GroupDecoration>,
     private val isDragActive: () -> Boolean,
+    private val opened: (List<VirtualFile>) -> Unit,
+    reportInitial: Boolean,
     parent: Disposable,
 ) {
     private val tabs = StripReader.tabsOf(adapter.window)
-    private var known: Set<VirtualFile> = files()
+    private var known: Set<VirtualFile> = if (reportInitial) emptySet() else files()
     private var scheduled = false
 
     private val containerListener = object : ContainerListener {
@@ -57,6 +66,15 @@ internal class TabPlacement(
             }
         }, parent)
         Disposer.register(parent) { tabs.removeContainerListener(containerListener) }
+        if (reportInitial && known != files()) schedule()
+    }
+
+    /** True while a check for new tabs is queued: the host has not heard of the tabs that came in during the current event yet. */
+    val hasPending: Boolean get() = scheduled
+
+    /** The tabs there are now are not newly opened ones: a move of ours put them here and the drop gave them their membership. */
+    fun acknowledge() {
+        known = files()
     }
 
     private fun files(): Set<VirtualFile> = tabs.tabs.mapNotNullTo(LinkedHashSet()) { it.`object` as? VirtualFile }
@@ -75,12 +93,15 @@ internal class TabPlacement(
         val added = now - known
         known = now
         if (added.isEmpty() || isDragActive()) return
-        val groups = groups()
+        opened(added.toList())
+        val groups = groups() // after the host: it may have grouped some of the new tabs
         if (groups.isEmpty()) return
+        val members = groups.flatMapTo(HashSet()) { it.members }
         val spans = groups.map { TabPlacementRules.Span<VirtualFile>(it.id, it.members.toSet(), it.collapsed) }
         var order = tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
         var changed = false
         for (file in added) {
+            if (file in members) continue
             val info = tabs.findInfo(file) ?: continue
             val corrected = TabPlacementRules.orderForNewTab(order, file, spans) { info.isPinned } ?: continue
             order = corrected

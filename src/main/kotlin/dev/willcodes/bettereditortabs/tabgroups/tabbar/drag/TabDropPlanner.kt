@@ -100,7 +100,7 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
         }
 
         /**
-         * Where the space for a tab dragged in from another split opens ([TabBarAdapter.setForeignGap]) for the slot [slot] of [cells]:
+         * Where the space for a tab dragged in from another split opens ([StripDragSurface.setForeignGap]) for the slot [slot] of [cells]:
          * in front of the cell that follows it. In front of an expanded group's pill that is in front of its first tab's pill space; between a
          * pill and the tab behind it, behind the pills (DRAG-2).
          */

@@ -31,7 +31,7 @@ private val LOG = logger<TabDragController>()
  * is a cell of its own with its own hit area, in this split's strip and in any other split's.
  *
  * What the user sees is what the platform shows for a tab drag in the New UI (the drag-out phase of `DragHelper`, i.e. the drop
- * session of `DockManagerImpl`): the dragged tab's place is an empty slot (`TabBarAdapter.setDragGap`, the look of
+ * session of `DockManagerImpl`): the dragged tab's place is an empty slot (`StripDragSurface.setDragGap`, the look of
  * `TabLabel.paint` for a drop target, `TabLabel.kt:321-339`) and one picture of the tab floats centred on the pointer
  * (`DockManagerImpl.kt:236-243`, 90 % opaque, [DragOverlay]); there is no second copy of the tab in the strip. The picture is
  * the platform's own tab picture, made again whenever the previewed membership changes, so it carries the live tint (DRAG-7); the slot
