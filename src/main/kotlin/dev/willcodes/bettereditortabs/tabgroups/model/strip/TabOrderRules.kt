@@ -24,6 +24,20 @@ object TabOrderRules {
         return order.subList(0, at) + members + order.subList(at, order.size)
     }
 
+    /**
+     * The order after a tab was pinned (or unpinned) with "keep pinned tabs on the left": the pinned tabs first, every other tab
+     * after them, each part in its order in [before] (the order just before the change). The platform's own grouping swaps a newly
+     * pinned tab with the first unpinned tab, which moves that tab behind a group and makes the group look shifted; this keeps every
+     * unpinned tab and group where it was. Tabs of [current] missing from [before] keep their place behind it; tabs of [before] that
+     * are gone are dropped.
+     */
+    fun <T> pinnedFirst(before: List<T>, current: List<T>, isPinned: (T) -> Boolean): List<T> {
+        val open = current.toHashSet()
+        val known = before.filter { it in open }
+        val order = known + current.filter { it !in known.toHashSet() }
+        return order.filter(isPinned) + order.filterNot(isPinned)
+    }
+
     /** The tab that precedes the first of [members] in [order], or null if the group is first. Used as the collapse anchor. */
     fun <T> anchorBefore(order: List<T>, members: Set<T>): T? {
         val first = order.indexOfFirst { it in members }

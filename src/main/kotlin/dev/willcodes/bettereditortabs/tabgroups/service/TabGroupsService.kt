@@ -381,6 +381,8 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
             if (state.instancesIn(split).isNotEmpty()) continue
             val byUrl = info.files.associateBy { it.url }
             tabBar.reorder(split, planned.order.mapNotNull { byUrl[it] })
+            // IDE-2: before the groups arrive, so a split the plugin sorts starts from the manual order it had, not the sorted one
+            if (planned.manualOrder.isNotEmpty()) tabBar.setManualOrder(split, planned.manualOrder.mapNotNull { byUrl[it] })
             for (inst in planned.instances) {
                 val group = groups[inst.groupId] ?: continue
                 val members = inst.members.mapNotNull { byUrl[it] }
@@ -418,10 +420,17 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
 
     // ---- TabBarHost ----------------------------------------------------------------------------------------------------------
 
-    override fun groupsIn(split: SplitHandle): List<GroupDecoration> = state.instancesIn(split).mapNotNull { inst ->
-        val group = state.group(inst.groupId) ?: return@mapNotNull null
-        GroupDecoration(group.id, group.name, colorOf(group), inst.members.toList(), inst.collapsed)
+    override fun groupsIn(split: SplitHandle): List<GroupDecoration> {
+        // IDE-2: unnamed groups sort in creation order, which is the order of the state's group list.
+        val creation = state.groups.withIndex().associate { (i, g) -> g.id to i }
+        return state.instancesIn(split).mapNotNull { inst ->
+            val group = state.group(inst.groupId) ?: return@mapNotNull null
+            GroupDecoration(group.id, group.name, colorOf(group), inst.members.toList(), inst.collapsed, creation[group.id] ?: Int.MAX_VALUE)
+        }
     }
+
+    /** COLL-6: a tab of a collapsed group picked in the overflow list: expand and select, like the hover list (INT-5). */
+    override fun collapsedTabChosen(split: SplitHandle, groupId: String, file: VirtualFile) = openFromTabList(split, groupId, file)
 
     /** DRAG-*: the tab bar refreshes the split itself afterwards. MEM-7: a preview tab dropped into a group becomes permanent. */
     override fun groupsChangedByDrag(split: SplitHandle, groups: List<GroupDecoration>) {

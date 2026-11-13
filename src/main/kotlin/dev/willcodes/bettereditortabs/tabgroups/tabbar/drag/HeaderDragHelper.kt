@@ -21,6 +21,10 @@ import javax.swing.JComponent
 internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) : MouseDragHelper<JBEditorTabs>(parent, dnd.tabs) {
     private var pressedGroup: String? = null
     private var drag: GroupDrag? = null
+    private var starting = false
+
+    /** A group drag is running or just starting (the strip is re-ordered by it: the alphabetical sort leaves it alone). */
+    val isDragging: Boolean get() = starting || drag != null
 
     init {
         Disposer.register(parent) {
@@ -40,7 +44,13 @@ internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) 
         if (isDragJustStarted) {
             val group = pressedGroup ?: return
             val started = GroupDrag(dnd, group)
-            if (!started.begin()) return
+            starting = true
+            try {
+                if (!started.begin()) return
+            }
+            finally {
+                starting = false
+            }
             drag = started
         }
         val running = drag ?: return
@@ -52,11 +62,13 @@ internal class HeaderDragHelper(private val dnd: TabBarDnd, parent: Disposable) 
         val finished = drag ?: return
         drag = null
         finished.finish(UIUtil.isControlKeyDown(event))
+        dnd.adapter.recheckSort()
     }
 
     override fun processDragCancel() {
         val cancelled = drag ?: return
         drag = null
         cancelled.cancel()
+        dnd.adapter.recheckSort()
     }
 }

@@ -19,9 +19,15 @@ data class StoredInstance(val groupId: String, val members: List<String>, val co
 /**
  * One split with group instances. [key] is the encoded [SplitKey]; [order] is the split's whole *logical* tab order (every open tab,
  * the hidden tabs of a collapsed group at its header's place), because the platform reopens hidden tabs at the end of the strip;
- * [instances] are in strip order.
+ * [instances] are in strip order. [manualOrder]: while the plugin sorts the split alphabetically (IDE-2), the manual order the strip
+ * goes back to when sorting is switched off, so it survives a restart; empty otherwise.
  */
-data class StoredSplit(val key: String, val order: List<String>, val instances: List<StoredInstance>) {
+data class StoredSplit(
+    val key: String,
+    val order: List<String>,
+    val instances: List<StoredInstance>,
+    val manualOrder: List<String> = emptyList(),
+) {
     fun splitKey(): SplitKey = SplitKey.decode(key) ?: SplitKey("?", "")
 }
 
@@ -49,7 +55,7 @@ fun StoredGroups.rewriteUrls(oldUrl: String, newUrl: String): StoredGroups {
     fun fix(urls: List<String>) = urls.map { rewriteUrl(it, oldUrl, newUrl) }
     return copy(
         splits = splits.map { s ->
-            s.copy(order = fix(s.order), instances = s.instances.map { it.copy(members = fix(it.members)) })
+            s.copy(order = fix(s.order), instances = s.instances.map { it.copy(members = fix(it.members)) }, manualOrder = fix(s.manualOrder))
         },
     )
 }

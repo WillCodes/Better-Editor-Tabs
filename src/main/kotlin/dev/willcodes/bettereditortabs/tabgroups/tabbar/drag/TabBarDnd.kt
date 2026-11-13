@@ -60,6 +60,7 @@ internal class TabBarDnd(
     var acknowledgeOpened: () -> Unit = {}
     private var attached = false
     private var disposed = false
+    private var headerDrag: HeaderDragHelper? = null
 
     init {
         Disposer.register(adapter, this)
@@ -89,7 +90,7 @@ internal class TabBarDnd(
         val pane = IdeGlassPaneUtil.find(tabs)
         pane.addMousePreprocessor(observer, disposable)
         pane.addMouseMotionPreprocessor(observer, disposable)
-        HeaderDragHelper(this, disposable).start()
+        headerDrag = HeaderDragHelper(this, disposable).also { it.start() }
     }
 
     override fun dispose() {
@@ -156,6 +157,9 @@ internal class TabBarDnd(
 
     /** True while a tab drag of ours is running or the platform is dragging a tab of this strip. */
     val isTabDragActive: Boolean get() = controller.isActive || adapter.drag.isPlatformTabDragActive()
+
+    /** [isTabDragActive], or a group drag of ours is running (IDE-2: the alphabetical sort never re-orders the strip then). */
+    val isDragActive: Boolean get() = isTabDragActive || headerDrag?.isDragging == true
 
     /**
      * The drop units of this split in display order (one per ungrouped tab, one per group instance; a collapsed group is its pill

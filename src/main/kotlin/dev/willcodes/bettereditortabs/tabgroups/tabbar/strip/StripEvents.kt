@@ -1,6 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
 import com.intellij.openapi.vfs.VirtualFile
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import java.awt.event.MouseEvent
 
 /**
@@ -20,4 +21,11 @@ internal interface StripEvents {
 
     /** A tab that is currently hidden by a collapsed group was selected (navigation, Ctrl+E, ...). COLL-4. */
     fun hiddenTabSelected(groupId: String, file: VirtualFile) {}
+
+    /**
+     * IDE-2: the strip re-sorted itself alphabetically; [groups] are the groups last set with their members (and their order) as the
+     * strip now shows them. Called after the re-order, at the end of `setGroups` at the latest (its work is done), so the owner may refresh
+     * the strip right away; that refresh finds the strip sorted and reports nothing.
+     */
+    fun stripSorted(groups: List<GroupDecoration>) {}
 }

@@ -9,9 +9,15 @@ data class CurrentSplit(val key: SplitKey, val files: List<String>)
 
 /**
  * What to do for the split at index [current] of the list given to [RestorePlanner.plan]: re-order its tabs to [order] (every open
- * file of the split, exactly once), then create [instances] (strip order, only members that reopened, none empty).
+ * file of the split, exactly once), then create [instances] (strip order, only members that reopened, none empty). [manualOrder]: the
+ * stored manual order of an alphabetically sorted split (IDE-2), restricted to the files that reopened; empty if none was stored.
  */
-data class PlannedSplit(val current: Int, val order: List<String>, val instances: List<StoredInstance>)
+data class PlannedSplit(
+    val current: Int,
+    val order: List<String>,
+    val instances: List<StoredInstance>,
+    val manualOrder: List<String> = emptyList(),
+)
 
 /** [groups]: the identities that stay (referenced by a planned instance, or kept by the stash hook); [splits]: one entry per matched split. */
 data class RestorePlan(val groups: List<StoredGroup>, val splits: List<PlannedSplit>)
@@ -54,7 +60,8 @@ object RestorePlanner {
             if (instances.isEmpty()) continue
             val listed = s.order.filter { it in openSet }.distinct()
             val listedSet = listed.toSet()
-            splits += PlannedSplit(ci, listed + open.filter { it !in listedSet }, instances)
+            val manual = s.manualOrder.filter { it in openSet }.distinct()
+            splits += PlannedSplit(ci, listed + open.filter { it !in listedSet }, instances, manual)
         }
         val used = splits.flatMapTo(HashSet()) { p -> p.instances.map { it.groupId } }
         return RestorePlan(stored.groups.filter { it.id in used || keepWithoutInstances(it) }, splits)

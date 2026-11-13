@@ -94,6 +94,11 @@ internal class TabPlacement(
         known = now
         if (added.isEmpty() || isDragActive()) return
         opened(added.toList())
+        if (adapter.ownsSort) {
+            // IDE-2: the sort decides where a new tab goes, so MEM-2's move would only be undone by it
+            adapter.sortNow()
+            return
+        }
         val groups = groups() // after the host: it may have grouped some of the new tabs
         if (groups.isEmpty()) return
         val members = groups.flatMapTo(HashSet()) { it.members }

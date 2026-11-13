@@ -68,7 +68,7 @@ internal class SavedGroups(private val project: Project, private val state: Grou
         if (!restored || frozen || project.isDisposed) return
         try {
             val tabBar = project.getService(TabBar::class.java)
-            val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder)
+            val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder, tabBar::manualOrder)
             bean = GroupsPersistence.toBean(live.withPending(pending))
         }
         catch (e: Exception) {

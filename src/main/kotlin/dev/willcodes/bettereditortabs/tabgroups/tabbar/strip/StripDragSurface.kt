@@ -36,6 +36,8 @@ internal class StripDragSurface(
     private val own: (() -> Unit) -> Unit,
     /** Snaps every running collapse / expand animation to its end (the adapter's `finishCollapseAnimations`). */
     private val finishCollapseAnimations: () -> Unit,
+    /** A drag state of this strip ended (preview, foreign gap, transit): the sort looks again ([TabBarAdapter]'s `recheckSort`). */
+    private val settled: () -> Unit,
 ) {
     private var groupInTransit: String? = null
     private var dragWasActive = false
@@ -94,6 +96,7 @@ internal class StripDragSurface(
         if ((old == null) == (wanted == null) && old?.anchor == wanted?.anchor && old?.length == wanted?.length && old?.pinned == wanted?.pinned) return
         layout.foreign = wanted
         relayout()
+        if (wanted == null) settled()
     }
 
     /** The visible part of the space opened by [setForeignGap] (tab-bar coordinates), or null. */
@@ -104,6 +107,7 @@ internal class StripDragSurface(
         headers.suppress(emptySet())
         setForeignGap(null, 0, false)
         val had = preview.clear()
+        settled()
         if (!had) return
         tint.clearPreviews()
         layout.update()
@@ -147,6 +151,7 @@ internal class StripDragSurface(
         if (!alive()) return
         own { transit.end(show, reselect) }
         relayout()
+        settled()
     }
 
     /** The file whose tab is in transit (out of this strip because its drag is over another split), or null. */
@@ -164,7 +169,14 @@ internal class StripDragSurface(
         own { layout.update() }
         tabs.revalidate()
         tabs.repaint()
+        if (groupId == null) settled()
     }
+
+    /**
+     * A drag started elsewhere is working on this strip: it has a gap open for an arriving tab or group, or a dragged tab or group of
+     * this strip is out of it (transit). The alphabetical sort leaves the strip alone then.
+     */
+    fun isForeignBusy(): Boolean = layout.foreign != null || transit.state != null || groupInTransit != null
 
     /** The group whose drag is over another split (or no strip), see [setGroupTransit]; the adapter leaves its pill out. */
     fun groupInTransit(): String? = groupInTransit

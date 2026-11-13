@@ -8,6 +8,8 @@ import java.awt.Color
  *
  * @param members the group's files in tab order. Files that are not open in the split are ignored.
  * @param name empty means "unnamed": the header is drawn as a small dot (HDR-4).
+ * @param creationIndex the group's place in the project's creation order (0 = oldest). IDE-2: with alphabetical sorting, unnamed
+ *   groups follow the named ones in this order. Linked instances of one group carry the same value.
  */
 data class GroupDecoration(
     val id: String,
@@ -15,4 +17,5 @@ data class GroupDecoration(
     val color: Color,
     val members: List<VirtualFile>,
     val collapsed: Boolean,
+    val creationIndex: Int = 0,
 )
