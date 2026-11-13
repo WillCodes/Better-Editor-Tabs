@@ -5,6 +5,9 @@ import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.WindowRoundedCornersManager
 import com.intellij.util.IconUtil
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
+import java.awt.Color
+import java.awt.GraphicsDevice
+import java.awt.GraphicsEnvironment
 import java.awt.Image
 import java.awt.Point
 import java.awt.Rectangle
@@ -27,6 +30,9 @@ import javax.swing.JLabel
  * Mouse events of a drag keep going to the component where the button was pressed, so the window under the pointer does not
  * disturb the drag.
  *
+ * A group chip ([show] with `ownFrame`) brings its own rounded shape and border (see [GroupChipImage]): its window is transparent
+ * (or, without per-pixel translucency, filled with the dialog colour) and has no platform corners.
+ *
  * Not used on Wayland, where windows cannot be placed at a screen position; the platform uses a glass-pane view there and so does
  * [DragOverlay]. Wraps: `WindowRoundedCornersManager` (platform UI API), `WindowManager` alpha mode, `IconUtil.createImageIcon`. EDT only.
  */
@@ -35,11 +41,20 @@ internal object GhostWindow {
     private var label: JLabel? = null
     private var owner: Any? = null
     private var image: Image? = null
+    private var ownFrameShown = false
 
-    /** Shows [picture] for [by] (an overlay), its top-left corner at [screenTopLeft]; replaces whatever another owner showed. */
-    fun show(by: Any, frame: Window?, picture: Image, screenTopLeft: Point) {
+    /**
+     * Shows [picture] for [by] (an overlay), its top-left corner at [screenTopLeft]; replaces whatever another owner showed.
+     *
+     * [ownFrame] (a group chip): the picture brings its own rounded shape and border, so the window must not add a frame around it:
+     * no platform window corners, and a transparent window background wherever the platform can make per-pixel translucent windows
+     * ([translucencySupported]); where it cannot, the label is opaque in the dialog colour, so the chip's corners show that colour.
+     * The 90 % alpha stays. Tab pictures ([ownFrame] false) are shown exactly as the platform's.
+     */
+    fun show(by: Any, frame: Window?, picture: Image, screenTopLeft: Point, ownFrame: Boolean) {
+        if (!enabled) return
         owner = by
-        val d = dialog?.takeIf { it.owner === frame && it.isDisplayable } ?: create(frame)
+        val d = dialog?.takeIf { it.owner === frame && it.isDisplayable && ownFrameShown == ownFrame } ?: create(frame, ownFrame)
         if (image !== picture) {
             image = picture
             label?.icon = IconUtil.createImageIcon(picture)
@@ -76,7 +91,15 @@ internal object GhostWindow {
         if (d.bounds != wanted) d.bounds = wanted
     }
 
-    private fun create(frame: Window?): JDialog {
+    /** Can a window have a transparent background (per-pixel translucency)? False on failure, and in a headless environment. */
+    fun translucencySupported(): Boolean = try {
+        GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.isWindowTranslucencySupported(GraphicsDevice.WindowTranslucency.PERPIXEL_TRANSLUCENT)
+    }
+    catch (e: Throwable) {
+        false
+    }
+
+    private fun create(frame: Window?, ownFrame: Boolean): JDialog {
         dialog?.dispose()
         val l = JLabel()
         val d = JDialog(frame)
@@ -84,12 +107,30 @@ internal object GhostWindow {
         d.focusableWindowState = false
         d.isAutoRequestFocus = false
         d.contentPane = l
-        if (PlatformInternals.isRoundedTabDuringDrag()) WindowRoundedCornersManager.setRoundedCorners(d, PopupCornerType.RoundedWindow)
+        if (ownFrame) {
+            if (translucencySupported()) {
+                // must be set before the window is displayable
+                d.background = Color(0, 0, 0, 0)
+                l.isOpaque = false
+            }
+            else {
+                l.isOpaque = true
+                l.background = DragImages.windowBackground()
+            }
+        }
+        else if (PlatformInternals.isRoundedTabDuringDrag()) {
+            WindowRoundedCornersManager.setRoundedCorners(d, PopupCornerType.RoundedWindow)
+        }
+        ownFrameShown = ownFrame
         dialog = d
         label = l
         image = null
         return d
     }
+
+    /** Off in the tests (no real windows on the test machine's screen, and the test window manager has no alpha mode). */
+    @Volatile
+    internal var enabled = true
 
     /** The platform's drag image window: 90 % opaque. */
     private const val ALPHA_RATIO = 0.1f

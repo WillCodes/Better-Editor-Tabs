@@ -14,26 +14,17 @@ import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * The size of a group that is being dragged, as far as another strip needs it to open room for the group.
- *
- * [length] and [pill] are what the group takes along its own strip (its first row, and the pill-sized part under the pointer);
- * they are right for any strip of the same orientation ([horizontal]). A strip of the other orientation measures different
- * things (a width here is a number of rows there), so the natural top / bottom lengths ([pillNatural], [tabsNatural]) and the
- * number of tabs ([tabCount]) are kept as well, see [ForeignGapSession.lengthsIn].
+ * The size of what is being dragged (a group, or a tab), as far as another strip needs it to open room for it. A dragged group is
+ * always shown as its collapsed header (INT-6: the gap is pill-sized for an expanded group too, its tabs are out of the strip during
+ * the drag), so [length] is what that header, or the tab, takes along its own strip ([horizontal]); it is right for any strip of the
+ * same orientation. A strip of the other orientation measures differently (a width here is a number of rows there), so the natural
+ * top / bottom length ([natural]) is kept as well, see [ForeignGapSession.lengthIn].
  */
-internal class DraggedGroupSize(
-    val horizontal: Boolean,
-    val length: Int,
-    val pill: Int,
-    val collapsed: Boolean,
-    val pillNatural: Int,
-    val tabsNatural: Int,
-    val tabCount: Int,
-)
+internal class DraggedGroupSize(val horizontal: Boolean, val length: Int, val natural: Int)
 
 /**
- * The gap that a group drag opens in *another* split's strip (INT-6): the same kind of gap as in the group's own strip, of the size
- * the group will have there, opening between that strip's units and following the pointer by the same rule ([DropSlots.select]).
+ * The gap that a group drag opens in *another* split's strip (INT-6): the same kind of gap as in the group's own strip, the size of the
+ * group's collapsed header, opening between that strip's units and following the pointer by the same rule ([DropSlots.select]).
  * Owned by [HeaderDragHelper] for the time of one drag; at most one strip has the gap open.
  *
  * Opening the gap can add a row to a wrapped strip, so that strip's rectangle grows and shrinks because of the drag. Like the own
@@ -64,7 +55,7 @@ internal class ForeignGapSession {
         val p = other.toTabs(screen)
         var units = other.buildUnits()
         val low = DropRules.leadingPinned(units)
-        val (room, pill) = lengthsIn(other, size)
+        val room = lengthIn(other, size)
         if (host !== other) {
             close()
             host = other
@@ -73,11 +64,9 @@ internal class ForeignGapSession {
         }
         repeat(SETTLE_STEPS) {
             val gap = other.adapter.foreignGapRect() ?: return@repeat
-            val probe = if (other.horizontal) Rectangle(gap.x, gap.y, minOf(pill, gap.width), gap.height)
-            else Rectangle(gap.x, gap.y, gap.width, minOf(pill, gap.height))
             val cells = units.mapIndexed { i, u -> TabCell(i, u.groupId, u.pinned, Rectangle(u.bounds)) as StripCell<Int> }
             val slot = DropSlots.select(
-                cells, probe, boundary, p, other.horizontal, low.coerceAtMost(cells.size), cells.size,
+                cells, gap, boundary, p, other.horizontal, low.coerceAtMost(cells.size), cells.size,
                 if (other.horizontal) gap.width else gap.height,
             )
             if (slot == boundary) return Opened(units, boundary)
@@ -89,7 +78,7 @@ internal class ForeignGapSession {
 
     /** Closes the gap, if one is open. */
     fun close() {
-        host?.adapter?.setForeignGap(null, 0)
+        host?.adapter?.setForeignGap(null, 0, false)
         host = null
         reach = null
         boundary = -1
@@ -103,8 +92,8 @@ internal class ForeignGapSession {
             at.collapsed -> ForeignAnchor.BeforeCollapsedGroup(at.groupId ?: return units)
             else -> ForeignAnchor.BeforeTab(at.keys.firstOrNull() ?: return units)
         }
-        other.adapter.setForeignGap(anchor, room)
-        if (!other.tabs.isValid) other.tabs.validate()
+        other.adapter.setForeignGap(anchor, room, false)
+        other.validateNow()
         other.stripScreenRect()?.let { reach = reach?.union(it) ?: Rectangle(it) }
         return other.buildUnits()
     }
@@ -116,19 +105,14 @@ internal class ForeignGapSession {
         private const val SETTLE_STEPS = 4
 
         /**
-         * The room the group needs along [other]'s strip, and the length of its pill-sized leading part there. In a strip of the
-         * same orientation as its own that is what it takes there too. Across orientations the lengths are different things, so
-         * they are worked out for the target: rows of the target's row height in a side strip (one for the pill, one per tab unless
-         * the group is collapsed), natural widths in a top / bottom strip.
+         * The room the group's collapsed header (or a tab) needs along [other]'s strip. In a strip of the same orientation as its own that
+         * is what it takes there too. Across orientations the lengths are different things, so it is worked out for the target: one row of
+         * the target's row height in a side strip, the natural width in a top / bottom strip.
          */
-        fun lengthsIn(other: TabBarDnd, size: DraggedGroupSize): Pair<Int, Int> {
-            if (other.horizontal == size.horizontal) return size.length to size.pill
-            if (other.horizontal) {
-                val pill = size.pillNatural.coerceAtLeast(1)
-                return (pill + if (size.collapsed) 0 else size.tabsNatural) to pill
-            }
-            val row = other.rowLength().takeIf { it > 0 } ?: size.pill
-            return row * (1 + if (size.collapsed) 0 else size.tabCount) to row
+        fun lengthIn(other: TabBarDnd, size: DraggedGroupSize): Int {
+            if (other.horizontal == size.horizontal) return size.length.coerceAtLeast(1)
+            if (other.horizontal) return size.natural.coerceAtLeast(1)
+            return other.rowLength().takeIf { it > 0 } ?: size.length.coerceAtLeast(1)
         }
     }
 }

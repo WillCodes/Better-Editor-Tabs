@@ -3,12 +3,8 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.fileEditor.FileEditorManagerKeys
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
-import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
-import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 
 private val LOG = logger<TabBarDnd>()
 
@@ -20,7 +16,12 @@ private val LOG = logger<TabBarDnd>()
  * file in the source and open it again in the target with `CLOSING_TO_REOPEN` set on the file, which tells editors to keep their
  * state (`MoveEditorToOppositeTabGroupAction`, `EditorTabbedContainerDragOutDelegate.dragOutFinished`). We do the same per file.
  * That call is `@ApiStatus.Internal` (`FileEditorManagerEx.openFile(file, window, FileEditorOpenOptions)`); caret/scroll restore is
- * expected to work like the platform's own tab drag but is unverified. The Reopen Closed Tab entry that each close adds to the source split is removed again ([TabClose.closeForMove]).
+ * expected to work like the platform's own tab drag but is unverified. The Reopen Closed Tab entry that each close adds to the source split is removed again
+ * (`TabClose.closeForMove`). The per-file move is [transferFile], shared with the tab drag ([moveTabToSplit]).
+ *
+ * A group that was dragged as its collapsed header (INT-6) comes back as it was: [expanding] is its id when it was expanded, and the
+ * arrival plays the expand animation in the target (nothing else animates, COLL-7); [selectedBefore] is the tab that was selected when the
+ * drag began (the drag moved the selection off the group), selected in the target again if it was one of the group's.
  *
  * Order of work: leave the source model first (so no header/hidden tab refers to files that are about to be closed), open the
  * files in the target, re-order the target in one go, then hand the merged group to the target model.
@@ -31,15 +32,10 @@ internal fun TabBarDnd.moveGroupToSplit(
     targetUnits: List<MoveUnit<VirtualFile>>,
     boundary: Int,
     freezes: List<StripFreeze> = freezeStrips(target),
+    selectedBefore: VirtualFile? = adapter.selectedFile(),
+    expanding: String? = null,
 ) {
-    // Closing in the source, opening and re-hiding in the target make the platform move both splits' selections, also onto tabs that
-    // are hidden for a moment: none of that is navigation (COLL-4), so both strips treat the whole move as their own change.
-    try {
-        adapter.ownChange { target.adapter.ownChange { moveNow(unit, target, targetUnits, boundary) } }
-    }
-    finally {
-        releaseLater(freezes)
-    }
+    runMove(target, freezes) { moveNow(unit, target, targetUnits, boundary, selectedBefore, expanding) }
 }
 
 /**
@@ -59,7 +55,7 @@ internal fun releaseLater(freezes: List<StripFreeze>) {
 /** A [StripFreeze] over this split's tab rows (null if the strip is not showing). */
 private fun TabBarDnd.freeze(): StripFreeze? {
     val screen = stripScreenRect() ?: return null
-    val origin = tabs.component.locationOnScreen
+    val origin = origin() ?: return null
     screen.translate(-origin.x, -origin.y)
     return StripFreeze.over(tabs.component, screen)
 }
@@ -69,16 +65,16 @@ private fun TabBarDnd.moveNow(
     target: TabBarDnd,
     targetUnits: List<MoveUnit<VirtualFile>>,
     boundary: Int,
+    selectedBefore: VirtualFile?,
+    expanding: String?,
 ) {
     val groupId = unit.groupId ?: return
     val files = unit.keys
     if (files.isEmpty()) return
     val sourceGroups = model.groups()
     val group = sourceGroups.firstOrNull { it.id == groupId } ?: return
-    val selected = adapter.selectedFile()
-    val sourceWindow = adapter.window
+    val selected = selectedBefore
     val targetWindow = target.adapter.window
-    val manager = FileEditorManagerEx.getInstanceEx(sourceWindow.manager.project)
 
     // Where do the files go in the target?
     val existingUnit = targetUnits.firstOrNull { it.groupId == groupId }
@@ -100,18 +96,7 @@ private fun TabBarDnd.moveNow(
     if (targetGroups.any { it.collapsed }) target.adapter.setGroups(targetGroups.map { it.copy(collapsed = false) })
 
     for ((i, file) in files.withIndex()) {
-        val last = i == files.lastIndex
-        file.putUserData(FileEditorManagerKeys.CLOSING_TO_REOPEN, true)
-        try {
-            val alreadyThere = target.tabs.findInfo(file) != null
-            TabClose.closeForMove(sourceWindow, file, disposeIfNeeded = last)
-            if (!alreadyThere) {
-                manager.openFile(file, targetWindow, PlatformInternals.backgroundOpenOptions())
-            }
-        }
-        finally {
-            file.putUserData(FileEditorManagerKeys.CLOSING_TO_REOPEN, null)
-        }
+        transferFile(file, target, close = true, keepHistory = false, disposeSource = i == files.lastIndex)
     }
 
     val open = target.tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
@@ -119,7 +104,7 @@ private fun TabBarDnd.moveNow(
     target.adapter.applyOrder(order)
     val mergedOpen = order.filter { it in merged }
     target.model.acceptGroup(
-        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed)
+        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed), expanding,
     )
     if (selected != null && selected in files && !group.collapsed) targetWindow.setSelectedComposite(selected, true)
     LOG.info("group $groupId moved: ${files.size} files to another split, merged=${existingUnit != null}")

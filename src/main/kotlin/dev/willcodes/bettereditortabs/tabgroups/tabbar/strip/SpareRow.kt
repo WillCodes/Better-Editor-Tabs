@@ -20,6 +20,9 @@ import java.awt.Rectangle
  * Limits: the platform does not know about the row (its drag-out and hit-testing areas end at the pinned row). Side placements have no
  * separate pinned row.
  *
+ * The same row is the place of the gap that a tab or group dragged in from another split opens at the end of a strip that holds nothing
+ * but pinned tabs (the arrival is unpinned, so it belongs after the pinned row, `PillLayout.resolveSpacer`).
+ *
  * Wraps: `TabLayout.showPinnedTabsSeparately()`, `JBTabsImpl.lastLayoutPass`, `headerFitSize`, `tabsPosition`, `selectedInfo`. EDT only.
  */
 internal class SpareRow(private val tabs: JBEditorTabs, private val layout: PillLayout) {
@@ -33,7 +36,7 @@ internal class SpareRow(private val tabs: JBEditorTabs, private val layout: Pill
     fun apply(): Boolean {
         val infos = tabs.getVisibleInfos()
         val position = tabs.tabsPosition
-        val active = !tabs.isHideTabs && infos.isNotEmpty() && pinnedRowApart(tabs) && layout.hasLoosePills() &&
+        val active = !tabs.isHideTabs && infos.isNotEmpty() && pinnedRowApart(tabs) && (layout.hasLoosePills() || layout.hasLooseSpacer()) &&
                      (position == JBTabsPosition.top || position == JBTabsPosition.bottom)
         val pass = tabs.lastLayoutPass
         val row = tabs.headerFitSize?.height ?: 0

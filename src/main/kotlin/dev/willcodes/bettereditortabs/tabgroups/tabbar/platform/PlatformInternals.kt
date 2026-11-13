@@ -14,8 +14,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.docking.DockContainer
 import com.intellij.ui.docking.DockManager
 import com.intellij.ui.tabs.JBTabsBorder
+import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.DragHelper
 import com.intellij.ui.tabs.impl.JBTabsImpl
+import com.intellij.ui.tabs.impl.TabLayout
+import com.intellij.ui.tabs.impl.multiRow.ScrollableMultiRowLayout
+import com.intellij.ui.tabs.impl.singleRow.SingleRowLayout
 import java.awt.event.MouseEvent
 import java.awt.event.MouseListener
 import java.lang.reflect.Field
@@ -102,6 +106,110 @@ internal object PlatformInternals {
         }
         catch (e: Throwable) {
             false
+        }
+    }
+
+    // ---- JBTabsImpl.effectiveLayout / isMouseInsideTabsArea (scrolling the strip while dragging) -------------------------------
+
+    /**
+     * `JBTabsImpl.effectiveLayout` (`@JvmField internal var`, `JBTabsImpl.kt:376`): the strip's layout object, the only handle on its
+     * scroll offset (`TabLayout.scroll` / `getScrollOffset` / `isScrollable` are public). Kotlin `internal` hides it from other modules,
+     * but a `@JvmField` is a public JVM field (javap, 262 and 263). Missing: [tabLayout] returns null and the strip is not scrolled.
+     */
+    private val effectiveLayoutField: Field? by lazy { field(JBTabsImpl::class.java, "effectiveLayout") }
+
+    /**
+     * `JBTabsImpl.isMouseInsideTabsArea` (private field behind a property with a private setter, `JBTabsImpl.kt:459`). The platform
+     * scrolls the strip back to the selected tab on every layout pass unless this is true (`ScrollableSingleRowLayout.doScrollToSelectedTab`,
+     * `ScrollableMultiRowLayout.layoutTable`) and keeps it up to date from an AWT mouse-motion listener (`JBTabsImpl.kt:643-664`).
+     * During our tab drag that listener sees nothing: the drag events are consumed by a glass-pane preprocessor, and a consumed event
+     * is not dispatched to AWT at all (`IdeGlassPaneImpl.dispatchMouseEvent` returns true, `IdeEventQueue.dispatchByCustomDispatchers`
+     * returns before `super.dispatchEvent`); and pressing the tab selected it, which sets the flag to false (`doSetSelected`,
+     * `JBTabsImpl.kt:1579`). So while we drag, the flag is false and every layout pass undoes a scroll of the strip. Missing: [mouseInsideTabsArea]
+     * returns null and [setMouseInsideTabsArea] does nothing (the strip scrolls back to the dragged tab after each tick).
+     */
+    private val mouseInsideField: Field? by lazy { field(JBTabsImpl::class.java, "isMouseInsideTabsArea") }
+
+    /** The layout object of [tabs] (see [effectiveLayoutField]), or null if it cannot be read. */
+    fun tabLayout(tabs: JBTabsImpl): TabLayout? = try {
+        effectiveLayoutField?.get(tabs) as? TabLayout
+    }
+    catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * Does [layout] limit its own scroll offset to the content (`ScrollableSingleRowLayout.scroll` clamps; `ScrollableMultiRowLayout.scroll`
+     * just adds)? Decided by the base class, `SingleRowLayout` (public, `@ApiStatus.Internal`).
+     */
+    fun layoutClampsOffset(layout: TabLayout): Boolean = layout is SingleRowLayout
+
+    /**
+     * Does the strip's layout cut the label at the end of the visible area (so that a label's bounds are shorter than its layout length)?
+     * The single-row layouts do: `ScrollableSingleRowLayout.applyTabLayout` lays the label that does not fit out with the visible part
+     * as its bounds (`SingleRowLayoutStrategy.drawPartialOverflowTabs`). So does the unpinned row of the separate-pinned-row layout,
+     * `ScrollableMultiRowLayout` (its `ScrollableTabsRow.layoutTabs` gives the last label `x + tabsLength - curX` instead of its preferred
+     * width; user report 2026-11-13: a collapsed group's trailing pill moved onto the cut tab). Its pinned row (`CompressibleTabsRow`) never
+     * hosts pills in that mode. The wrapping and squeezing layouts lay out whole labels. Both classes are public (`@ApiStatus.Internal`);
+     * false if the layout cannot be read.
+     */
+    fun cutsLabelsAtEnd(tabs: JBTabsImpl): Boolean = tabLayout(tabs).let { it is SingleRowLayout || it is ScrollableMultiRowLayout }
+
+    /** The platform's "mouse is inside the tab area" flag of [tabs] (see [mouseInsideField]), or null if it cannot be read. */
+    fun mouseInsideTabsArea(tabs: JBTabsImpl): Boolean? = try {
+        mouseInsideField?.getBoolean(tabs)
+    }
+    catch (e: Throwable) {
+        null
+    }
+
+    /** Sets the platform's "mouse is inside the tab area" flag of [tabs]; false if it cannot be written. */
+    fun setMouseInsideTabsArea(tabs: JBTabsImpl, value: Boolean): Boolean {
+        val f = mouseInsideField ?: return false
+        return try {
+            f.setBoolean(tabs, value)
+            true
+        }
+        catch (e: Throwable) {
+            false
+        }
+    }
+
+    // ---- EditorWindow.getTabToSelect ----------------------------------------------------------------------------------------
+
+    /**
+     * `EditorWindow.getTabToSelect(tabBeingClosed, fileBeingClosed, componentIndex)` (Kotlin `internal`, `EditorWindow.kt:766`): the tab
+     * the editor area selects when a tab leaves its strip, which `EditorTabbedContainerDragOutDelegate.dragOutStarted` asks before it hides
+     * the dragged tab: the tab selected before it ("previous selection", if it is still showing), else the one the close settings pick
+     * (the recently used editor, the one to the right, or the left neighbour, `computeIndexToSelect`). A Kotlin `internal` member is
+     * compiled to the mangled name `getTabToSelect$intellij_platform_ide_impl` (the same in 262 and 263, javap). Missing: [tabToSelectOnDragOut]
+     * returns [TabToSelect.Unknown] and the caller falls back to a neighbour.
+     */
+    private val tabToSelectMethod: java.lang.reflect.Method? by lazy {
+        try {
+            EditorWindow::class.java.getDeclaredMethod(
+                "getTabToSelect\$intellij_platform_ide_impl", TabInfo::class.java, VirtualFile::class.java, Int::class.javaPrimitiveType,
+            ).apply { isAccessible = true }
+        }
+        catch (e: Throwable) {
+            null
+        }
+    }
+
+    /** The answer of [tabToSelectOnDragOut]: the platform's choice (which can be "none"), or no answer. */
+    sealed class TabToSelect {
+        data class Tab(val info: TabInfo?) : TabToSelect()
+        object Unknown : TabToSelect()
+    }
+
+    /** The tab [window] selects when [info] (the tab of [file], at [index] in the strip's tab list) leaves its strip, see [tabToSelectMethod]. */
+    fun tabToSelectOnDragOut(window: EditorWindow, info: TabInfo, file: VirtualFile, index: Int): TabToSelect {
+        val method = tabToSelectMethod ?: return TabToSelect.Unknown
+        return try {
+            TabToSelect.Tab(method.invoke(window, info, file, index) as? TabInfo)
+        }
+        catch (e: Throwable) {
+            TabToSelect.Unknown
         }
     }
 
@@ -252,6 +360,9 @@ internal object PlatformInternals {
         check("JBTabsImpl.dragHelper") { dragHelperField != null }
         check("DragHelper.dragRec") { dragRecField != null }
         check("JBTabsImpl.tabBorder") { tabBorderField != null }
+        check("JBTabsImpl.effectiveLayout") { effectiveLayoutField != null }
+        check("JBTabsImpl.isMouseInsideTabsArea") { mouseInsideField?.type == Boolean::class.javaPrimitiveType }
+        check("EditorWindow.getTabToSelect") { tabToSelectMethod != null }
         check("EditorWindow.removedTabs") { removedTabsField != null }
         check("RemovedTabInfo.file") { Class.forName("com.intellij.openapi.fileEditor.impl.RemovedTabInfo").getDeclaredField("file") != null }
         check("DockManagerImpl.containerToWindow") {

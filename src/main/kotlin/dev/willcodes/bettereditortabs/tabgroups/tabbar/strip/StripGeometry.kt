@@ -8,7 +8,9 @@ import com.intellij.util.ui.JBUI
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillRows
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import java.awt.Rectangle
+import javax.swing.SwingUtilities
 import java.util.IdentityHashMap
 
 /**
@@ -82,6 +84,37 @@ internal class StripGeometry(
         }
     }
 
+    /**
+     * The length of [label] along a Top / Bottom strip as the platform laid it out *before* cutting it at the end of the visible area: a
+     * single-row strip gives the label that does not fit only the visible part as its bounds, its layout length is its preferred width
+     * (`ScrollableSingleRowLayout.applyTabLayout`). The space reserved in the label (a pill's) belongs to the whole label, so where it
+     * lies is worked out from this length. Other layouts do not cut labels: the bounds are the length.
+     */
+    private fun layoutWidthOf(label: TabLabel): Int =
+        if (tabs.isHorizontalTabs && PlatformInternals.cutsLabelsAtEnd(tabs)) maxOf(label.width, label.preferredSize.width) else label.width
+
+    /**
+     * The right edge, in tab-bar coordinates, of what [label] shows: its icon, text and close button, as the platform laid them out (the
+     * descendants of the label that have a size). Trailing pills are placed from the label's length ([layoutWidthOf]); this is the check
+     * against the real layout of the label, so a pill is never drawn over its host's content whatever the label does with a width that is
+     * not its own (a label that is cut, squeezed or laid out from a stale size). Only public AWT is used (`Container.getComponents`).
+     */
+    private fun contentRightOf(label: TabLabel): Int {
+        var right = Int.MIN_VALUE
+        fun visit(c: java.awt.Container) {
+            for (child in c.components) {
+                if (child.width <= 0 || child.height <= 0) continue
+                if (child is java.awt.Container && child.componentCount > 0 && child !is com.intellij.ui.SimpleColoredComponent) visit(child)
+                else {
+                    val r = SwingUtilities.convertRectangle(child.parent, Rectangle(0, 0, child.width, child.height), tabs.component)
+                    right = maxOf(right, r.x + r.width)
+                }
+            }
+        }
+        visit(label)
+        return right
+    }
+
     private class Areas(val pills: LinkedHashMap<GroupHeader, PillHosting.PillRect>, val spacer: Rectangle?)
 
     /**
@@ -110,8 +143,15 @@ internal class StripGeometry(
             val items = lead + trail
             val rects: List<PillHosting.PillRect>
             if (horizontal) {
-                val viewport = Rectangle(0, bounds.y, limit, bounds.height)
-                rects = PillHosting.pillRects(bounds, lead.map { it.length }, trail.map { it.length }, viewport)
+                // A label cut at the visible end is cut where the platform cuts the tabs (`ScrollableTabsRow.layoutTabs`: `moreRect.x` less the
+                // actions inset; single row likewise), a few px before [limit]; a pill in its reserved space is cut at the same edge, so a
+                // collapsed group's trailing pill ends exactly where the pill of the expanded group, leading on the next (cut) label, ends.
+                val whole = layoutWidthOf(label)
+                val cutEnd = if (whole > bounds.width) bounds.x + bounds.width else Int.MAX_VALUE
+                val viewport = Rectangle(0, bounds.y, minOf(limit, cutEnd), bounds.height)
+                val placed = PillHosting.pillRects(bounds, lead.map { it.length }, trail.map { it.length }, viewport, whole)
+                // whatever the platform did with the label, a trailing pill is never over what the label shows (see [contentRightOf])
+                rects = if (trail.isEmpty()) placed else PillHosting.clearOfContent(bounds, placed, trail.size, contentRightOf(label), viewport)
             }
             else {
                 if (bounds.width <= 0) continue // pushed out; a label shrunk to no height by the animation still hosts its pill rows
@@ -221,7 +261,9 @@ internal class StripGeometry(
                 val (lead, trail) = layout.space.reserved(label)
                 val limit = limitOf(b)
                 val viewport = if (horizontal) Rectangle(0, b.y, limit, b.height) else Rectangle(b.x, 0, b.width, limit)
-                val cut = Rectangle(b.x + lead, b.y, b.width - lead - trail, b.height).intersection(viewport)
+                // the space reserved at the end of a cut label (a single-row strip's last tab) lies beyond what is visible of it
+                val whole = if (horizontal) layoutWidthOf(label) else b.width
+                val cut = Rectangle(b.x + lead, b.y, whole - lead - trail, b.height).intersection(b).intersection(viewport)
                 if (cut.width > 0 && cut.height > 0) own = cut
             }
             units += StripUnit.Tab(file, own, preview.effectiveGroupId(file, groups), info.isPinned)

@@ -87,15 +87,23 @@ object PillHosting {
      * Rectangles of the pills of one host [label] (tab-bar coordinates). [leading] lengths are placed from the label's left edge,
      * left to right; [trailing] lengths end at its right edge. Every pill is as high as the label. [viewport] is the visible
      * part of the strip around the label (for example `0..limit` along the main axis).
+     *
+     * [fullWidth] is the width the label has when the platform does not cut it (its layout length): a scrollable single-row strip cuts the
+     * label at the end of the visible area (`ScrollableSingleRowLayout.applyTabLayout`, `drawPartialOverflowTabs`) and gives it only the
+     * visible part as its bounds. The reserved space still belongs to the whole label, so trailing items end at the right edge of the
+     * uncut label, outside the visible part when the label is cut there, instead of sliding left over the label's content; what
+     * is visible of an item is what lies inside the (cut) [label] bounds, exactly what is visible of a tab.
      */
-    fun pillRects(label: Rectangle, leading: List<Int>, trailing: List<Int>, viewport: Rectangle): List<PillRect> {
+    fun pillRects(
+        label: Rectangle, leading: List<Int>, trailing: List<Int>, viewport: Rectangle, fullWidth: Int = label.width,
+    ): List<PillRect> {
         val result = ArrayList<PillRect>()
         var x = label.x
         for (length in leading) {
             result += rect(label, x, length, viewport)
             x += length
         }
-        x = label.x + label.width - trailing.sum()
+        x = label.x + maxOf(fullWidth, label.width) - trailing.sum()
         for (length in trailing) {
             result += rect(label, x, length, viewport)
             x += length
@@ -113,6 +121,24 @@ object PillHosting {
     fun trailingReserve(lengths: List<Int>, labelGap: Int): Int {
         val sum = lengths.sum()
         return if (sum <= 0) 0 else maxOf(0, sum + labelGap)
+    }
+
+    /**
+     * [rects] (from [pillRects], [trailingCount] of them trailing, the last ones) must not lie over what the label really shows: when
+     * the label's content reaches to [contentRight] (the right edge of its icon, text and close button, as laid out by the platform),
+     * the trailing items start there at the earliest, keeping their order and their lengths. What is pushed past the label's right edge
+     * or the [viewport] is simply not visible, like the part of a tab that the platform cuts. A no-op when the content ends before the
+     * items, which is how a label that is laid out as [pillRects] assumes looks.
+     */
+    fun clearOfContent(label: Rectangle, rects: List<PillRect>, trailingCount: Int, contentRight: Int, viewport: Rectangle): List<PillRect> {
+        if (trailingCount <= 0 || rects.size < trailingCount) return rects
+        val firstTrailing = rects.size - trailingCount
+        val from = rects[firstTrailing].full.x
+        if (contentRight <= from) return rects
+        val shift = contentRight - from
+        return rects.mapIndexed { i, r ->
+            if (i < firstTrailing) r else rect(label, r.full.x + shift, r.full.width, viewport)
+        }
     }
 
     private fun rect(label: Rectangle, x: Int, length: Int, viewport: Rectangle): PillRect {

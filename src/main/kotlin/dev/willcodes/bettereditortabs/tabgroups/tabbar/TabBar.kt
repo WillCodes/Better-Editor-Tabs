@@ -34,7 +34,13 @@ import java.util.concurrent.ConcurrentHashMap
  *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
  *     strip/           one adapter per split: collapse (hidden tabs) and its animation, pills hosted in tab labels, tint, drop slot,
  *                      empty state
- *     drag/            tab drag and group drag inside the strip, hand-over to the platform's drag-out, moving groups between splits
+ *     drag/            tab drag: TabDragController (the gesture, hand-over to and back from the platform's drag-out), CrossSplitTabDrag
+ *                      (which strip, of any split, the pointer is over: TabDragTargets; the live work there), TabDragSession (one tab
+ *                      on one strip: own gap and live re-order, or a foreign gap in another split's strip), TabDropPlanner (where it
+ *                      lands), TabMove (moving the file to another split on a drop, DRAG-5); group drag: HeaderDragHelper (gesture),
+ *                      GroupDrag (the group is its pill while dragged, comes back expanded with the animation), ForeignGapSession,
+ *                      GroupMove; DragAutoScroll (edge auto-scroll and the wheel during a drag); GroupChipImage (the group's picture)
+ *     strip/TabTransit a tab whose drag is over another split is out of its source strip, as in the platform's drag-out
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
  *                      new-tab placement (MEM-2), closing on behalf of group operations
  *     splits/          restart-stable split identity (PERS-3) and the "splits restored" signal
@@ -90,7 +96,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * # Disposal chain
  *
- * `Project` -> [TabBar] -> `SplitBar` (per split) -> `TabBarAdapter` -> `TabBarDnd` (-> drag controller, drag overlay, MEM-2 placement,
+ * `Project` -> [TabBar] -> `SplitBar` (per split) -> `TabBarAdapter` -> `TabBarDnd` (-> drag controller (and its drag session), drag overlay, MEM-2 placement,
  * glass-pane observers) and the adapter's own collaborators (tint, listeners). A split's chain is disposed when its window goes away
  * and when [host] is detached; disposing the adapter shows hidden tabs again and removes every component it added to the tab bar.
  */
@@ -154,6 +160,17 @@ class TabBar(private val project: Project) : Disposable {
         val h = host ?: return
         val bar = barFor(split) ?: return
         bar.apply(h.groupsIn(split), animate && style.animateCollapse)
+    }
+
+    /**
+     * [refresh] after a drag put a group back: [expanding] is a group that was dragged as its collapsed header and comes back expanded
+     * (INT-6); only it plays the expand animation (COLL-7, if [style] allows it, SET-10), every other flag is applied as it is. Null: a
+     * plain drag result, nothing animates.
+     */
+    internal fun refreshDropped(split: SplitHandle, expanding: String?) {
+        val h = host ?: return
+        val bar = barFor(split) ?: return
+        bar.apply(h.groupsIn(split), expanding != null && style.animateCollapse, expanding)
     }
 
     /** [refresh] for every split. */

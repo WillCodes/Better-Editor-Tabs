@@ -26,6 +26,8 @@ import javax.swing.SwingUtilities
  * - [PillLayout]: which tab label hosts each pill and the space reserved there ([TabLabelSpace], `TabLabel.border`);
  * - [StripGeometry]: pill areas, border cuts and [StripUnit]s from the labels' bounds;
  * - [PillHeaders]: the header components, their placement and z-order;
+ * - [TabTransit]: the dragged tab that is out of this strip while its drag is over another split (hidden, selection handed over); a
+ *   dragged group in the same situation is simply not laid out ([setGroupTransit]);
  * - [DragPreview]: previewed membership, dragged file and the drop slot ([DragGap]) during the plugin's own drag;
  * - [TabTint]: the group colour on member tabs (`TabInfo.setTabColor`);
  * - [EmptyEditorOverlay]: the empty state when every tab is hidden;
@@ -57,6 +59,9 @@ internal class TabBarAdapter(
     /** The real groups, as last set. */
     private var groups: List<GroupDecoration> = emptyList()
 
+    /** The group whose drag is over another split (or no strip): it is out of this strip, no pill and no space ([setGroupTransit]). */
+    private var groupInTransit: String? = null
+
     /**
      * What the strip shows: [groups], except that a group whose collapse is still animating counts as expanded (its tabs are visible,
      * tinted, the pill is hosted by its first tab). Every collaborator reads this one.
@@ -64,13 +69,18 @@ internal class TabBarAdapter(
     private val shown: List<GroupDecoration>
         get() = if (!animator.isActive) groups else groups.map { if (it.collapsed && animator.isCollapsing(it.id)) it.copy(collapsed = false) else it }
 
+    /** The groups whose pills the strip lays out: [shown] without the group in transit (its tabs stay hidden by [collapse]). */
+    private val pillGroups: List<GroupDecoration>
+        get() = groupInTransit?.let { id -> shown.filter { it.id != id } } ?: shown
+
     private val collapse = CollapseController(tabs, window)
     private val preview = DragPreview(tabs)
     private val tint = TabTint(tabs, this, { !window.isDisposed }, style)
-    private val headers = PillHeaders(tabs, ::isPlatformTabDragActive, ::pollDragState, ::platformDraggedLabel, style)
-    private val layout = PillLayout(tabs, alive, { shown }, headers::of, preview, collapse, ::platformDraggedFile)
+    private val headers = PillHeaders(tabs, ::platformDecidesHits, ::pollDragState, ::platformDraggedLabel, style)
+    private val transit = TabTransit(tabs, window, collapse)
+    private val layout = PillLayout(tabs, alive, { pillGroups }, headers::of, preview, collapse, ::platformDraggedFile) { transit.state }
     private val animator = CollapseAnimator(tabs, layout.space) { if (alive()) own { applyShown() } }
-    private val geometry: StripGeometry = StripGeometry(tabs, alive, layout, { shown }, preview, { spareRow.rect }, { verticalRows.rowHeight(it) })
+    private val geometry: StripGeometry = StripGeometry(tabs, alive, layout, { pillGroups }, preview, { spareRow.rect }, { verticalRows.rowHeight(it) })
     private val emptyOverlay = EmptyEditorOverlay(tabs, window)
     private val closeGuard = CloseSelectionGuard(tabs, window, collapse)
     private val verticalRows: VerticalRows = VerticalRows(tabs, layout, geometry, animator::verticalExtentOf)
@@ -126,6 +136,7 @@ internal class TabBarAdapter(
 
             override fun tabRemoved(tabToRemove: TabInfo) {
                 val file = tabToRemove.`object` as? VirtualFile ?: return
+                transit.forget(file)
                 collapse.tabRemoved(file, layout.tabBefore(file))
                 tint.forget(tabToRemove)
                 updateReservations()
@@ -175,6 +186,25 @@ internal class TabBarAdapter(
         // The tabs of an expanding group were un-hidden by applyShown and must have their first (empty) width before the next paint.
         animator.applySizes()
         tabs.revalidate()
+    }
+
+    /**
+     * The group [groupId] of [newGroups] comes back expanded after a drag that showed it collapsed (INT-6, COLL-7): it plays the expand
+     * animation (unless [StripStyle.animateCollapse], SET-10, is off or the strip cannot animate), and nothing else does: every other
+     * group is measured against itself, so its flag is no flip. For a drag that ends without a commit; a commit goes through
+     * `SplitBar.apply`, which passes the same measure.
+     */
+    fun expandDropped(newGroups: List<GroupDecoration>, groupId: String) =
+        setGroups(newGroups, style().animateCollapse, expandMeasure(newGroups, groupId))
+
+    /**
+     * Selects [file] (a drag that moved the selection off a group's tabs puts it back). The strip's own change: no COLL-4. No-op for
+     * null, for a file that is not open or hidden here, and if it is selected already.
+     */
+    fun reselect(file: VirtualFile?) = own {
+        if (file == null || !alive() || StripReader.selectedFile(tabs) == file) return@own
+        val info = StripReader.infoOf(tabs, file) ?: return@own
+        if (!info.isHidden) window.setSelectedComposite(file, false)
     }
 
     /** Depth of the adapter's own strip changes; selection events during them are not the user's (see the `selectionChanged` listener). */
@@ -251,6 +281,15 @@ internal class TabBarAdapter(
             applyShown()
         }
     }
+
+    /**
+     * The tint colour tabs of group [groupId] have in this strip (a `GroupTintColor`, evaluated at paint time), or null if the group is
+     * not in this split or is collapsed. The floating picture of a tab dragged in from another split is tinted with it (DRAG-7).
+     */
+    fun tintFor(groupId: String): Color? = shown.firstOrNull { it.id == groupId && !it.collapsed }?.let { tint.colorFor(it.color) }
+
+    /** The strip's current style (pill font size, name length), e.g. for the group drag picture. */
+    fun currentStyle(): StripStyle = style()
 
     /**
      * The style (see [StripStyle]) changed: headers re-measure (their reserved width depends on the maximum name length) and repaint,
@@ -365,13 +404,15 @@ internal class TabBarAdapter(
     /**
      * Opens space in this strip for a group that is dragged in from another split: [length] along the strip (Top / Bottom: a border
      * inset of the label at [anchor], like a pill's space; Left / Right: rows, the labels behind move down), shown as the same drop
-     * slot as an own drag. Null closes it. The neighbours move on the next layout pass (requested here).
+     * slot as an own drag. Null closes it. The neighbours move on the next layout pass (requested here). [pinned]: what arrives is a pinned
+     * tab; an unpinned arrival at the end of a strip with only pinned tabs and a separate pinned row gets its gap in the row after the
+     * pinned one ([SpareRow]).
      */
-    fun setForeignGap(anchor: ForeignAnchor?, length: Int) {
+    fun setForeignGap(anchor: ForeignAnchor?, length: Int, pinned: Boolean = false) {
         if (!alive()) return
-        val wanted = anchor?.let { ForeignGap(it, length) }
+        val wanted = anchor?.let { ForeignGap(it, length, pinned) }
         val old = layout.foreign
-        if ((old == null) == (wanted == null) && old?.anchor == wanted?.anchor && old?.length == wanted?.length) return
+        if ((old == null) == (wanted == null) && old?.anchor == wanted?.anchor && old?.length == wanted?.length && old?.pinned == wanted?.pinned) return
         layout.foreign = wanted
         updateReservations()
         tabs.revalidate()
@@ -381,13 +422,10 @@ internal class TabBarAdapter(
     /** The visible part of the space opened by [setForeignGap] (tab-bar coordinates), or null. */
     fun foreignGapRect(): Rectangle? = if (layout.foreign == null) null else geometry.spacerRect()
 
-    /** The tint colour of tabs and drag pictures of a group of colour [groupColor]. */
-    internal fun tintColor(groupColor: Color): Color = tint.colorFor(groupColor)
-
     /** Ends every drag preview of this split (pill placement and tint go back to the real membership) and removes the drop slot. */
     fun clearDragPreview() {
         headers.suppress(emptySet())
-        setForeignGap(null, 0)
+        setForeignGap(null, 0, false)
         val had = preview.clear()
         if (!had) return
         tint.clearPreviews()
@@ -396,6 +434,58 @@ internal class TabBarAdapter(
         tabs.revalidate()
         tabs.repaint()
     }
+
+    // ---- the dragged tab leaves the strip (DRAG-5) --------------------------------------------------------------------------------
+
+    /**
+     * The tab of [file] leaves this strip while its drag is over another split's strip, as it does in the platform's own drag out (see
+     * [TabTransit]): the editor area selects the tab it would select if this one was closed, then the tab is hidden. The strip must be
+     * in the order the drag began with (the caller puts it back first) and have no drag preview. The pill of a group whose only tab it
+     * is stays where it was (DRAG-8). False (nothing changed) if the tab cannot leave. Close it with [endTransit].
+     */
+    fun beginTransit(file: VirtualFile): Boolean {
+        if (!alive()) return false
+        var left = false
+        own { left = transit.begin(file, shown) }
+        if (left) {
+            updateReservations()
+            tabs.revalidate()
+            tabs.repaint()
+        }
+        return left
+    }
+
+    /**
+     * The tab in transit comes back: [show] it again in its place (not if it is about to be closed by a move), and with [reselect] select
+     * the tab that was selected when it left (Esc, back on this strip); a copy shows it and leaves the selection as it is, like the
+     * platform's drop with Ctrl. No-op if no tab is in transit.
+     */
+    fun endTransit(show: Boolean, reselect: Boolean) {
+        if (!alive()) return
+        own { transit.end(show, reselect) }
+        updateReservations()
+        tabs.revalidate()
+        tabs.repaint()
+    }
+
+    /** The file whose tab is in transit (out of this strip because its drag is over another split), or null. */
+    fun transitFile(): VirtualFile? = transit.state?.file
+
+    /**
+     * A dragged group is out of this strip ([groupId]) or back in it (null), as the tab in [beginTransit]: while its drag is over another
+     * split's strip (or no strip) its pill is not laid out, so there is no pill, no reserved space and no placeholder and the neighbours
+     * close up; the group's tabs stay hidden and in the collapse bookkeeping (it is collapsed for the drag), so the anchors of collapsed
+     * neighbours that pass through it still resolve. The host model is not touched. Idempotent.
+     */
+    fun setGroupTransit(groupId: String?) {
+        if (!alive() || groupInTransit == groupId) return
+        groupInTransit = groupId
+        own { updateReservations() }
+        tabs.revalidate()
+        tabs.repaint()
+    }
+
+    fun groupInTransit(): String? = groupInTransit
 
     // ---- strip geometry for the drag layer ---------------------------------------------------------------------------------
 
@@ -407,7 +497,14 @@ internal class TabBarAdapter(
     }
 
     /** The file whose label hosts the pill of [groupId], and whether on its leading side (tests only). Null if the pill is not hosted. */
+    /** Where the pill of [groupId] is now, from the labels' current bounds (a test seam for the geometry), or null if it has no place. */
+    internal fun pillArea(groupId: String): dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting.PillRect? =
+        headers.of(groupId)?.let { geometry.pillAreas()[it] }
+
     internal fun pillHost(groupId: String): Pair<VirtualFile?, Boolean>? = layout.pillHost(groupId)
+
+    /** The rectangles the drop slot covers now, tab-bar coordinates (tests only). */
+    internal fun dragGapRuns(): List<Rectangle> = preview.gap.currentRuns().map { Rectangle(it) }
 
     /** The row beside a separate pinned row that holds loose pills ([SpareRow]), or null (tests only). */
     internal fun spareRowRect(): java.awt.Rectangle? = spareRow.rect
@@ -423,6 +520,22 @@ internal class TabBarAdapter(
      * label itself then, and this adapter leaves its bounds alone.
      */
     fun isPlatformTabDragActive(): Boolean = PlatformInternals.isTabDragActive(tabs)
+
+    /**
+     * True while this tab bar is the drop target of a platform drag (`JBTabsImpl.startDropOver` made a drop label, `isDropTarget`; both
+     * public API): a tab dragged in by the platform's own drag-out, or a file from the Project view. The platform then decides where the
+     * drop goes from `getComponentAt(point)` (`SingleRowLayout.getDropIndexFor`), which must find a tab label and not a pill.
+     */
+    fun isPlatformDropTarget(): Boolean = tabs.component.components.any { it is TabLabel && tabs.isDropTarget(it.info) }
+
+    /**
+     * The pills are transparent to the pointer (hit testing, hover) while the platform's own drag works on this strip, as a drag in
+     * it ([isPlatformTabDragActive]) or as a drop into it ([isPlatformDropTarget]). Over a pill the platform then finds the label that
+     * hosts the pill's space, so a tab dropped there lands next to the pill's host label instead of the drop turning into a new split
+     * (`getComponentAt` returned the pill, no label, index -1, `getDropSideFor`). A pill hosted in front of its label: the tab lands
+     * in front of that label, i.e. in front of the pill. A pill hosted behind a label (a collapsed group): in front of that label.
+     */
+    private fun platformDecidesHits(): Boolean = isPlatformTabDragActive() || isPlatformDropTarget()
 
     /** The file of the tab being dragged by the platform (the selected tab, as in `draggedTabSelectionInfo`), or null. */
     internal fun platformDraggedFile(): VirtualFile? =
@@ -508,6 +621,7 @@ internal class TabBarAdapter(
     override fun dispose() {
         disposed = true
         animator.dispose()
+        transit.end(show = !window.isDisposed, reselect = false)
         collapse.releaseAll(showTabs = !window.isDisposed)
         layout.dispose()
         PillAwareTabsBorder.uninstallFrom(tabs)
@@ -518,3 +632,10 @@ internal class TabBarAdapter(
         tabs.revalidate()
     }
 }
+
+/**
+ * The groups a flip is measured against when group [groupId] comes back expanded after being dragged as its collapsed header (INT-6,
+ * COLL-7): [groups] with that group collapsed, so it flips and nothing else does.
+ */
+internal fun expandMeasure(groups: List<GroupDecoration>, groupId: String): List<GroupDecoration> =
+    groups.map { if (it.id == groupId) it.copy(collapsed = true) else it }

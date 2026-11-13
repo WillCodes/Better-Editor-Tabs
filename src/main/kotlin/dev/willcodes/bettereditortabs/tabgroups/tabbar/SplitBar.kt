@@ -39,11 +39,17 @@ internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, pare
         adapter.events = this
     }
 
-    /** Applies [newGroups] to the strip and refreshes the index; [animate]: collapse flips are animated (COLL-7). */
-    fun apply(newGroups: List<GroupDecoration>, animate: Boolean) {
+    /**
+     * Applies [newGroups] to the strip and refreshes the index; [animate]: collapse flips are animated (COLL-7). [expanded]: a group
+     * that was dragged as its collapsed header and comes back expanded (INT-6): it is measured as flipping from collapsed, so it plays
+     * the expand animation if [animate] allows it, whether it was in this split before (the drop in its own strip) or not (a move in).
+     */
+    fun apply(newGroups: List<GroupDecoration>, animate: Boolean, expanded: String? = null) {
         // What the host applied before is what a collapse flip is measured against: during a drag or a group move the strip shows
         // collapsed groups expanded for a moment, which is no state of the host's (see TabBarAdapter.setGroups).
-        val before = groups
+        val previous = groups
+        val before = if (expanded == null) previous
+        else previous.filter { it.id != expanded } + newGroups.filter { it.id == expanded }.map { it.copy(collapsed = true) }
         groups = newGroups
         val map = HashMap<VirtualFile, String>()
         for (g in newGroups) for (f in g.members) map.putIfAbsent(f, g.id)
@@ -84,14 +90,15 @@ internal class SplitBar(val split: SplitHandle, private val tabBar: TabBar, pare
 
     // Drag results land as they are, never animated (COLL-7): a drag may have expanded collapsed groups for a moment (live re-order,
     // a group arriving from another split), and the refresh that collapses them again is not a user toggle.
-    override fun commit(groups: List<GroupDecoration>) {
+    // The one exception is the group that was dragged as its collapsed header and comes back expanded: it plays the expand animation.
+    override fun commit(groups: List<GroupDecoration>, expanding: String?) {
         tabBar.host?.groupsChangedByDrag(split, groups)
-        tabBar.refresh(split, animate = false)
+        tabBar.refreshDropped(split, expanding)
     }
 
-    override fun acceptGroup(group: GroupDecoration) {
+    override fun acceptGroup(group: GroupDecoration, expanding: String?) {
         tabBar.host?.groupMovedIn(split, group)
-        tabBar.refresh(split, animate = false)
+        tabBar.refreshDropped(split, expanding)
     }
 
     override fun dispose() {
