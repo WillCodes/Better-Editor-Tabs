@@ -26,7 +26,7 @@ import javax.swing.SwingUtilities
 import javax.swing.Timer
 
 /**
- * The hover list of a collapsed group (INT-5, SET-7): its open tabs (file icon and tab title), in a popup below the header, shown after
+ * The hover list of a collapsed group (INT-5, SET-7): its open tabs (file icon and tab title), in a popup beside the header (on the same side as the group popup), shown after
  * [SHOW_DELAY_MS]. One controller per project, EDT only. The popup never takes focus from the editor. Picking an entry closes it and
  * runs [TabGroupsService.openFromTabList]. It closes when the pointer leaves the header and does not reach the list within [GRACE_MS],
  * or later leaves the list; Escape and a click outside close it too. See [PopupPlacement] for where it opens.
@@ -87,7 +87,7 @@ internal class TabListPopup(private val project: Project) {
         }
         val created = create(header)
         popup = created
-        created.show(PopupPlacement.below(header))
+        created.show(PopupPlacement.beside(header, created))
         trackPointer(created)
     }
 

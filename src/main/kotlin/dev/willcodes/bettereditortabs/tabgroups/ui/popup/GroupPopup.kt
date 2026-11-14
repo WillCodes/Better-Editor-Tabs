@@ -16,15 +16,15 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * The group popup (§6): the only place a group is renamed, recoloured, ungrouped or deleted from. Opens below its header (see
+ * The group popup (§6): the only place a group is renamed, recoloured, ungrouped or deleted from. Opens next to its header (below it for a strip on top; see
  * [PopupPlacement]) with the name field focused, all text selected. Closes on Enter, Escape or a click outside (POP-1); everything is
  * applied while editing, so closing commits nothing more. See [GroupPopupContent] for the layout and the keyboard navigation.
  */
 object GroupPopup {
-    /** INT-4: the popup for the group of [header] (a right click on it), below the header. */
+    /** INT-4: the popup for the group of [header] (a right click on it), next to the header. */
     fun show(project: Project, header: HeaderRef) {
         val popup = create(project, header.split, header.groupId) ?: return
-        popup.show(PopupPlacement.below(header))
+        popup.show(PopupPlacement.beside(header, popup))
     }
 
     /**
@@ -36,14 +36,14 @@ object GroupPopup {
         val popup = create(project, split, groupId) ?: return
         val tabBar = project.service<TabBar>()
         tabBar.header(split, groupId)?.let {
-            popup.show(PopupPlacement.below(it))
+            popup.show(PopupPlacement.beside(it, popup))
             return
         }
         ApplicationManager.getApplication().invokeLater(
             {
                 val header = tabBar.header(split, groupId)
                 when {
-                    header != null -> popup.show(PopupPlacement.below(header))
+                    header != null -> popup.show(PopupPlacement.beside(header, popup))
                     dataContext != null -> popup.showInBestPositionFor(dataContext)
                     else -> popup.showCenteredInCurrentWindow(project)
                 }

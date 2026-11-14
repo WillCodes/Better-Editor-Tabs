@@ -1,9 +1,9 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 
-import com.intellij.ui.tabs.JBTabsPosition
 import com.intellij.ui.tabs.TabsUtil
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorAreaDrop
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorSide
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.stripSide
 import java.awt.Point
 import java.awt.Rectangle
 import javax.swing.SwingUtilities
@@ -38,15 +38,8 @@ internal fun TabBarDnd.dropSideAt(screen: Point): EditorSide? = EditorAreaDrop.s
  */
 internal fun TabBarDnd.dropAreaScreen(side: EditorSide): Rectangle? {
     val whole = editorScreenRect() ?: return null
-    val position = if (tabs.isHideTabs) null else tabs.tabsPosition
     val header = tabs.lastLayoutPass?.headerRectangle
-    val strip = when (position) {
-        JBTabsPosition.top -> EditorAreaDrop.StripSide.TOP
-        JBTabsPosition.bottom -> EditorAreaDrop.StripSide.BOTTOM
-        JBTabsPosition.left -> EditorAreaDrop.StripSide.LEFT
-        JBTabsPosition.right -> EditorAreaDrop.StripSide.RIGHT
-        null -> EditorAreaDrop.StripSide.NONE
-    }
+    val strip = tabs.stripSide()
     val thickness = if (header == null) 0 else if (horizontal) header.height else header.width
     return EditorAreaDrop.highlight(EditorAreaDrop.dropArea(whole, strip, thickness), side)
 }

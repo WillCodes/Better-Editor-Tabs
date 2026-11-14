@@ -2,6 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.vfs.VirtualFile
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorAreaDrop
 import java.awt.Rectangle
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
@@ -11,13 +12,15 @@ import javax.swing.JComponent
  * [component] is the header's Swing component (showing, so a popup can be placed relative to it); it is only valid while the
  * split shows the group. [pillBounds] is the pill as painted, in [component]'s coordinates, taken when the ref was made: the
  * component is a little wider than the pill (a gap on each side), so a popup aligned to the pill's leading edge (§6) uses this.
- * Only `tabbar/` creates refs.
+ * [stripSide] tells on which side of the editor the strip stands, which decides where a popup opens (§6). Only `tabbar/` creates refs.
  */
 class HeaderRef internal constructor(
     val split: SplitHandle,
     val groupId: String,
     val component: JComponent,
     val pillBounds: Rectangle = Rectangle(0, 0, component.width, component.height),
+    /** The side of the editor area the strip is on when the ref was made (the tab placement; NONE while the tabs are hidden). */
+    val stripSide: EditorAreaDrop.StripSide = EditorAreaDrop.StripSide.TOP,
 )
 
 /**
