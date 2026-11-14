@@ -103,8 +103,22 @@ internal class TabBarAdapter(
     /** True while the plugin sorts this strip (IDE-2: "Sort tabs alphabetically" is on and the strip has groups). */
     val ownsSort: Boolean get() = sort.isOwning
 
-    /** `UISettings` changed: sorting may have been switched on or off. */
-    fun uiSettingsChanged() = sort.uiSettingsChanged()
+    /**
+     * `UISettings` changed: sorting may have been switched on or off, and the tab placement may have changed. A placement change is
+     * not animated (COLL-7): running collapse / expand animations snap to their end. Read from `UISettings` itself, so it does not
+     * matter whether the platform's own listener has re-laid out the strip yet (listener order is undefined).
+     */
+    fun uiSettingsChanged() {
+        val placement = UISettings.getInstance().editorTabPlacement
+        if (placement != lastPlacement) {
+            lastPlacement = placement
+            finishCollapseAnimations()
+        }
+        sort.uiSettingsChanged()
+    }
+
+    /** The tab placement (`UISettings.editorTabPlacement`, `TABS_NONE` included) as of the last [uiSettingsChanged]. */
+    private var lastPlacement: Int = UISettings.getInstance().editorTabPlacement
 
     /** A pin or a drag ended: the sorted order may be out of date (looked at after the current event). */
     fun recheckSort() = sort.recheckLater()
@@ -477,8 +491,10 @@ internal class TabBarAdapter(
         drag.updateGap()
         // a drag that takes the last tab or group out of the strip keeps the editor showing, as the platform's drag-out does
         val dragging = collapse.keepEditor || transit.state != null
-        val showEmpty = !tabs.isHideTabs && tabs.width > 0 && tabs.isEmptyVisible && collapse.hasHiddenFiles() && !dragging
-        emptyOverlay.update(showEmpty, geometry.emptyStrip(tabs.tabsPosition))
+        // Also with placement None (IDE-5): the strip is gone but the split still has only hidden tabs, and without the overlay the
+        // platform paints a blank editor area there (no strip to paint then).
+        val showEmpty = tabs.width > 0 && tabs.isEmptyVisible && collapse.hasHiddenFiles() && !dragging
+        emptyOverlay.update(showEmpty, if (tabs.isHideTabs) java.awt.Rectangle() else geometry.emptyStrip(tabs.tabsPosition))
     }
 
     /** The logical order as of the last layout pass: the order before a pin change, which the platform applies lazily (see [pinChanged]). */

@@ -76,7 +76,7 @@ internal class SplitBar(
 
     // ---- StripEvents -----------------------------------------------------------------------------------------------------
 
-    private fun ref(header: GroupHeader) = HeaderRef(split, header.groupId, header, header.pillBounds())
+    private fun ref(header: GroupHeader) = HeaderRef(split, header.groupId, header, header.pillBounds(), dnd.tabs.stripSide())
 
     override fun headerClicked(header: GroupHeader, event: MouseEvent) {
         tabBar.host?.headerClicked(ref(header), event)

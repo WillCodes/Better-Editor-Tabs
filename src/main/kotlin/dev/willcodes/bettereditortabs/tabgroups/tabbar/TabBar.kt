@@ -49,6 +49,9 @@ import javax.swing.SwingUtilities
  *                      GroupMove, and its targets that make the split first: GroupSplitMove (a new split at the edge of an editor area, a new
  *                      window outside every editor; EditorAreaTargets: the platform's drop side and drop-area highlight); DragAutoScroll
  *                      (edge auto-scroll and the wheel during a drag); GroupChipImage (the group's picture)
+ *     strip/VerticalRows Left / Right placement: pills get rows of their own (labels moved after the layout); SideMoreButton shows the
+ *                      platform's "more" button when only those rows make the strip overflow. Header refs carry the strip side
+ *                      (StripSide.kt), which ui/popup/PopupPlacement uses to open popups on the side facing the editor (§6)
  *     strip/TabTransit a tab whose drag is over another split is out of its source strip, as in the platform's drag-out
  *     strip/StripSort  IDE-2: with "Sort tabs alphabetically" on, a strip that has groups is sorted by the plugin (pinned, groups by name,
  *                      ungrouped); the platform's view sorting is off for it, and the manual order comes back when it stops
@@ -241,7 +244,7 @@ class TabBar(private val project: Project) : Disposable {
     fun header(split: SplitHandle, groupId: String): HeaderRef? {
         if (host == null) return null
         val component = bars[split.window]?.adapter?.showingHeader(groupId) ?: return null
-        return HeaderRef(split, groupId, component, component.pillBounds())
+        return HeaderRef(split, groupId, component, component.pillBounds(), StripReader.tabsOf(split.window).stripSide())
     }
 
     /**

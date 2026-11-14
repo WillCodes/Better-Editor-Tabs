@@ -1,5 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
+import java.awt.Dimension
+import java.awt.Insets
 import java.awt.Rectangle
 
 /**
@@ -85,6 +87,19 @@ object PillRows {
         }
         if (end - start < label.width * MIN_SHOWN_FRACTION) return null
         return Rectangle(start, label.y, end - start, label.height)
+    }
+
+    /**
+     * Where the platform puts the "more" button of a New UI side strip when it overflows: a copy of
+     * `SingleRowLayoutStrategy.Left.getMoreRect` / `Right.getMoreRect` (`singleRow/SingleRowLayoutStrategy.java:505-526` / `571-585`,
+     * New UI branch; the strategies are package private). Inputs as the platform reads them: [stripWidth] / [stripHeight] the tabs
+     * component's size, [headerWidth] `headerFitSize.width` (the strip's width), [entry] / [more] the preferred sizes of the entry point
+     * and of the "more" toolbar, [passInsets] `SingleRowPassInfo.insets`, [actions] `getActionsInsets()`.
+     */
+    fun sideMoreRect(left: Boolean, stripWidth: Int, stripHeight: Int, headerWidth: Int, entry: Dimension, more: Dimension, passInsets: Insets, actions: Insets): Rectangle {
+        val x = if (left) headerWidth - entry.width - more.width - passInsets.right - actions.right - 1
+        else stripWidth - more.width - entry.width - actions.right
+        return Rectangle(x, stripHeight - more.height - passInsets.bottom - actions.bottom, more.width, more.height)
     }
 
     /** A label narrowed by the overflow buttons to less than this part of its width is hidden instead. */

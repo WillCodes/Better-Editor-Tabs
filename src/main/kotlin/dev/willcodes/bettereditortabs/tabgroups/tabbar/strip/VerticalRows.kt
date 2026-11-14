@@ -26,11 +26,15 @@ import java.awt.Rectangle
  * Collapse animation (COLL-7): the label of a group that collapses or expands is drawn at the animated part of its height
  * ([CollapseAnimator.verticalExtentOf]) and the labels behind it move up by the rest, frame by frame (every frame is a new layout pass).
  *
- * Limits: the platform decides about overflow ("more" button), scrolling and scroll-to-selected from the raw label heights. A strip that
- * fits raw but not with the pill rows shows no "more" button, so the tabs pushed out at its end can only be reached by selecting
- * them another way (the selected tab is always brought into view by [PillRows.extraScroll]); an overflowing strip is corrected by
- * moving everything back by up to the height of all blocks so the selected tab (or the end of the strip) stays visible, with a
- * small jump when the end is reached.
+ * The "more" button ([SideMoreButton]): a strip that fits without the pill rows but not with them has no platform "more" button (the
+ * platform makes it from the raw lengths). When labels are pushed out of such a strip the button is made where the platform would put
+ * it and the labels are fitted around it, so the pushed-out tabs are reachable through the overflow list. During a collapse animation
+ * a shown button stays until the animation ends.
+ *
+ * Limits: scrolling and scroll-to-selected still work from the raw label heights and do not count the pill rows: the platform cannot
+ * scroll a strip it considers fitting, so there the selected tab is brought into view by [PillRows.extraScroll] (the start of the strip
+ * scrolls away); an overflowing strip is corrected by moving everything back by up to the height of all blocks so the selected tab (or
+ * the end of the strip) stays visible, with a small jump when the end is reached. The "more" button is not made in multi-row layouts.
  *
  * Wraps: `JBTabsImpl.lastLayoutPass` (`requiredLength`, `scrollExtent`, `moreRect`, `entryPointRect`, `SingleRowPassInfo.toDrop`),
  * `isMouseInsideTabsArea`, `isRecentlyActive`, label bounds. EDT only.
@@ -42,6 +46,7 @@ internal class VerticalRows(
     private val extentOf: (VirtualFile) -> Double? = { null },
 ) {
     private var lastPass: Any? = null
+    private val moreButton = SideMoreButton(tabs)
 
     /** The laid-out height of every label the last pass drew shorter (COLL-7); pill rows keep the full row height. */
     private val naturalHeights = java.util.IdentityHashMap<TabLabel, Int>()
@@ -54,6 +59,7 @@ internal class VerticalRows(
         if (tabs.isHorizontalTabs || tabs.isHideTabs) {
             naturalHeights.clear()
             lastPass = null
+            moreButton.reset()
             return false
         }
         val pass = tabs.lastLayoutPass ?: return false
@@ -102,8 +108,26 @@ internal class VerticalRows(
         // Like the platform's own labels, a shifted label never covers the overflow buttons at the end of the strip: it is narrowed
         // when it shares their row and hidden when it does not fit above the end of the strip. The platform may have narrowed the
         // label that was in the buttons' row before the shift, so every label gets the column's full width back first.
-        val buttons = listOf(pass.moreRect, pass.entryPointRect).filter { !it.isEmpty }
         val column = labels.filter { !it.bounds.isEmpty }.maxOfOrNull { it.width } ?: 0
+        val animating = shrink.any { it != 0 }
+        fun fitAll(buttons: List<Rectangle>): Array<Rectangle?> = Array(labels.size) { i ->
+            val b = labels[i].bounds
+            if (b.isEmpty || drawn[i] == 0) null
+            else PillRows.fit(Rectangle(b.x, b.y + shifts[i] - back, column, drawn[i]), buttons, tabs.height)
+        }
+        var buttons = listOf(pass.moreRect, pass.entryPointRect).filter { !it.isEmpty }
+        var fits = fitAll(buttons)
+        // A strip that fits raw but not with the pill rows has no "more" button yet (the platform makes it from the raw lengths): make it
+        // when labels are pushed out. During a collapse animation a button that is shown stays until the animation ends, so it does not
+        // come and go with every frame (the decision is made from the layout without the button, so it is not circular).
+        val needed = labels.indices.any { fits[it] == null && !labels[it].bounds.isEmpty && drawn[it] != 0 }
+        val moreRect = if (needed || (animating && moreButton.shown)) moreButton.rectFor(pass) else null
+        if (moreRect != null) {
+            moreButton.show(pass, moreRect)
+            buttons = buttons + moreRect
+            fits = fitAll(buttons)
+        }
+        else moreButton.reset()
         val pushedOut = ArrayList<TabInfo>()
         for ((i, label) in labels.withIndex()) {
             val b = label.bounds
@@ -113,7 +137,7 @@ internal class VerticalRows(
                 label.setBounds(b.x, b.y + shifts[i] - back, column, 0)
                 continue
             }
-            val fitted = PillRows.fit(Rectangle(b.x, b.y + shifts[i] - back, column, drawn[i]), buttons, tabs.height)
+            val fitted = fits[i]
             if (fitted == null) {
                 label.setBounds(0, 0, 0, 0)
                 pushedOut += label.info
