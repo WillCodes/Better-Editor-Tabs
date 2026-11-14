@@ -129,9 +129,16 @@ interface TabBarHost {
 
     // ---- LIFE-5 --------------------------------------------------------------------------------------------------------------
 
-    /** True if a closed group is available to reopen; keeps Reopen Closed Tab enabled when the platform history is empty. May run off the EDT. */
+    /**
+     * True if a deleted group is recorded in some split (not necessarily the one Reopen Closed Tab will act on); keeps Reopen Closed Tab
+     * enabled when the platform history is empty. May run off the EDT.
+     */
     fun canReopenClosedGroup(): Boolean = false
 
-    /** Reopens the group and returns true, or returns false to let the built-in single-tab reopen run. */
+    /**
+     * Reopen Closed Tab: brings back the group that was deleted last in the split the action acts on ([TabBar.reopenSplit]) and returns
+     * true, if no tab was closed there since ([TabBar.isMostRecentClose]); otherwise returns false and the built-in single-tab reopen
+     * runs (a tab closed after the delete is reopened first, then the group). EDT.
+     */
     fun reopenClosedGroup(event: AnActionEvent): Boolean = false
 }

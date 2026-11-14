@@ -21,14 +21,15 @@ import javax.swing.event.DocumentEvent
 internal class GroupPopupActions(
     val close: () -> Unit,
     val ungroup: () -> Unit,
+    val stashGroup: () -> Unit,
     val delete: () -> Unit,
     val repack: () -> Unit,
 )
 
 /**
- * The content of the group popup (§6), top to bottom: the name field and the colour swatches, the actions (Ungroup, Close Group,
+ * The content of the group popup (§6), top to bottom: the name field and the colour swatches, the actions (Ungroup, Stash Group,
  * Delete Group), the Advanced section; native popup separators between the blocks. Name and colour changes are applied to
- * [service] at once (POP-1: nothing to commit). Close Group (Stage 10) and Advanced (Stage 11) are present but disabled.
+ * [service] at once (POP-1: nothing to commit). Advanced (Stage 11) is present but disabled.
  *
  * Layout: the swatch row defines the width, the field stretches to it. The field, the first swatch and the row texts start at the same
  * x (the selection inset plus the inner inset of a list popup). Up / Down walk through field, swatches and the enabled rows
@@ -50,13 +51,16 @@ internal class GroupPopupContent(group: TabGroup, service: TabGroupsService, act
 
         val swatches = ColorSwatches(group.color) { service.recolor(groupId, it) }
         val ungroup = PopupMenuRow(BetterEditorTabsBundle.message("popup.action.ungroup"), true, actions.ungroup)
-        // Stage 10 enables Close Group and gives it its action.
-        val closeGroup = PopupMenuRow(BetterEditorTabsBundle.message("popup.action.closeGroup"), false) {}
+        val stashGroup = PopupMenuRow(BetterEditorTabsBundle.message("popup.action.stashGroup"), true, actions.stashGroup)
         val delete = PopupMenuRow(BetterEditorTabsBundle.message("popup.action.deleteGroup"), true, actions.delete)
         val advanced = AdvancedSection(false, actions.repack)
+        // what each action does with the tabs, and whether it can be undone
+        ungroup.toolTipText = BetterEditorTabsBundle.message("popup.action.ungroup.tooltip")
+        stashGroup.toolTipText = BetterEditorTabsBundle.message("popup.action.stashGroup.tooltip")
+        delete.toolTipText = BetterEditorTabsBundle.message("popup.action.deleteGroup.tooltip")
 
         val ring = PopupFocusRing()
-        listOf(nameField, swatches, ungroup, closeGroup, delete, advanced.focusTarget).forEach(ring::register)
+        listOf(nameField, swatches, ungroup, stashGroup, delete, advanced.focusTarget).forEach(ring::register)
 
         val textInset = textInset()
         val swatchInset = textInset - (JBUI.scale(ColorSwatches.CELL) - JBUI.scale(ColorSwatches.CIRCLE)) / 2
@@ -70,7 +74,7 @@ internal class GroupPopupContent(group: TabGroup, service: TabGroupsService, act
         root.add(wrap(swatches, emptyBorder(0, swatchInset, 0, swatchInset)))
         root.add(PopupSeparator())
         root.add(ungroup.aligned())
-        root.add(closeGroup.aligned())
+        root.add(stashGroup.aligned())
         root.add(delete.aligned())
         root.add(PopupSeparator())
         root.add(advanced.component)

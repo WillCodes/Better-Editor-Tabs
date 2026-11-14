@@ -11,9 +11,6 @@ class GroupsState<S, F>(private val newId: () -> String) {
     /** RULE-6 hook (Stage 11): true for a group whose empty instances must stay (enabled auto-group rule). MEM-5 skips those. */
     var keepWhenEmpty: (TabGroup) -> Boolean = { false }
 
-    /** Stash hook (Stage 10): true for a stashed group, which keeps existing without instances. MEM-6 skips those. */
-    var isStashed: (TabGroup) -> Boolean = { false }
-
     private val groupMap = LinkedHashMap<String, TabGroup>()
     private val bySplit = LinkedHashMap<S, MutableList<GroupInstance<F>>>()
 
@@ -156,7 +153,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
         bySplit.values.removeAll { it.isEmpty() }
         for (id in ids) {
             val group = groupMap[id] ?: continue
-            if (bySplit.values.none { l -> l.any { it.groupId == id } } && !isStashed(group)) groupMap.remove(id)
+            if (bySplit.values.none { l -> l.any { it.groupId == id } }) groupMap.remove(id)
         }
     }
 }

@@ -42,6 +42,13 @@ interface TabGroupsUi {
      */
     fun hoverEnded(header: HeaderRef) {}
 
+    /**
+     * LIFE-4, LIFE-5, PERS-4: the group shown as [groupName] was brought back (a stash restore or Reopen Closed Tab), but the files in
+     * [missing] (their names, in group order) no longer exist and were skipped. [restored] is the number of tabs that did come back; 0
+     * means nothing was restored at all. A modal warning. Not called when every file was found.
+     */
+    fun warnMissingFiles(groupName: String, missing: List<String>, restored: Int) {}
+
     companion object {
         fun getInstance(project: Project): TabGroupsUi = project.service()
     }

@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupStash
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredGroups
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.rewriteUrls
@@ -19,13 +20,18 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitIdentity
  * published, rebuilt on the EDT ([capture]) after every change of the groups.
  *
  * Lifecycle:
- * - until the startup restore has run ([restored]) the bean is the loaded state itself, unchanged, so an early save loses nothing,
- *   and file renames re-address it ([filesMoved]);
- * - after it, every [capture] reflects the live state, plus the stored splits that are still [pending] (PERS-3: no live split has
- *   claimed them yet, a detached window may still be restoring), so a save during that time loses nothing;
+ * - until the startup restore has run ([restored]) the bean is the loaded state (its splits and groups unchanged, so an early save
+ *   loses nothing; file renames re-address them, [filesMoved]) with the live stash, which is usable before the restore (PERS-4);
+ * - after it, every [capture] reflects the live state and the live stash, plus the stored splits that are still [pending] (PERS-3: no
+ *   live split has claimed them yet, a detached window may still be restoring), so a save during that time loses nothing;
  * - [freeze] (project closing): the platform then closes every tab, which would empty the groups (MEM-1), so later captures are ignored.
  */
-internal class SavedGroups(private val project: Project, private val state: GroupsState<SplitHandle, VirtualFile>) {
+internal class SavedGroups(
+    private val project: Project,
+    private val state: GroupsState<SplitHandle, VirtualFile>,
+    /** The live stash (PERS-4): always part of the saved state, restored or not. */
+    private val stash: GroupStash,
+) {
     @Volatile
     var bean: GroupsStateBean = GroupsStateBean()
         private set
@@ -63,13 +69,22 @@ internal class SavedGroups(private val project: Project, private val state: Grou
         restored = true
     }
 
-    /** Rebuilds [bean] from the live state; a no-op before the restore and while frozen. EDT only. */
+    /**
+     * Rebuilds [bean] from the live state and stash; before the restore only the stash is taken over (the loaded splits stay as they
+     * are). A no-op while frozen. EDT only.
+     */
     fun capture() {
-        if (!restored || frozen || project.isDisposed) return
+        if (frozen || project.isDisposed) return
+        if (!restored) {
+            val loaded = stored()
+            val withStash = loaded.copy(stash = GroupsPersistence.stashToStored(stash.entries))
+            if (withStash != loaded) bean = GroupsPersistence.toBean(withStash)
+            return
+        }
         try {
             val tabBar = project.getService(TabBar::class.java)
             val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder, tabBar::manualOrder)
-            bean = GroupsPersistence.toBean(live.withPending(pending))
+            bean = GroupsPersistence.toBean(live.copy(stash = GroupsPersistence.stashToStored(stash.entries)).withPending(pending))
         }
         catch (e: Exception) {
             LOG.warn("Could not capture the tab groups for saving; keeping the last snapshot", e)
@@ -94,6 +109,7 @@ internal class SavedGroups(private val project: Project, private val state: Grou
 
     /** MEM-4: files or directories moved from the first URL to the second; the state not restored yet is re-addressed. EDT only. */
     fun filesMoved(moves: List<Pair<String, String>>) {
+        for ((oldUrl, newUrl) in moves) stash.rewriteUrls(oldUrl, newUrl)
         if (!restored) {
             var stored = stored()
             for ((oldUrl, newUrl) in moves) stored = stored.rewriteUrls(oldUrl, newUrl)
