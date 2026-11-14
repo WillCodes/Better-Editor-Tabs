@@ -15,6 +15,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.ThreadingAssertions
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.TabBarDnd
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.GroupReopen
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
 import dev.willcodes.bettereditortabs.tabgroups.model.splits.SplitRecency
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.moveGroupToSplit
@@ -57,13 +58,18 @@ import javax.swing.SwingUtilities
  *                      ungrouped); the platform's view sorting is off for it, and the manual order comes back when it stops
  *     ide/             hooks into built-in behaviour: close actions (IDE-4), Reopen Closed Tab (LIFE-5), tab limit (IDE-3),
  *                      new-tab placement (MEM-2), closing on behalf of group operations, the overflow ("more") list with group
- *                      headings (COLL-6: TabListOverride replaces the `TabList` action for strips with groups, OverflowList)
+ *                      headings (COLL-6: TabListOverride replaces the `TabList` action for strips with groups, OverflowList);
+ *                      GroupReopen: closing a group's tabs without Reopen Closed Tab entries (Stash Group, Delete Group: ClosedMark
+ *                      tells whether the split's history top is still the entry of that close), opening files into a split in a given
+ *                      order (bringing a group back) and picking the split the built-in Reopen Closed Tab acts on
  *     splits/          restart-stable split identity (PERS-3) and the "splits restored" signal
  *     platform/        PlatformInternals: every reflective access, documented one by one, with a start-up self-check
  *   service/, ui/, actions/, rules/, settings/             callers: they may import only the public types of tabbar/ (and splits/)
  *     service/         TabGroupsService (state + operations, the TabBarHost, and the project's PersistentStateComponent in the
  *                      workspace file: GroupsPersistence converts the model to XML beans, the listeners restore at startup, save before
- *                      close and follow renames and moves), TabGroupsSettings; reaches popups and dialogs only through its
+ *                      close and follow renames and moves), GroupComeback (the stash of closed groups, LIFE-2/LIFE-4, and the records of
+ *                      deleted groups for Reopen Closed Tab, LIFE-5; the rules of bringing a group back are model/groups/GroupRestore),
+ *                      TabGroupsSettings; reaches popups and dialogs only through its
  *                      TabGroupsUi interface, which ui/ implements (ui/ -> service/, never the other way round)
  *     ui/popup/        the group popup (§6): GroupPopup (open, place, close), GroupPopupContent (sections), PopupPlacement;
  *                      TabListPopup, the hover list of a collapsed group (INT-5)
@@ -386,6 +392,59 @@ class TabBar(private val project: Project) : Disposable {
 
     /** Closes [files] in [split] the normal way: each one is added to Reopen Closed Tab history. */
     fun closeTabs(split: SplitHandle, files: List<VirtualFile>) = TabClose.closeTabs(split.window, files)
+
+    /**
+     * Closes [files] in [split] without Reopen Closed Tab entries (LIFE-2 Stash Group, LIFE-5: the stash and the closed-group records
+     * are how a group comes back; an entry that the platform's own close added is removed again, see [TabClose.closeForMove]; if the
+     * history cannot be read the entries stay, which is only cosmetic). Files that are not open are skipped; a split left without tabs
+     * closes as with a normal close. Returns a mark of the close for [isMostRecentClose].
+     */
+    fun closeTabsQuietly(split: SplitHandle, files: List<VirtualFile>): ClosedMark = GroupReopen.closeQuietly(split.window, files)
+
+    /**
+     * LIFE-5: true if nothing has been closed or reopened (Reopen Closed Tab history) in [mark]'s split since the close that made it, so
+     * the Reopen Closed Tab that comes next belongs to that close. False once the split is gone. If the history cannot be read
+     * (platform change) it answers true: the record is offered first (fail soft).
+     */
+    fun isMostRecentClose(mark: ClosedMark): Boolean = GroupReopen.isMostRecent(mark)
+
+    /**
+     * The split the built-in Reopen Closed Tab acts on for [e] (LIFE-5): the current window of the editor splitters around the action's
+     * context component, else the current window; null if the project has no split.
+     */
+    fun reopenSplit(e: AnActionEvent): SplitHandle? = GroupReopen.reopenWindow(project, e)?.let { SplitHandle(it) }
+
+    /**
+     * Opens [toOpen] in [split] as a block and puts the split's tabs in [order] (LIFE-4, LIFE-5: bringing a group back). [order] is the
+     * whole logical order wanted (as [logicalOrder] lists it, with the new files where they belong); the files of [toOpen] open in the
+     * background (neither selected nor focused), files that are open already only move. Tabs hidden by collapsed groups are shown for
+     * the moment, without an animation; the caller then applies the new membership and calls [refresh], which hides them again (no
+     * collapsed flag flips, so nothing animates). The opening is the strip's own change (the platform's selection churn is not COLL-4)
+     * and the opened files are acknowledged: [TabBarHost.tabsOpened] is not called for them and MEM-2 leaves them where they are.
+     *
+     * [split] null: the project has no editor split; the first file is opened with `FileEditorManagerEx.openFile(file, null, options)` (synchronous, as the group moves use it) so that the platform makes a
+     * window, and the rest follows there. Returns the split used and the files of [toOpen] that have a tab there, or null (nothing
+     * done) without a host, for a split that is gone, or when nothing could be opened into a split-less project. EDT only.
+     */
+    fun openInOrder(split: SplitHandle?, toOpen: List<VirtualFile>, order: List<VirtualFile>): OpenedBlock? {
+        if (host == null) return null
+        var target = split?.window?.takeIf { !it.isDisposed }
+        var rest = toOpen
+        var first: VirtualFile? = null
+        if (split == null) {
+            first = toOpen.firstOrNull() ?: return null
+            // synchronous (a navigate would open later, after the caller has gone on); a null window lets the platform make one
+            FileEditorManagerEx.getInstanceEx(project).openFile(first, null, PlatformInternals.backgroundOpenOptions())
+            target = FileEditorManagerEx.getInstanceEx(project).currentWindow?.takeIf { !it.isDisposed }
+                ?: FileEditorManagerEx.getInstanceEx(project).windows.firstOrNull { !it.isDisposed }
+            rest = toOpen - first
+            sync()
+        }
+        val bar = target?.let { barFor(SplitHandle(it)) } ?: return null
+        val opened = GroupReopen.openInOrder(bar, rest, order)
+        val files = toOpen.filter { it == first || it in opened }
+        return OpenedBlock(bar.split, files)
+    }
 
     /**
      * Moves the whole instance of group [groupId] from [from] to [to] the way a group drop on the other split's strip does (SPLIT-5,

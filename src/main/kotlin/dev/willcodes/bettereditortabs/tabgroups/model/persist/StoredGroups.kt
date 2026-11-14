@@ -31,7 +31,25 @@ data class StoredSplit(
     fun splitKey(): SplitKey = SplitKey.decode(key) ?: SplitKey("?", "")
 }
 
-data class StoredGroups(val groups: List<StoredGroup>, val splits: List<StoredSplit>) {
+/**
+ * One stashed group (LIFE-2, PERS-4): the group's identity, name, [color] ([GroupColor] name), member file URLs in order and the time
+ * it was stashed. Stage 11 adds the rule.
+ */
+data class StoredStash(
+    val id: String,
+    val groupId: String,
+    val name: String,
+    val color: String,
+    val files: List<String>,
+    val stashedAt: Long,
+)
+
+/** [stash]: the stashed groups, newest first (PERS-4); stored independently of splits, a restart never touches it. */
+data class StoredGroups(
+    val groups: List<StoredGroup>,
+    val splits: List<StoredSplit>,
+    val stash: List<StoredStash> = emptyList(),
+) {
     companion object {
         val EMPTY = StoredGroups(emptyList(), emptyList())
     }
@@ -57,6 +75,7 @@ fun StoredGroups.rewriteUrls(oldUrl: String, newUrl: String): StoredGroups {
         splits = splits.map { s ->
             s.copy(order = fix(s.order), instances = s.instances.map { it.copy(members = fix(it.members)) }, manualOrder = fix(s.manualOrder))
         },
+        stash = stash.map { it.copy(files = fix(it.files)) },
     )
 }
 
@@ -67,5 +86,5 @@ fun StoredGroups.rewriteUrls(oldUrl: String, newUrl: String): StoredGroups {
 fun StoredGroups.withPending(pending: StoredGroups): StoredGroups {
     if (pending.splits.isEmpty()) return this
     val known = groups.mapTo(HashSet()) { it.id }
-    return StoredGroups(groups + pending.groups.filter { it.id !in known }, splits + pending.splits)
+    return StoredGroups(groups + pending.groups.filter { it.id !in known }, splits + pending.splits, stash)
 }

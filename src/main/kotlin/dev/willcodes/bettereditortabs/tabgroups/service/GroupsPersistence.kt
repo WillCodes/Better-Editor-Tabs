@@ -5,17 +5,20 @@ import com.intellij.util.xmlb.annotations.Attribute
 import com.intellij.util.xmlb.annotations.Tag
 import com.intellij.util.xmlb.annotations.XCollection
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.StashEntry
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.colorFromName
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredGroup
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredGroups
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredInstance
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredSplit
+import dev.willcodes.bettereditortabs.tabgroups.model.persist.StoredStash
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 
 /**
  * The XML form of the project's groups in the workspace file (PERS-1): `<component name="BetterEditorTabsGroups">`. Plain beans with
- * defaults, so the serializer leaves out what is empty or false. The stash (Stage 10) and rules (Stage 11) will be added as further
- * properties with defaults: the serializer ignores elements it does not know and keeps the defaults of those missing, so state written
+ * defaults, so the serializer leaves out what is empty or false. The stash (Stage 10, PERS-4) is [stash]; rules (Stage 11) will be added
+ * as further properties with defaults: the serializer ignores elements it does not know and keeps the defaults of those missing, so state written
  * by this version stays readable and the reverse does not fail either (PERS-4).
  *
  * Never mutated after it has been handed to the platform: [TabGroupsService.getState] may be read on another thread while the saved
@@ -27,6 +30,34 @@ class GroupsStateBean {
 
     @XCollection(propertyElementName = "splits")
     var splits: MutableList<SplitBean> = ArrayList()
+
+    /** PERS-4: the stashed groups, newest first. */
+    @XCollection(propertyElementName = "stash")
+    var stash: MutableList<StashBean> = ArrayList()
+}
+
+@Tag("stashed")
+class StashBean {
+    @Attribute
+    var id: String = ""
+
+    /** The group identity, so a restore can re-link it. */
+    @Attribute
+    var group: String = ""
+
+    @Attribute
+    var name: String = ""
+
+    /** A [dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor] name. */
+    @Attribute
+    var color: String = ""
+
+    /** Epoch milliseconds of the Stash Group. */
+    @Attribute
+    var at: Long = 0
+
+    @XCollection(propertyElementName = "files", elementName = "f", valueAttributeName = "url")
+    var files: MutableList<String> = ArrayList()
 }
 
 @Tag("group")
@@ -81,7 +112,14 @@ internal object GroupsPersistence {
                 s.key, s.order.toList(), s.instances.map { StoredInstance(it.group, it.members.toList(), it.collapsed) }, s.manualOrder.toList(),
             )
         },
+        stash = bean.stash.map { StoredStash(it.id, it.group, it.name, it.color, it.files.toList(), it.at) },
     )
+
+    fun stashToStored(entries: List<StashEntry>): List<StoredStash> =
+        entries.map { StoredStash(it.id, it.groupId, it.name, it.color.name, it.files, it.stashedAt) }
+
+    fun stashFromStored(stored: List<StoredStash>): List<StashEntry> =
+        stored.map { StashEntry(it.id, it.groupId, it.name, colorFromName(it.color), it.files, it.stashedAt) }
 
     fun toBean(stored: StoredGroups): GroupsStateBean {
         val bean = GroupsStateBean()
@@ -96,6 +134,11 @@ internal object GroupsPersistence {
                 }
             }
         }
+        for (e in stored.stash) {
+            bean.stash += StashBean().also {
+                it.id = e.id; it.group = e.groupId; it.name = e.name; it.color = e.color; it.at = e.stashedAt; it.files = e.files.toMutableList()
+            }
+        }
         return bean
     }
 
@@ -103,7 +146,7 @@ internal object GroupsPersistence {
      * The stored form of the live [state]: every split in [infos] that has a group instance, with its key, its logical tab order
      * ([logicalOrder], PERS-1), its instances and, while the plugin sorts it alphabetically, its manual order ([manualOrder], IDE-2).
      * Members whose file is no longer valid (deleted, MEM-4) are left out; identities that no stored instance uses are not stored (the
-     * stash will add its own, Stage 10).
+     * stash keeps its own copy of a group's name and colour, [StoredStash]). The result has no stash: [SavedGroups] adds it.
      */
     fun capture(
         state: GroupsState<SplitHandle, VirtualFile>,

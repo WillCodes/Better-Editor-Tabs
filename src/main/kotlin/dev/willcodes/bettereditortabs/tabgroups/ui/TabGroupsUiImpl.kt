@@ -27,6 +27,19 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
 
     override fun hoverEnded(header: HeaderRef) = tabList.hoverEnded(header)
 
+    /** LIFE-5, PERS-4: modal warning naming the skipped files (at most [MAX_LISTED]), or saying that nothing could be restored. */
+    override fun warnMissingFiles(groupName: String, missing: List<String>, restored: Int) {
+        val message = if (restored <= 0) {
+            BetterEditorTabsBundle.message("restore.missing.none", groupName)
+        }
+        else {
+            val shown = missing.take(MAX_LISTED).toMutableList()
+            if (missing.size > MAX_LISTED) shown += BetterEditorTabsBundle.message("restore.missing.more", missing.size - MAX_LISTED)
+            BetterEditorTabsBundle.message("restore.missing.partial", groupName, missing.size, shown.joinToString("\n"))
+        }
+        Messages.showWarningDialog(project, message, BetterEditorTabsBundle.message("restore.missing.title"))
+    }
+
     /**
      * LIFE-3a: three buttons, Merge Tabs (the default, LIFE-3a's Move), Close Tabs, Cancel, and a "Don't ask again" box that only counts with Move or Close. `MessageDialogBuilder.yesNoCancel` maps them to yes, no and cancel;
      * Escape and the window's close button answer cancel.
@@ -79,5 +92,9 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
             stopAsking -> DeleteAnswer.DELETE_AND_STOP_ASKING
             else -> DeleteAnswer.DELETE
         }
+    }
+
+    private companion object {
+        const val MAX_LISTED = 10
     }
 }

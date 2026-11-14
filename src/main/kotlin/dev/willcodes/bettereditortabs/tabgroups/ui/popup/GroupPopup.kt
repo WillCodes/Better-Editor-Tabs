@@ -69,6 +69,7 @@ object GroupPopup {
             GroupPopupActions(
                 close = { popup?.closeOk(null) },
                 ungroup = { closeThen { service.ungroup(split, groupId) } },
+                stashGroup = { closeThen { service.stashGroup(split, groupId) } },
                 delete = { closeThen { service.requestDelete(split, groupId, DeleteTrigger.MENU) } },
                 repack = { popup?.pack(true, true) },
             ),

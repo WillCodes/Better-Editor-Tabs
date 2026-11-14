@@ -19,7 +19,7 @@ data class PlannedSplit(
     val manualOrder: List<String> = emptyList(),
 )
 
-/** [groups]: the identities that stay (referenced by a planned instance, or kept by the stash hook); [splits]: one entry per matched split. */
+/** [groups]: the identities that stay (referenced by a planned instance); [splits]: one entry per matched split. */
 data class RestorePlan(val groups: List<StoredGroup>, val splits: List<PlannedSplit>)
 
 /**
@@ -31,17 +31,13 @@ data class RestorePlan(val groups: List<StoredGroup>, val splits: List<PlannedSp
  * - Membership is restored only for tabs that actually reopened (in *that* matched split); members that did not are dropped. A file
  *   belongs to the first instance that lists it (INV-1).
  * - An instance without a reopened member is dropped, whatever its group (a rule does not exempt it, RULE-5 fills restored groups
- *   separately). A group without any remaining instance is dropped (MEM-6) unless [keepWithoutInstances] says it is stashed
- *   (Stage 10: stashed groups are unaffected by a restart); until then no group is.
+ *   separately). A group without any remaining instance is dropped (MEM-6). The stash (Stage 10) is stored apart from the
+ *   groups and is not touched by a restore.
  * - Tab order: the stored order restricted to the files that reopened, then the reopened files it did not list in their current
  *   relative order, so tabs that are new since the layout was stored end up behind the known ones.
  */
 object RestorePlanner {
-    fun plan(
-        stored: StoredGroups,
-        current: List<CurrentSplit>,
-        keepWithoutInstances: (StoredGroup) -> Boolean = { false },
-    ): RestorePlan {
+    fun plan(stored: StoredGroups, current: List<CurrentSplit>): RestorePlan {
         val matches = match(stored, current)
         val known = stored.groups.associateBy { it.id }
 
@@ -64,7 +60,7 @@ object RestorePlanner {
             splits += PlannedSplit(ci, listed + open.filter { it !in listedSet }, instances, manual)
         }
         val used = splits.flatMapTo(HashSet()) { p -> p.instances.map { it.groupId } }
-        return RestorePlan(stored.groups.filter { it.id in used || keepWithoutInstances(it) }, splits)
+        return RestorePlan(stored.groups.filter { it.id in used }, splits)
     }
 
     private fun match(stored: StoredGroups, current: List<CurrentSplit>): Map<Int, Int> {

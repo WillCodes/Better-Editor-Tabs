@@ -88,6 +88,10 @@
         <action id="TabList" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabListOverride"/>
 
+        <!-- LIFE-4: reachable through Find Action; Stage 12 adds it to Window > Editor Tabs > Tab Groups. No default shortcut. -->
+        <action id="BetterEditorTabs.RestoreTabGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.RestoreTabGroupAction"/>
+
         <!-- CTX-1..CTX-4: tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
         <group id="BetterEditorTabs.TabMenu">
             <separator/>

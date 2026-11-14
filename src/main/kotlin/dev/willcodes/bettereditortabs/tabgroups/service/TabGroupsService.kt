@@ -1,6 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.service
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -19,6 +20,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.groups.LinkedJoin
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.instanceStripOrder
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.linkedMoveTarget
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupOrder
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupStash
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupsState
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.InstanceLayout
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.TabGroup
@@ -41,7 +43,7 @@ import java.util.UUID
 
 /**
  * The project's tab groups (§2): the state ([GroupsState]) plus the operations (CTX-1..CTX-3 add and remove tabs, SPLIT-3 rename and
- * recolour, LIFE-1 ungroup, LIFE-3 delete), and the [TabBarHost] the [TabBar] reports to. Talks to the editor tab bars only through the
+ * recolour, LIFE-1 ungroup, LIFE-3 delete, LIFE-2 close group, LIFE-4 restore from the stash), and the [TabBarHost] the [TabBar] reports to. Talks to the editor tab bars only through the
  * [TabBar] facade, and to popups and dialogs only through [TabGroupsUi] (implemented in `ui/`, which depends on this package, never
  * the other way round). EDT only.
  *
@@ -51,6 +53,10 @@ import java.util.UUID
  * Persistence (PERS-1, PERS-3): the project's [PersistentStateComponent] in the workspace file. [getState] may run on a background
  * thread, so it returns the immutable snapshot kept by [SavedGroups], which every change refreshes on the EDT (through [refresh]).
  * [restore] applies the loaded state once the restored editor layout has settled.
+ *
+ * Groups that come back (LIFE-2, LIFE-4, LIFE-5): the stash (snapshots of closed groups, apart from [GroupsState], saved with it and
+ * usable before the startup restore) and the records of deleted groups that Reopen Closed Tab brings back live in [GroupComeback]; the
+ * functions here only delegate.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "BetterEditorTabsGroups", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
@@ -59,8 +65,14 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     private val tabBar get() = project.service<TabBar>()
     private val settings get() = TabGroupsSettings.getInstance()
 
+    /** The stashed groups (LIFE-2, PERS-4), apart from [state]. */
+    private val stash = GroupStash()
+
     /** What [getState] returns (see [SavedGroups]). */
-    private val saved = SavedGroups(project, state)
+    private val saved = SavedGroups(project, state, stash)
+
+    /** The stash and the records of deleted groups: groups that come back (LIFE-4, LIFE-5). */
+    private val comeback = GroupComeback(project, state, stash, saved, refresh = { refresh(it) }, arrange = { arrange(it) }, attach = ::attach)
 
     /** PERS-3 for detached windows restored after the first pass (see [restore]). Internal for tests. */
     internal val lateRestore = LateSplitRestore(
@@ -90,8 +102,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     fun colorOf(group: TabGroup): JBColor = GroupColors.jbColor(group.color)
 
     /** The name to show in menus: the group's name, or "Unnamed group (Blue)" (CTX-2). */
-    fun displayName(group: TabGroup): String =
-        group.name.ifEmpty { BetterEditorTabsBundle.message("group.unnamed", BetterEditorTabsBundle.message(group.color.messageKey)) }
+    fun displayName(group: TabGroup): String = groupDisplayName(group.name, group.color)
 
     // ---- operations (each ends with a refresh of the split) -------------------------------------------------------------
 
@@ -280,18 +291,35 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     }
 
     /**
-     * Removes the instance, then closes its open tabs. The state is re-read here because the confirmation is modal and may have
-     * let things change. The instance goes first and the split is refreshed, so no tab is still hidden while it closes and the tab bar
-     * no longer lists the files (MEM-1 [tabClosed] is not reported for them).
+     * Removes the instance, then closes its open tabs without Reopen Closed Tab entries and records the group, so that Reopen Closed
+     * Tab brings it back (LIFE-5, [GroupComeback.deleteGroup]). The state is re-read there because the confirmation is modal and may
+     * have let things change. The instance goes first and the split is refreshed, so no tab is still hidden while it closes and the
+     * tab bar no longer lists the files (MEM-1 [tabClosed] is not reported for them).
      */
-    private fun deleteInstance(split: SplitHandle, groupId: String) {
-        val instance = state.instance(split, groupId) ?: return
-        val tabs = tabBar.openTabs(split, instance.members)
-        // Stage 10 (LIFE-5): record the deleted group (name, colour, tab paths) here, before its tabs close.
-        state.removeInstance(split, groupId)
-        refresh(split)
-        tabBar.closeTabs(split, tabs)
-    }
+    private fun deleteInstance(split: SplitHandle, groupId: String) = comeback.deleteGroup(split, groupId)
+
+    // ---- stash (LIFE-2, LIFE-4, PERS-4, SET-9) ---------------------------------------------------------------------------
+
+    /**
+     * LIFE-2 Stash Group: closes [split]'s instance of [groupId] and its tabs, and saves a snapshot to the stash (name, colour, rule from
+     * Stage 11, the ordered member files). No confirmation (it can be undone with [restoreStashed]). Other splits are unaffected. The
+     * closes leave no Reopen Closed Tab entries: the stash is how the group comes back. Publishes [TabGroupStashListener].
+     */
+    fun stashGroup(split: SplitHandle, groupId: String) = comeback.stashGroup(split, groupId)
+
+    /** LIFE-4, SET-9: the stash, newest first. */
+    fun stashedGroups(): List<StashedGroup> = comeback.stashedGroups()
+
+    /**
+     * LIFE-4: restores stash entry [entryId] into [split] (the current split; null if the project has no editor split, then the files
+     * open in a new one). Files that still exist are reopened (PERS-4: missing ones are skipped, [TabGroupsUi.warnMissingFiles]), the
+     * group is recreated (re-linked if it still exists in another split) at the end of the strip, and the entry leaves the stash.
+     * Returns false if the entry is unknown. Publishes [TabGroupStashListener].
+     */
+    fun restoreStashed(split: SplitHandle?, entryId: String): Boolean = comeback.restoreStashed(split, entryId)
+
+    /** LIFE-4 (Delete key in the popup), SET-9 (Remove button): removes entry [entryId] from the stash. Publishes [TabGroupStashListener]. */
+    fun removeStashed(entryId: String) = comeback.removeStashed(entryId)
 
     /** Every change of a split's groups ends here: refreshes the strip, then updates the snapshot that is saved ([SavedGroups.capture]). */
     private fun refresh(split: SplitHandle, animate: Boolean = true) {
@@ -342,7 +370,10 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     override fun getState(): GroupsStateBean = saved.bean
 
     /** The platform loads the stored state once, before anything else uses the service; [restore] applies it later. */
-    override fun loadState(state: GroupsStateBean) = saved.loaded(state)
+    override fun loadState(state: GroupsStateBean) {
+        saved.loaded(state)
+        stash.replaceAll(GroupsPersistence.stashFromStored(GroupsPersistence.toStored(state).stash))
+    }
 
     /**
      * Startup (PERS-3), called once the restored editor layout has settled ([dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitsRestoredListener]).
@@ -360,11 +391,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
         val stored = saved.stored()
         saved.markRestored()
         val current = splits.map { s -> CurrentSplit(s.key, s.files.map { it.url }) }
-        val plan = RestorePlanner.plan(
-            stored,
-            current,
-            keepWithoutInstances = { false }, // Stage 10: stashed groups survive a restart whatever reopened
-        )
+        val plan = RestorePlanner.plan(stored, current) // the stash is not part of it: it survives a restart whatever reopened (PERS-4)
         val pending = RestorePlanner.pending(stored, current, detachedOnly = true)
         if (plan.splits.isNotEmpty() || pending.splits.isNotEmpty()) attach()
         lateRestore.start(splits, pending)
@@ -529,6 +556,12 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
         lateRestore.splitAppeared(split)
     }
 
+    /** LIFE-5: true while a deleted group is recorded; keeps Reopen Closed Tab enabled when the platform's history is empty. Any thread. */
+    override fun canReopenClosedGroup(): Boolean = comeback.hasClosedGroups
+
+    /** LIFE-5: brings back the group deleted last in the split the action acts on, if no tab was closed after it; see [GroupComeback]. */
+    override fun reopenClosedGroup(event: AnActionEvent): Boolean = comeback.reopenClosedGroup(event)
+
     /**
      * The split's instances go (MEM-6 may end groups). The tab bar calls this after the queued [tabsOpened] reports of the other splits
      * when there are any, so an unsplit (which moves the tabs of the merged-away split into the surviving one) still finds the
@@ -538,6 +571,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     override fun splitDisposed(split: SplitHandle) {
         state.splitRemoved(split)
         lateRestore.splitDisposed(split)
+        comeback.splitDisposed(split)
     }
 
     override fun dispose() {
