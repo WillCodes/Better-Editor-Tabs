@@ -1,21 +1,21 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * The membership state of all groups (§2): group identities plus, per split [S], the group instances with their member files [F].
+ * The membership state of all groups: group identities plus, per split [S], the group instances with their member files [F].
  * Pure and generic so it is testable without the platform. Not thread-safe; the caller is on the EDT. Every operation only touches
- * the split it is given, except that dropping the last instance of a group removes the identity (MEM-6).
+ * the split it is given, except that dropping the last instance of a group removes the identity.
  *
  * @param newId produces ids for new groups.
  */
 class GroupsState<S, F>(private val newId: () -> String) {
-    /** RULE-6: true for a group whose empty instances must stay (an enabled auto-group rule, [TabGroup.keepsEmptyInstances]). MEM-5 skips those. */
+    /** True for a group whose empty instances must stay (an enabled auto-group rule, [TabGroup.keepsEmptyInstances]). The empty-instance cleanup skips those. */
     var keepWhenEmpty: (TabGroup) -> Boolean = { it.keepsEmptyInstances }
 
     private val groupMap = LinkedHashMap<String, TabGroup>()
     private val bySplit = LinkedHashMap<S, MutableList<GroupInstance<F>>>()
 
     /**
-     * The last identities MEM-6 removed, newest last, at most [FORGOTTEN_MAX]. A group that moves to another split is removed from
+     * The last identities removed when their last instance went away, newest last, at most [FORGOTTEN_MAX]. A group that moves to another split is removed from
      * its source first (the drag result) and arrives at the target afterwards ([acceptInstance]); this lets the arrival get the same
      * [TabGroup] back with its rule, instead of a copy made from id, name and colour.
      */
@@ -37,7 +37,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
     /** The splits that have at least one instance. */
     fun splits(): Set<S> = bySplit.keys.toSet()
 
-    /** CTX-1: a new group containing [file] in [split]. The file first leaves its current group there (INV-1). */
+    /** A new group containing [file] in [split]. The file first leaves its current group there. */
     fun createGroup(split: S, file: F, color: GroupColor, name: String = ""): TabGroup {
         val group = TabGroup(newId(), name, color)
         groupMap[group.id] = group
@@ -48,7 +48,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
     }
 
     /**
-     * CTX-5: a new, empty group with an empty instance in [split] (appended). It is kept while empty ([TabGroup.keepWhileEmpty]) until
+     * A new, empty group with an empty instance in [split] (appended). It is kept while empty ([TabGroup.keepWhileEmpty]) until
      * it gets a member.
      */
     fun createEmptyGroup(split: S, color: GroupColor, name: String = ""): TabGroup {
@@ -60,8 +60,8 @@ class GroupsState<S, F>(private val newId: () -> String) {
     }
 
     /**
-     * CTX-2: [file] becomes the last member of group [groupId] in [split], creating the instance if the split has none. It leaves any
-     * other group there (INV-1). A no-op if it already is the last member; ignored if the group is unknown.
+     * [file] becomes the last member of group [groupId] in [split], creating the instance if the split has none. It leaves any
+     * other group there. A no-op if it already is the last member; ignored if the group is unknown.
      */
     fun addToGroup(split: S, groupId: String, file: F) {
         val group = groupMap[groupId] ?: return
@@ -78,7 +78,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
         prune(touched)
     }
 
-    /** CTX-3, MEM-1 (tab closed), MEM-3 (tab pinned): [file] leaves its group in [split]. */
+    /** A tab is removed, closed or pinned: [file] leaves its group in [split]. */
     fun removeFromGroup(split: S, file: F) {
         prune(detach(split, file, except = null))
     }
@@ -93,13 +93,13 @@ class GroupsState<S, F>(private val newId: () -> String) {
         instances.sortBy { rank[it.groupId] ?: Int.MAX_VALUE }
     }
 
-    /** COLL-1 / INT-1: collapses or expands the instance fully (a partial expand, COLL-8, ends either way). */
+    /** Collapses or expands the instance fully (a partial expand ends either way). */
     fun setCollapsed(split: S, groupId: String, collapsed: Boolean) {
         instance(split, groupId)?.collapsed = collapsed
     }
 
     /**
-     * COLL-8, partial expand: the collapsed instance of [groupId] in [split] shows [file] beside its header and keeps its other tabs hidden.
+     * Partial expand: the collapsed instance of [groupId] in [split] shows [file] beside its header and keeps its other tabs hidden.
      * False (nothing changed) if there is no such instance, it is expanded, or [file] is not one of its members.
      */
     fun showPartially(split: S, groupId: String, file: F): Boolean {
@@ -111,9 +111,9 @@ class GroupsState<S, F>(private val newId: () -> String) {
 
     /**
      * Drag results: [layout] is the complete new set of instances of [split], in order. Unknown groups are ignored, instances missing
-     * from it are removed, a group listed twice keeps its first entry, empty instances go through MEM-5 and INV-1 holds (first
+     * from it are removed, a group listed twice keeps its first entry, empty instances go through the empty-instance cleanup and a file stays in at most one instance (first
      * occurrence of a file wins). Names and colours are never taken from here. [keepEmpty]: groups whose empty instance stays although
-     * MEM-5 would remove it (DRAG-8 amended: the group's only tab was dragged out and the user is asked); they get
+     * the cleanup would remove it (the group's only tab was dragged out and the user is asked); they get
      * [TabGroup.keepWhileEmpty] provisionally. An instance that was empty before this result and is listed empty again stays as it is
      * (the drag did not empty it).
      */
@@ -122,8 +122,8 @@ class GroupsState<S, F>(private val newId: () -> String) {
     /** [replaceSplit] with [keepEmpty]: see above. */
     fun replaceSplit(split: S, layout: List<InstanceLayout<F>>, keepEmpty: Collection<String>) {
         val before = bySplit[split]?.map { it.groupId }.orEmpty()
-        // an instance that was empty already is not something this result emptied: it stays as it was (user report, round 2: moving
-        // a group out of a split took that split's empty groups with it)
+        // an instance that was empty already is not something this result emptied: it stays as it was (moving
+        // a group out of a split must not take that split's empty groups with it)
         val emptyBefore = bySplit[split].orEmpty().filter { it.members.isEmpty() }.mapTo(HashSet()) { it.groupId }
         val seenFiles = HashSet<F>()
         val seenGroups = HashSet<String>()
@@ -136,11 +136,11 @@ class GroupsState<S, F>(private val newId: () -> String) {
             else if (item.groupId in keepEmpty) group.keepWhileEmpty = true
             if (members.isEmpty() && !keepWhenEmpty(group) && item.groupId !in emptyBefore) continue
             val instance = GroupInstance(item.groupId, members, item.collapsed)
-            item.peek?.takeIf { item.collapsed && it in members }?.let { instance.peek = it } // COLL-8 survives a drag result
+            item.peek?.takeIf { item.collapsed && it in members }?.let { instance.peek = it } // a partial expand survives a drag result
             result.add(instance)
         }
         if (result.isEmpty()) bySplit.remove(split) else bySplit[split] = result
-        // MEM-5 / MEM-6 for what this result changed; empty instances it left untouched are not pruned
+        // empty-instance and identity cleanup for what this result changed; empty instances it left untouched are not pruned
         val untouched = result.filter { it.members.isEmpty() && it.groupId in emptyBefore }.mapTo(HashSet()) { it.groupId }
         prune(before.filter { it !in untouched })
     }
@@ -148,10 +148,10 @@ class GroupsState<S, F>(private val newId: () -> String) {
     /**
      * A whole instance moved in from another split (or brought back from the stash, a record or a stored state). Members are appended,
      * de-duplicated, to this split's instance of the group, or become a new one. A live identity keeps everything it has ([rule]
-     * included). If the group identity no longer exists (MEM-6 ran when the source instance went away) it is revived if it was
+     * included). If the group identity no longer exists (it was removed when the source instance went away) it is revived if it was
      * removed recently (same object, so its name, colour and rule are kept), else re-created with the given [id], [name] and [color];
      * a non-null [rule] then becomes its rule. The rule is set before the empty-instance cleanup, so an empty instance of a group
-     * with an enabled rule stays (RULE-6). [keepEmpty] (PERS-3 amended: an instance that was stored empty, the user had kept it): with no
+     * with an enabled rule stays. [keepEmpty] (an instance that was stored empty because the user had kept it): with no
      * members the group gets [TabGroup.keepWhileEmpty] before that cleanup, so the empty instance stays.
      */
     fun acceptInstance(
@@ -184,8 +184,8 @@ class GroupsState<S, F>(private val newId: () -> String) {
     }
 
     /**
-     * LIFE-1, LIFE-3: removes [split]'s instance of [groupId], whatever its members. Other splits keep theirs. The group identity goes
-     * with the last instance (MEM-6). A no-op for an unknown instance.
+     * Removes [split]'s instance of [groupId], whatever its members. Other splits keep theirs. The group identity goes
+     * with the last instance. A no-op for an unknown instance.
      */
     fun removeInstance(split: S, groupId: String) {
         val instances = bySplit[split] ?: return
@@ -194,12 +194,12 @@ class GroupsState<S, F>(private val newId: () -> String) {
     }
 
     /**
-     * MEM-5, MEM-6 for [groupId] right now: its empty instances go unless it still has an enabled rule (RULE-6), and the group with
+     * The empty-instance and identity cleanup for [groupId] right now: its empty instances go unless it still has an enabled rule, and the group with
      * its last instance. For a group whose rule was just disabled or removed.
      */
     fun pruneEmpty(groupId: String) = prune(listOf(groupId))
 
-    /** MEM-4: a file or directory moved from [oldUrl] to [newUrl]: the directory rules of the groups follow. True if any rule changed. */
+    /** A file or directory moved from [oldUrl] to [newUrl]: the directory rules of the groups follow. True if any rule changed. */
     fun rewriteRuleUrls(oldUrl: String, newUrl: String): Boolean {
         var changed = false
         for (group in groupMap.values + forgotten.values) {
@@ -213,7 +213,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
         return changed
     }
 
-    /** The split no longer exists: all its instances go and MEM-6 applies. */
+    /** The split no longer exists: all its instances go and the identity cleanup applies. */
     fun splitRemoved(split: S) {
         val gone = bySplit.remove(split) ?: return
         prune(gone.map { it.groupId })
@@ -228,7 +228,7 @@ class GroupsState<S, F>(private val newId: () -> String) {
         return touched
     }
 
-    /** MEM-5 for the empty instances of [groupIds], then MEM-6 for those groups if they are left without instances. */
+    /** The empty-instance cleanup for [groupIds], then the identity cleanup for those groups if they are left without instances. */
     private fun prune(groupIds: Collection<String>) {
         val ids = groupIds.toSet()
         for (id in ids) {

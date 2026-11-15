@@ -15,7 +15,7 @@ import java.awt.Rectangle
 
 /**
  * The size of what is being dragged (a group, or a tab), as far as another strip needs it to open room for it. A dragged group is
- * always shown as its collapsed header (INT-6: the gap is pill-sized for an expanded group too, its tabs are out of the strip during
+ * always shown as its collapsed header (the gap is pill-sized for an expanded group too, its tabs are out of the strip during
  * the drag), so [length] is what that header, or the tab, takes along its own strip ([horizontal]); it is right for any strip of the
  * same orientation. A strip of the other orientation measures differently (a width here is a number of rows there), so the natural
  * top / bottom length ([natural]) is kept as well, see [ForeignGapSession.lengthIn].
@@ -23,7 +23,7 @@ import java.awt.Rectangle
 internal class DraggedGroupSize(val horizontal: Boolean, val length: Int, val natural: Int)
 
 /**
- * The gap that a group drag opens in *another* split's strip (INT-6): the same kind of gap as in the group's own strip, the size of the
+ * The gap that a group drag opens in *another* split's strip: the same kind of gap as in the group's own strip, the size of the
  * group's collapsed header, opening between that strip's units and following the pointer by the same rule ([DropSlots.select]).
  * Owned by [HeaderDragHelper] for the time of one drag; at most one strip has the gap open.
  *

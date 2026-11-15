@@ -16,7 +16,7 @@ enum class TabEditorLanding {
 }
 
 /**
- * Pure choice of what a tab dragged off every strip does over an editor area (Stage 11.5 fix round 5), unit tested.
+ * Pure choice of what a tab dragged off every strip does over an editor area, unit tested.
  *
  * Why it is ours: the platform's drag-out (`JBTabsImpl.processDropOver`) takes the drop side as CENTER whenever the split has no visible
  * tab (`visibleInfos.isEmpty()`), so it never offers an edge. In plain IntelliJ that is only the split whose only tab is the dragged

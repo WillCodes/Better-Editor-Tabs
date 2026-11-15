@@ -11,7 +11,7 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
- * The gesture of a drag of a whole group by its header (INT-6, SPLIT-5); what happens during the drag is [GroupDrag].
+ * The gesture of a drag of a whole group by its header; what happens during the drag is [GroupDrag].
  *
  * Wraps `MouseDragHelper` (public API): it listens on the glass pane, so the drag continues when the pointer leaves the header,
  * and gives the click-versus-drag dead zone, Esc to cancel and the Alt-only-DnD setting for free. It never starts on a tab

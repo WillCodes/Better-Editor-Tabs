@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * Where a group that is brought back (LIFE-4, LIFE-5) goes in a split's logical tab order. Built with [end], [index] or [after].
+ * Where a group that is brought back goes in a split's logical tab order. Built with [end], [index] or [after].
  * Whatever is asked for, [GroupRestore.plan] moves the place so that it never splits another group and never lands before pinned tabs.
  */
 class RestorePlace<F> private constructor(private val kind: Kind, internal val file: F?, internal val index: Int) {
@@ -11,13 +11,13 @@ class RestorePlace<F> private constructor(private val kind: Kind, internal val f
     internal val isAfter get() = kind == Kind.AFTER
 
     companion object {
-        /** At the end of the strip (LIFE-4). */
+        /** At the end of the strip. */
         fun <F> end(): RestorePlace<F> = RestorePlace(Kind.END, null, 0)
 
         /** At position [index] of the order without the group's own tabs (clamped). */
         fun <F> index(index: Int): RestorePlace<F> = RestorePlace(Kind.INDEX, null, index)
 
-        /** Right after [file]; if that is no longer open, at [fallbackIndex] like [index] (LIFE-5). */
+        /** Right after [file]; if that is no longer open, at [fallbackIndex] like [index]. */
         fun <F> after(file: F, fallbackIndex: Int): RestorePlace<F> = RestorePlace(Kind.AFTER, file, fallbackIndex)
     }
 }
@@ -25,21 +25,21 @@ class RestorePlace<F> private constructor(private val kind: Kind, internal val f
 /**
  * The outcome of [GroupRestore.plan]. [order]: the split's whole logical order afterwards (files that are not open yet included);
  * [joining]: the files that become members of the group's instance and are placed as one block, in snapshot order (members that the
- * instance has already are not in it); [skippedPinned] and [skippedOtherGroup]: snapshot files that stay out (INV-3, INV-1).
+ * instance has already are not in it); [skippedPinned] and [skippedOtherGroup]: snapshot files that stay out.
  */
 class RestorePlan<F>(val order: List<F>, val joining: List<F>, val skippedPinned: List<F>, val skippedOtherGroup: List<F>)
 
 /**
- * The membership and order rules for bringing a group back into a split (LIFE-4 restore from the stash, LIFE-5 reopen a deleted group).
+ * The membership and order rules for bringing a group back into a split (restore from the stash, reopen a deleted group).
  * Pure.
  *
  * - A snapshot file that is open in the split and ungrouped joins the group, and its tab moves to the group's place.
- * - One that is a member of a *different* group of the split stays where it is and is not added (INV-1).
- * - One that is pinned in the split is not added (INV-3).
+ * - One that is a member of a *different* group of the split stays where it is and is not added.
+ * - One that is pinned in the split is not added.
  * - If the split already has an instance of the same group, the group's place is right after that instance's last tab (it stays
- *   contiguous, INV-2); files that are members of it already stay where they are.
+ *   contiguous); files that are members of it already stay where they are.
  * - The members that join are inserted as one block, in snapshot order, into the order without them, at the place. The place is moved
- *   past pinned tabs (they stay first) and, if it is inside another group, to after that group's last tab (INV-2).
+ *   past pinned tabs (they stay first) and, if it is inside another group, to after that group's last tab.
  */
 object GroupRestore {
     /**

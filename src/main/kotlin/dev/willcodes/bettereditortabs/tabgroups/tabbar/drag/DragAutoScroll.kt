@@ -20,7 +20,7 @@ import javax.swing.Timer
 
 /**
  * Scrolls a strip that is longer than its window while a tab or a group is dragged over it, so the user can reach the tabs that are out
- * of view and drop at the end of the strip (user request; the platform does not scroll during a tab drag). The rules are the pure
+ * of view and drop at the end of the strip (the platform does not scroll during a tab drag). The rules are the pure
  * [AutoScroll]; this class feeds them the live strip and runs a timer.
  *
  * One instance per drag. [update] is called with every pointer move and says which strip the pointer is over (null: none); the timer

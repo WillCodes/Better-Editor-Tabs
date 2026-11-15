@@ -9,7 +9,7 @@ import java.awt.Rectangle
 import java.util.IdentityHashMap
 
 /**
- * Which strip a tab drag is over (DRAG-0, DRAG-5): the [home] strip it was picked up from, another split's strip, or none (then the
+ * Which strip a tab drag is over: the [home] strip it was picked up from, another split's strip, or none (then the
  * drag belongs to the platform's drag-out, [DragHandOff]). The decision is the pure [StripTargetRules.choose]; this class feeds it
  * the live strips (`TabBarDnd.stripScreenRect` of every split of the project, [TabBarDnd.peers]) and remembers the widest each strip
  * has been, which is what makes the choice stable while the drag itself changes the strips.

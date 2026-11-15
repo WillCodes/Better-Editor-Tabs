@@ -12,8 +12,7 @@ import javax.swing.JSplitPane
 private val LOG = logger<TabBarDnd>()
 
 /*
- * A tab dropped on the edge of the editor area of a split whose strip shows no tab but the dragged one (a "bare" split, Stage 11.5 fix
- * round 5, [dev.willcodes.bettereditortabs.tabgroups.model.strip.TabEditorDrop]) makes a new split with the tab in it, as the platform's
+ * A tab dropped on the edge of the editor area of a split whose strip shows no tab but the dragged one (a "bare" split, [dev.willcodes.bettereditortabs.tabgroups.model.strip.TabEditorDrop]) makes a new split with the tab in it, as the platform's
  * own drop does (`DockableEditorTabbedContainer.add`: `EditorWindow.split` opens the file in the new split and keeps it open in the
  * source, then `EditorTabbedContainerDragOutDelegate.dragOutFinished` closes the source tab unless Ctrl is held). The creation is the
  * group drag's ([moveGroupToNewSplit]); the move that follows is [moveTabToSplit] (the source tab is closed with a Reopen Closed Tab
@@ -53,7 +52,7 @@ internal fun TabBarDnd.createSplitFor(file: VirtualFile, anchor: TabBarDnd, side
 
 /**
  * Moves the tab of [file] into the split [created] that [createSplitFor] made ([copy]: the source tab stays). The file is open there
- * already; the rest is [moveTabToSplit]. The split may end like any temporary split afterwards (SPLIT-6, [dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.TemporarySplits.created]).
+ * already; the rest is [moveTabToSplit]. The split may end like any temporary split afterwards ([dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.TemporarySplits.created]).
  */
 internal fun TabBarDnd.moveTabToCreatedSplit(file: VirtualFile, pinned: Boolean, created: NewSplit, copy: Boolean, freezes: List<StripFreeze>) {
     val project = adapter.window.manager.project

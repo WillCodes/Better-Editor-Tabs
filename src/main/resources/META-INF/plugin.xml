@@ -13,17 +13,17 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-        Better Editor Tabs improves the editor tab bar in JetBrains IDEs.<br>
-        <br>
-        The first feature is Chrome/Edge-style manual tab groups:
+        Chrome-style tab groups for the editor tab bar.
         <ul>
-            <li>Coloured, named groups of editor tabs</li>
-            <li>Collapse and expand groups to keep the tab bar tidy</li>
-            <li>Drag groups and tabs between editor splits</li>
-            <li>Stash groups and restore them later</li>
-            <li>Fill groups automatically with rules (module, directory or regex)</li>
+            <li><b>Tab groups:</b> group editor tabs under a named, coloured header from the tab's context menu.</li>
+            <li><b>Collapse and expand:</b> click a group's header to hide its tabs and show them again.</li>
+            <li><b>Drag and drop:</b> drag tabs into and out of groups, or drag a whole group by its header.</li>
+            <li><b>Splits and windows:</b> move or copy groups between splits and windows; a group stays linked across splits.</li>
+            <li><b>Stash and restore:</b> stash a group to close its tabs, then bring it back later with <i>Restore Tab Group…</i>.</li>
+            <li><b>Auto-group rules:</b> new files join a group automatically by module, directory or regex.</li>
         </ul>
-        Requires the New UI and IDE version 2026.2 or later.
+        Actions are under <b>Window | Editor Tabs | Tab Groups</b>, settings under <b>Settings | Editor | General | Editor Tabs - Groups</b>.<br>
+        Requires the New UI. Works in every JetBrains IDE.
         ]]></description>
 
     <!-- Product and plugin compatibility requirements.
@@ -46,15 +46,18 @@
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarStartupActivity"/>
         <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitRestoreWatcher"/>
-        <!-- IDE-3: grouped tabs are exempt from the editor tab limit. -->
+        <postStartupActivity implementation="dev.willcodes.bettereditortabs.tabgroups.ui.ClassicUiNotice"/>
+        <notificationGroup id="Better Editor Tabs" displayType="BALLOON" bundle="messages.BetterEditorTabsBundle"
+                           key="notification.group.name"/>
+        <!-- Grouped tabs are exempt from the editor tab limit. -->
         <editorAutoClosingHandler implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabLimitHandler"/>
         <!-- The group popup and the delete confirmation; the service only knows the interface. -->
-        <!-- POP-4: the Project view marks the files the edited auto-group rule matches. -->
+        <!-- The Project view marks the files the edited auto-group rule matches. -->
         <projectViewNodeDecorator implementation="dev.willcodes.bettereditortabs.tabgroups.ui.projectview.RulePreviewDecorator"/>
         <projectService serviceInterface="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsUi"
                         serviceImplementation="dev.willcodes.bettereditortabs.tabgroups.ui.TabGroupsUiImpl"/>
-        <!-- §14: Settings > Editor > General > Editor Tabs - Groups, right below Editor Tabs (children are listed by name). A project configurable because it lists the project's
-             stash (SET-9); the values are application-level. parentId is Editor > General (EditorOptionsPanel): Editor Tabs is only an
+        <!-- Settings > Editor > General > Editor Tabs - Groups, right below Editor Tabs (children are listed by name). A project configurable because it lists the project's
+             stash; the values are application-level. parentId is Editor > General (EditorOptionsPanel): Editor Tabs is only an
              editorOptionsProvider child of that page, not a node of the settings tree, so it cannot be a parent (see TabGroupsConfigurable). -->
         <projectConfigurable parentId="preferences.editor" id="dev.willcodes.bettereditortabs.tabgroups"
                              instance="dev.willcodes.bettereditortabs.tabgroups.settings.TabGroupsConfigurable"
@@ -64,25 +67,25 @@
     <projectListeners>
         <listener class="dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarEditorListener"
                   topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
-        <!-- PERS-3: restore the groups once the restored editor layout has settled. -->
+        <!-- Restore the groups once the restored editor layout has settled. -->
         <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsRestoreListener"
                   topic="dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitsRestoredListener"/>
     </projectListeners>
 
     <applicationListeners>
-        <!-- PERS-1: freeze the stored groups before the project closes (closing closes every tab). -->
+        <!-- Freeze the stored groups before the project closes (closing closes every tab). -->
         <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsCloseListener"
                   topic="com.intellij.openapi.project.ProjectCloseListener"/>
-        <!-- MEM-4: renamed and moved files keep their group; stored URLs follow. -->
+        <!-- Renamed and moved files keep their group; stored URLs follow. -->
         <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsVfsListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
-        <!-- §14: settings take effect without a restart; the cached strip look is re-applied in every open project. -->
+        <!-- Settings take effect without a restart; the cached strip look is re-applied in every open project. -->
         <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsSettingsApplier"
                   topic="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsSettingsListener"/>
     </applicationListeners>
 
     <actions>
-        <!-- Overrides of built-in actions (LIFE-5, IDE-4). Keep these ids exactly. -->
+        <!-- Overrides of built-in actions. Keep these ids exactly. -->
         <action id="ReopenClosedTab" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.ReopenClosedTabAction"/>
         <action id="CloseAllEditorsButActive" overrides="true"
@@ -95,19 +98,19 @@
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseRightAction"/>
         <action id="CloseAllUnpinnedEditors" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.CloseUnpinnedAction"/>
-        <!-- COLL-6: the "more" button's list of hidden tabs shows grouped and collapsed tabs under group headings. -->
+        <!-- The "more" button's list of hidden tabs shows grouped and collapsed tabs under group headings. -->
         <action id="TabList" overrides="true"
                 class="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabListOverride"/>
 
-        <!-- LIFE-4: reachable through Find Action; Stage 12 adds it to Window > Editor Tabs > Tab Groups. No default shortcut. -->
+        <!-- Reachable through Find Action and Window > Editor Tabs > Tab Groups. No default shortcut. -->
         <action id="BetterEditorTabs.RestoreTabGroup"
                 class="dev.willcodes.bettereditortabs.tabgroups.actions.RestoreTabGroupAction"/>
 
-        <!-- CTX-5: New Tab Group (the tab strip's context menu has its own entry). No default shortcut. -->
+        <!-- New Tab Group (the tab strip's context menu has its own entry). No default shortcut. -->
         <action id="BetterEditorTabs.NewEmptyGroup"
                 class="dev.willcodes.bettereditortabs.tabgroups.actions.NewEmptyGroupAction"/>
 
-        <!-- CTX-1..CTX-4: tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
+        <!-- Tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
         <group id="BetterEditorTabs.TabMenu">
             <separator/>
             <action id="BetterEditorTabs.AddTabToNewGroup"
@@ -120,7 +123,7 @@
             <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="KeepTabOpen"/>
         </group>
 
-        <!-- §13: the other actions, reachable through Find Action and Window > Editor Tabs > Tab Groups. No default shortcuts. -->
+        <!-- The other actions, reachable through Find Action and Window > Editor Tabs > Tab Groups. No default shortcuts. -->
         <action id="BetterEditorTabs.RenameCurrentGroup"
                 class="dev.willcodes.bettereditortabs.tabgroups.actions.RenameCurrentGroupAction"/>
         <action id="BetterEditorTabs.ToggleCollapseCurrentGroup"
@@ -144,7 +147,7 @@
         <action id="BetterEditorTabs.DeleteCurrentGroup"
                 class="dev.willcodes.bettereditortabs.tabgroups.actions.DeleteCurrentGroupAction"/>
 
-        <!-- §13: Window > Editor Tabs > Tab Groups. "EditorTabsGroup" is the Editor Tabs submenu of the Window menu (PlatformActions.xml:
+        <!-- Window > Editor Tabs > Tab Groups. "EditorTabsGroup" is the Editor Tabs submenu of the Window menu (PlatformActions.xml:
              WindowMenu > EditorTabsGroup); the block goes last, after a separator of its own. The submenu itself is not searchable in
              Find Action (its actions are); the nested Add Tab to Group group stays searchable. -->
         <group id="BetterEditorTabs.WindowMenuBlock">

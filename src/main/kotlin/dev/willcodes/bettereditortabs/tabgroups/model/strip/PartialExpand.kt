@@ -3,7 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 import java.awt.Rectangle
 
 /**
- * Pure rules of the partial expand (COLL-8): a collapsed group that shows one member beside its header (the *peek*) and the count of
+ * Pure rules of the partial expand: a collapsed group that shows one member beside its header (the *peek*) and the count of
  * the members still hidden ("+N"). No platform types, unit tested.
  */
 object PartialExpand {
@@ -31,7 +31,7 @@ object PartialExpand {
         /** Nothing changes. */
         val none: Boolean get() = shrinking.isEmpty() && growing.isEmpty()
 
-        /** Files leave and others arrive (the peek moves): not a collapse or an expand, it is instant (COLL-7). */
+        /** Files leave and others arrive (the peek moves): not a collapse or an expand, it is instant. */
         val mixed: Boolean get() = shrinking.isNotEmpty() && growing.isNotEmpty()
     }
 
@@ -43,7 +43,7 @@ object PartialExpand {
     }
 
     /**
-     * The one rectangle a partly shown group covers in the drop rules (DRAG-6, COLL-8): the union of the non-empty [parts] (header,
+     * The one rectangle a partly shown group covers in the drop rules: the union of the non-empty [parts] (header,
      * peek tab, count), so there is no slot between them. Empty if every part is scrolled out.
      */
     fun unitRect(parts: List<Rectangle>): Rectangle {

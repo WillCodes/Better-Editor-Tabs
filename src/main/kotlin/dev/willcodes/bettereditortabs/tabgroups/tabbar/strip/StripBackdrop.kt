@@ -10,7 +10,7 @@ import java.awt.Rectangle
 import javax.swing.JComponent
 
 /**
- * Bug 11 (user report 2026-11-14): a split whose tabs are all closed but which still shows pills (empty groups, RULE-6) has no tab for the
+ * A split whose tabs are all closed but which still shows pills (empty groups) has no tab for the
  * platform to draw a strip for. `JBTabsImpl.paintComponent` returns before `tabPainter.fillBackground` and `drawBorder` when there is no
  * visible tab, so the strip row had no background of its own (only each pill's own fill, [GroupHeader.stripBackground]) and no border line.
  * This paints both where the row is ([update]): the painter's strip background over the row, the line the platform's border draws above

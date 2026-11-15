@@ -14,7 +14,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 
 /**
- * Wraps the built-in Reopen Closed Tab action (LIFE-5, LIFE-6).
+ * Wraps the built-in Reopen Closed Tab action.
  *
  * The built-in `com.intellij.openapi.fileEditor.impl.ReopenClosedTabAction` is an internal, final class, so it cannot be
  * subclassed. Instead this class is registered with `overrides="true"` under the same id (`ReopenClosedTab`) and implements
@@ -56,9 +56,9 @@ class ReopenClosedTabAction : AnAction(), OverridingAction, DumbAware {
 
     override fun actionPerformed(e: AnActionEvent) {
         val host = activeHost(e)
-        // LIFE-5: if the most recent close was a Delete Group, restore the whole group instead of the single tab.
+        // If the most recent close was a Delete Group, restore the whole group instead of the single tab.
         if (host != null && host.reopenClosedGroup(e)) return
-        // Default behaviour. The reopened tab goes through FileEditorManagerImpl.openFileImpl, so fileOpened fires as usual (RULE-2).
+        // Default behaviour. The reopened tab goes through FileEditorManagerImpl.openFileImpl, so fileOpened fires as usual.
         base()?.let { ActionWrapperUtil.actionPerformed(e, this, it) }
     }
 }

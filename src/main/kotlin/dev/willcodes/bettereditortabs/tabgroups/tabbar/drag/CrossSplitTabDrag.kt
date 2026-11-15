@@ -11,13 +11,13 @@ import java.awt.Point
 private val LOG = logger<CrossSplitTabDrag>()
 
 /**
- * The part of a tab drag that is ours, across every split of the project (DRAG-0, DRAG-5): from the moment the drag starts until the
+ * The part of a tab drag that is ours, across every split of the project: from the moment the drag starts until the
  * pointer leaves every tab strip (then [TabDragController] hands it to the platform's drag-out) or the tab is dropped.
  *
  * Each move it asks [TabDragTargets] which strip the pointer is over: the [home] strip the tab comes from, another split's strip, or
  * none. The [session] always runs on the strip the pointer is over:
  * - home: the home [TabDragSession], which rests (strip back as it was, [TabDragSession.suspend]) while the pointer is elsewhere and
- *   is resumed when it is back, keeping its own-group rule (DRAG-3);
+ *   is resumed when it is back, keeping its own-group rule;
  * - another split: a new [TabDragSession] for that strip with the foreign tab (a gap opens there, the tab is moved on release),
  *   dropped when the pointer moves on. The new strip is entered before the old one is given back, and a strip that cannot take the
  *   tab changes nothing, so the drag never ends up on no strip by accident.
@@ -32,7 +32,7 @@ private val LOG = logger<CrossSplitTabDrag>()
  * A strip that is longer than its window scrolls while the pointer is in its edge zone ([DragAutoScroll]); each tick re-runs [move], so
  * the slot follows the pointer through the scrolled strip, on the home strip and on another split's strip alike.
  *
- * **A bare editor** (Stage 11.5 fix round 5): while the pointer is off every strip and over the editor area of a split that shows no tab
+ * **A bare editor**: while the pointer is off every strip and over the editor area of a split that shows no tab
  * but the dragged one ([TabEditorDrop]: every other tab is hidden by a collapsed group, or it is a temporary split), the drag stays ours
  * instead of being handed to the platform, whose drop session sees no visible tab there and always answers "middle" (no edge, no split).
  * The tab is out of its strip as over another split's strip, the platform's drop-area highlight shows the half that becomes a new split
@@ -311,7 +311,7 @@ internal class CrossSplitTabDrag(private val home: TabBarDnd, private val dragge
         commitExpanded()
     }
 
-    /** DRAG-6: the groups this drag expanded, in any strip, stay expanded ([TabBarDnd.commitExpandedByDrag]). */
+    /** The groups this drag expanded, in any strip, stay expanded ([TabBarDnd.commitExpandedByDrag]). */
     private fun commitExpanded() {
         for (strip in (home.peers() + home).distinct()) strip.commitExpandedByDrag()
     }

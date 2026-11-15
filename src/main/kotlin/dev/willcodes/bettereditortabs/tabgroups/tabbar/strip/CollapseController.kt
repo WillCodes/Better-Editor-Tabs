@@ -10,12 +10,12 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 
 /**
- * Collapse and expand (COLL-1..COLL-4): hides the tabs of collapsed groups and brings them back, and keeps the bookkeeping that
+ * Collapse and expand: hides the tabs of collapsed groups and brings them back, and keeps the bookkeeping that
  * makes that reversible (which tabs are hidden, which tab each collapsed group sat behind, the selection to restore).
  *
  * Owns: `hiddenFiles`, the file-to-group map of hidden tabs, the anchors, the saved selection and the pending hidden selection.
  *
- * Partial expand (COLL-8): a collapsed group may show one member, its peek ([GroupDecoration.peek]). The peek is an ordinary visible tab
+ * Partial expand: a collapsed group may show one member, its peek ([GroupDecoration.peek]). The peek is an ordinary visible tab
  * (not in `hiddenFiles`) that stands right behind the group's anchor, where the group's hidden tabs would be; the group keeps its anchor and
  * pill rank, so the other members stay hidden exactly as in a full collapse and the logical order ([logicalOrder]) keeps the member order,
  * the peek among them. A hidden member that is navigated to becomes the peek ([hiddenTabSelected]); the old peek hides again.
@@ -25,13 +25,13 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  * - `JBTabsImpl.sortTabs`: the strip order, including the hidden tabs, which keep a stale remembered index inside `JBTabsImpl`;
  * - `EditorWindow.setSelectedComposite`: moves the selection off a tab that is about to be hidden.
  *
- * Empty instances (RULE-6, MEM-5): a group with an enabled auto-group rule keeps its instance when its last tab goes. The strip then
+ * Empty instances: a group with an enabled auto-group rule keeps its instance when its last tab goes. The strip then
  * shows its pill alone, as a collapsed group's pill with nothing hidden, so it is kept here with the same bookkeeping: an anchor (the tab it
  * stands behind) and a rank among the pills at one place. Where the anchor comes from: the place the group's tabs had (a snapshot of the
  * tab in front of every expanded group's first tab, [captureSpots], re-anchored when that tab closes), or the end of the strip for an
  * instance the strip never showed. [placeEmpty] moves one (drags, sort). The anchors of a group that is neither collapsed nor empty are dropped.
  *
- * Animation (COLL-7): a collapse is animated by [CollapseAnimator] while the tabs are still visible; the selection moves off the group
+ * Animation: a collapse is animated by [CollapseAnimator] while the tabs are still visible; the selection moves off the group
  * at the start ([selectOutside]) and the tabs are hidden here ([sync] / [hide]) only when the animation is over. An expand shows the
  * tabs at once ([show]); the animator then grows them from nothing. Nothing in this class knows about the animation.
  *
@@ -39,8 +39,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  */
 internal class CollapseController(private val tabs: JBEditorTabs, private val window: EditorWindow) {
     /**
-     * True while a group drag shows its group collapsed (INT-6): hiding every tab of the split then keeps the editor showing, as the
-     * platform's drag-out keeps it while the tab is hidden; only a real collapse empties the editor area (COLL-2).
+     * True while a group drag shows its group collapsed: hiding every tab of the split then keeps the editor showing, as the
+     * platform's drag-out keeps it while the tab is hidden; only a real collapse empties the editor area.
      */
     var keepEditor = false
 
@@ -65,13 +65,13 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     private var pendingHiddenSelection: VirtualFile? = null
 
     /**
-     * COLL-8: the member each partly shown group shows, as of the last [sync] (a visible tab of a collapsed group), and the members of
+     * The member each partly shown group shows, as of the last [sync] (a visible tab of a collapsed group), and the members of
      * those groups in the host's order, to put the peek back among them in [sequence] and [show].
      */
     private var peeks: Map<String, VirtualFile> = emptyMap()
     private var peekMembers: Map<String, List<VirtualFile>> = emptyMap()
 
-    /** The groups shown as their pill alone (RULE-6); each has an anchor in [anchors] and a rank in [collapsedAt]. */
+    /** The groups shown as their pill alone; each has an anchor in [anchors] and a rank in [collapsedAt]. */
     private val emptyIds = LinkedHashSet<String>()
 
     /** Expanded groups with open tabs: the visible tab in front of the first one as of the last quiet layout pass (null: it was first). */
@@ -79,7 +79,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
 
     val hiddenFiles: Set<VirtualFile> get() = hidden
 
-    /** The ids of the groups shown as their pill alone (RULE-6), as of the last [sync]. */
+    /** The ids of the groups shown as their pill alone, as of the last [sync]. */
     fun emptyGroups(): Set<String> = emptyIds
 
     /** The remembered anchor of every empty group (the raw one: it can be a hidden tab of a collapsed group). */
@@ -87,7 +87,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
 
     fun isHidden(file: VirtualFile): Boolean = file in hidden
 
-    /** COLL-8: the member that partly shown group [groupId] shows, or null (as of the last [sync]). */
+    /** The member that partly shown group [groupId] shows, or null (as of the last [sync]). */
     fun peekOf(groupId: String): VirtualFile? = peeks[groupId]
 
     fun hasHiddenFiles(): Boolean = hidden.isNotEmpty()
@@ -137,7 +137,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     // ---- events from the strip ---------------------------------------------------------------------------------------------
 
     /**
-     * The platform selected [file], a hidden tab (COLL-4, COLL-8): [expand] is told the group it belongs to and is expected to show
+     * The platform selected [file], a hidden tab: [expand] is told the group it belongs to and is expected to show
      * the tab (the group's owner makes it the group's peek, or expands the group, and the strip calls [sync] again); `show` then
      * selects [file] for real.
      */
@@ -171,7 +171,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
 
     /**
      * Remembers, for every expanded group with a tab in [visible], the tab in front of its first tab, so that the group's pill stays
-     * there when its last tab goes (RULE-6). Only call it while no drag moves tabs around.
+     * there when its last tab goes. Only call it while no drag moves tabs around.
      */
     fun captureSpots(groups: List<GroupDecoration>, visible: List<VirtualFile>) {
         spots.keys.retainAll(groups.mapTo(HashSet()) { it.id })
@@ -184,7 +184,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * RULE-6: puts the pills of empty groups behind the given tabs, in the order of [placed] (a pill later in the map stands behind an
+     * Puts the pills of empty groups behind the given tabs, in the order of [placed] (a pill later in the map stands behind an
      * earlier one that shares its tab). Ids that are not empty groups are ignored. Used by the drags and the sort, which know the order
      * the strip is going to have.
      */
@@ -203,7 +203,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
 
     /**
      * Makes the hidden tabs match the collapsed groups of [groups]: shows what no longer is collapsed, hides what newly is. A collapsed
-     * group with a valid peek (COLL-8) hides every member but the peek.
+     * group with a valid peek hides every member but the peek.
      */
     fun sync(groups: List<GroupDecoration>) {
         val desired = LinkedHashSet<VirtualFile>()
@@ -232,7 +232,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * RULE-6: a group that is collapsed (as the strip sees it: an empty instance counts as collapsed) and has no tab at all is shown as
+     * A group that is collapsed (as the strip sees it: an empty instance counts as collapsed) and has no tab at all is shown as
      * its pill alone and needs an anchor like any collapsed group. A group that just lost its last tab keeps the place its tabs had
      * ([spots]); one the strip has not shown before goes to the end of the strip (behind the last tab, whatever pills stand there). The
      * anchors of groups that are neither collapsed nor empty any more are dropped; a group that gets a tab back and is collapsed keeps
@@ -253,7 +253,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         }
         spots.keys.removeAll(empty.toSet())
         val collapsing = hiddenGroupOf.values.toSet() + peeks.keys
-        // a group the host no longer lists keeps nothing here (bug 10): no anchor, rank, snapshot or empty place that could put its pill
+        // a group the host no longer lists keeps nothing here: no anchor, rank, snapshot or empty place that could put its pill
         // back, or move it along with another group
         val live = groups.mapTo(HashSet()) { it.id }
         emptyIds.retainAll(live)
@@ -263,7 +263,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * Collapse (COLL-1/COLL-2). Order of operations matters:
+     * Collapse. Order of operations matters:
      * 1. pick the tab to keep selected and select it *before* hiding: `JBTabsImpl.updateHiding` sets the selection to null silently
      *    (no event) when the selected tab is hidden, and the editor layer would not notice;
      * 2. remember where each group sat (anchor = tab before it) because the platform's own remembered index goes stale;
@@ -278,7 +278,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         val alreadyCollapsed = anchors.keys.toSet()
         for (id in ids) {
             if (id !in anchors) {
-                // COLL-8: the group's peek is visible but a member too: the group stood in front of it as well
+                // The group's peek is visible but a member too: the group stood in front of it as well
                 val members = files.filter { groupOfFile[it] == id }.toSet() + listOfNotNull(peeks[id])
                 val visibleBefore = TabOrderRules.anchorBefore(order, members)
                 // Collapsed groups whose pills already stand between that tab and this group: this group stood behind the last of
@@ -310,7 +310,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * COLL-2: if the selected tab is one of [collapsing], selects the nearest visible tab outside of it (right / below first, then
+     * If the selected tab is one of [collapsing], selects the nearest visible tab outside of it (right / below first, then
      * left / above) and returns true; false if there is no such tab (the selection is left alone). True without doing anything if
      * the selected tab is not in [collapsing]. Idempotent. Called when a collapse animation *starts*, so the editor never waits for
      * the animation, and again by [hide].
@@ -352,7 +352,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     /**
      * The split's tab order with every collapsed group's hidden tabs put at their header's place: [visible] (the strip's visible
      * files in order) with, behind each anchor tab (at the front for a group that stood first), the groups collapsed there in pill
-     * order, each with its tabs in tab order. This is the order the user sees the groups in, and the one to persist (PERS-1): the
+     * order, each with its tabs in tab order. This is the order the user sees the groups in, and the one to persist: the
      * platform keeps hidden tabs at the end of its own list. Built from this controller's bookkeeping only, never from a layout. A group
      * whose anchor is no longer visible (inconsistent bookkeeping) goes last, so no tab is lost.
      */
@@ -362,14 +362,14 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * [logicalOrder] with the pills of empty groups in it (RULE-6): a [StripItem.EmptyPill] stands behind its anchor tab, among the
+     * [logicalOrder] with the pills of empty groups in it: a [StripItem.EmptyPill] stands behind its anchor tab, among the
      * collapsed groups' tabs in pill order. Where a number of tabs in front of a header is wanted ([TabBarAdapter.headerIndex]) or the
      * place of an empty pill, this is the order to read.
      */
     fun sequence(visible: List<VirtualFile>): List<StripItem<VirtualFile>> {
         if (hidden.isEmpty() && emptyIds.isEmpty() && peeks.isEmpty()) return visible.map { StripItem.Tab(it) }
         val membersOf = HashMap<String?, List<VirtualFile>>(hidden.groupBy { hiddenGroupOf[it] })
-        // COLL-8: a partly shown group's peek is one of its members, in the host's order; it is not in the strip's order of its own.
+        // A partly shown group's peek is one of its members, in the host's order; it is not in the strip's order of its own.
         // Only a group that has hidden tabs (and so a place) is merged: a lone peek stays a visible tab.
         val merged = HashSet<VirtualFile>()
         for ((id, peek) in peeks) {
@@ -403,9 +403,9 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     }
 
     /**
-     * Expand (COLL-3): show the tabs again, put them back after their anchor and settle the selection.
+     * Expand: show the tabs again, put them back after their anchor and settle the selection.
      *
-     * Selection rules (COLL-3 / COLL-4):
+     * Selection rules:
      * - a hidden tab the platform has just selected (navigation, Ctrl+E, ...) is shown *first*: `JBTabsImpl.updateHiding` ends in
      *   `updateAll`, which does `setSelectedInfo(getSelectedInfo())`, and `getSelectedInfo()` is null while the selected tab is
      *   still hidden. Showing any other tab first would silently reset the selection, and the editor would show the first tab;
@@ -413,7 +413,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
      * - `savedSelection` (the tab that was selected when the last visible tab was collapsed) is only used when the strip was
      *   still empty, i.e. nothing has been opened or selected since the collapse.
      *
-     * COLL-8: [staying] are the groups that remain collapsed after this pass (they show a peek): they keep their anchor, and the peek
+     * [staying] are the groups that remain collapsed after this pass (they show a peek): they keep their anchor, and the peek
      * is the only tab they show. A group that expands from a peek puts its old peek back among its members, in the host's order.
      */
     private fun show(files: List<VirtualFile>, staying: Set<String> = emptySet()) {
@@ -433,7 +433,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             hidden.remove(f)
             hiddenGroupOf.remove(f)?.let { shownByGroup.getOrPut(it) { ArrayList() } += f }
         }
-        // COLL-8: a group that expands fully brings its old peek along, so the members stand in their order again
+        // A group that expands fully brings its old peek along, so the members stand in their order again
         val withPeek = LinkedHashMap<String, MutableList<VirtualFile>>()
         for ((id, members) in shownByGroup) {
             val peek = peeks[id]?.takeIf { id !in staying && infoOf(it)?.isHidden == false && it !in members }

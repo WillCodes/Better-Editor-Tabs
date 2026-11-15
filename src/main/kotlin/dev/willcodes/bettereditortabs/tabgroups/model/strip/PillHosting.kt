@@ -38,14 +38,14 @@ object PillHosting {
     }
 
     /**
-     * The host of a **parked** pill (DRAG-8: its group's only tab is being dragged, the pill stays where the group was) once the drag
+     * The host of a **parked** pill (its group's only tab is being dragged, the pill stays where the group was) once the drag
      * has decided on which side of that pill the dragged tab stands ([draggedInFront]). The pill stands right behind the last tab of
      * [before] (the tabs that stood in front of the group when the drag began); when the dragged tab is in front of the pill and stands
      * there too, the pill stands right behind the dragged tab. It is hosted leading by the next visible tab (the dragged one included:
      * standing right behind the pill it hosts it, sharing its leading side with the pill of a group it now leads, whose own pill comes
      * last, see [orderShared]), or trailing by the tab in front when there is no next tab. Null when there is no tab at all.
      *
-     * Why (user report, round 3, from a trace): hosting by tab order alone put the pill on the wrong side of the dragged tab in two
+     * Why: hosting by tab order alone put the pill on the wrong side of the dragged tab in two
      * cases (the tab moved into the front of the next group; the tab at the end of the strip moved in front of its own pill), so the
      * strip did not show what the drop slot said, and the slot flipped between the two readings on every evaluation.
      */

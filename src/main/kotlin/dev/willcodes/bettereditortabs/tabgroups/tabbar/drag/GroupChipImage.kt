@@ -13,10 +13,10 @@ import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
 
 /**
- * The floating picture of a group drag (INT-6, for expanded and collapsed groups alike): a bordered, rounded chip that holds the
+ * The floating picture of a group drag (for expanded and collapsed groups alike): a bordered, rounded chip that holds the
  * group's own pill, painted by the strip's [PillPainter] (same font, truncation by the current style, shape and colours), and after a
  * small gap the number of tabs being moved in a pill of its own: the group colour blended into the chip's background, so it is
- * lighter than the group's pill (user request 2026-11-13).
+ * lighter than the group's pill.
  *
  * The chip's background is the one of the platform's tab drag picture's window ([DragImages.windowBackground]) and its frame the
  * popup border colour (`JBUI.CurrentTheme.Popup.borderColor`); its height is that of the platform's tab picture. The corners outside

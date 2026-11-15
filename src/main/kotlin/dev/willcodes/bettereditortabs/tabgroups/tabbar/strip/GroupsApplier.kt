@@ -7,12 +7,12 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import java.awt.Color
 
 /**
- * Which groups the strip has and which of them it shows (COLL-2, COLL-7, RULE-6): the groups as last set, the [shown] view every
+ * Which groups the strip has and which of them it shows: the groups as last set, the [shown] view every
  * collaborator reads (a collapsing group counts as expanded while it animates, an empty instance as a collapsed pill), applying a new
  * set of groups (headers, hidden tabs, tint, pill space, the collapse / expand animations) and the "own change" counter that tells the
- * strip's own re-ordering from the user's navigation (selection changes during an own change are not COLL-4).
+ * strip's own re-ordering from the user's navigation (selection changes during an own change are not a navigation by the user).
  *
- * Partial expand (COLL-8): a collapsed group with a valid [GroupDecoration.peek] shows that one member beside its header; [shown]
+ * Partial expand: a collapsed group with a valid [GroupDecoration.peek] shows that one member beside its header; [shown]
  * normalises the peek (a peek that is not an open member, or of an expanded group, is dropped) and every collaborator reads it from
  * there: the hidden tabs ([CollapseController.sync]), the tint ([applyShown]), the pills' hosting and the count pill. Its animations
  * move only the tabs that change ([PartialExpand.change]): the peek grows out of the pill, the other members grow when the group
@@ -41,9 +41,9 @@ internal class GroupsApplier(
      * What the strip shows: [groups], except that a group whose collapse is still animating counts as expanded (its tabs are visible,
      * tinted, the pill is hosted by its first tab). Every collaborator reads this one.
      *
-     * RULE-6: an *empty* instance (no member has a tab here; a group with an enabled rule keeps its instance when its last tab goes)
-     * is shown as a collapsed group's pill with nothing hidden, whatever its flag says (HDR-5: the header looks the same). It is one
-     * strip unit like a collapsed pill (DRAG-6); [CollapseController] keeps its place.
+     * An *empty* instance (no member has a tab here; a group with an enabled rule keeps its instance when its last tab goes)
+     * is shown as a collapsed group's pill with nothing hidden, whatever its flag says: the header looks the same. It is one
+     * strip unit like a collapsed pill; [CollapseController] keeps its place.
      */
     val shown: List<GroupDecoration>
         get() {
@@ -61,7 +61,7 @@ internal class GroupsApplier(
         }
 
     /**
-     * [g] (collapsed, its collapse animating) as the strip shows it meanwhile: expanded, or, when only its peek shrinks away (COLL-8), still
+     * [g] (collapsed, its collapse animating) as the strip shows it meanwhile: expanded, or, when only its peek shrinks away, still
      * collapsed with that peek.
      */
     private fun duringCollapse(g: GroupDecoration, open: Set<VirtualFile>): GroupDecoration {
@@ -78,7 +78,7 @@ internal class GroupsApplier(
         get() = drag().groupInTransit()?.let { id -> shown.filter { it.id != id } } ?: shown
 
     /**
-     * [pillGroups] for the hosting of the pills: an empty instance that a dragged tab would join (DRAG-3 hold behind its pill, previewed by
+     * [pillGroups] for the hosting of the pills: an empty instance that a dragged tab would join (a hold behind its pill, previewed by
      * [DragPreview]) counts as an expanded group with that tab as its member, so its pill is hosted by the dragged tab. The strip units
      * ([StripGeometry]) keep seeing the empty pill, so the drop rules judge the same cells before and after the hold completes.
      */
@@ -123,7 +123,7 @@ internal class GroupsApplier(
     }
 
     private fun startAnimations(newGroups: List<GroupDecoration>, before: List<GroupDecoration>) {
-        // what a collapse hides: the members of collapsed groups, but not a partial group's peek (COLL-8)
+        // what a collapse hides: the members of collapsed groups, but not a partial group's peek
         val collapsingFiles = newGroups.filter { it.collapsed }.flatMapTo(HashSet()) { g -> g.members.filter { it != g.peek } }
         val old = before.associateBy { it.id }
         val open = openFiles()
@@ -131,11 +131,11 @@ internal class GroupsApplier(
         for (g in newGroups) {
             val was = old[g.id] ?: continue
             val running = animator.direction(g.id)
-            // RULE-6: a group that had no tab here (an empty instance) and gets its first one is not a collapse or an expand: a
-            // collapsed group shows the arrival hidden at once, an expanded one shows it, neither animates (COLL-7 is for flips of
+            // A group that had no tab here (an empty instance) and gets its first one is not a collapse or an expand: a
+            // collapsed group shows the arrival hidden at once, an expanded one shows it, neither animates (the animation is for flips of
             // groups with open tabs)
             if (running == null && was.members.none { it in open }) continue
-            // COLL-7 / COLL-8: what is on screen before (where a running animation ends, if one runs) and after; only the tabs that
+            // What is on screen before (where a running animation ends, if one runs) and after; only the tabs that
             // change animate: a collapse shrinks the ones that go, an expand grows the ones that come
             val after = PartialExpand.shown(g.members, open, g.collapsed, g.peek)
             val start = animator.targetOf(g.id) ?: PartialExpand.shown(was.members, open, was.collapsed, was.peek).toSet()
@@ -154,7 +154,7 @@ internal class GroupsApplier(
             }
             if (g.members.none { StripReader.infoOf(tabs, it) != null }) continue
             if (change.shrinking.isNotEmpty()) {
-                // COLL-2 / COLL-7: the selection changes at the start, the editor never waits for the animation.
+                // The selection changes at the start, the editor never waits for the animation.
                 collapse.selectOutside(collapsingFiles)
                 animator.begin(g.id, change.shrinking, true, after.toSet())
             }
@@ -169,7 +169,7 @@ internal class GroupsApplier(
         collapse.sync(now)
         val tints = HashMap<VirtualFile, Color>()
         for (g in now) {
-            // an expanded group tints its tabs, a partial one (COLL-8) its peek: LINE-1, the peek looks like a tab of an expanded group
+            // an expanded group tints its tabs, a partial one its peek: the peek looks like a tab of an expanded group
             val tinted = if (!g.collapsed) g.members else listOfNotNull(g.peek)
             if (tinted.isEmpty()) continue
             val color = tint.colorFor(g.color)

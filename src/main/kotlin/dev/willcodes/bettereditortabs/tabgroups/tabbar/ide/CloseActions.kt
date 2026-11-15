@@ -24,7 +24,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 private typealias CloseCandidates = List<Pair<EditorComposite, EditorWindow>>
 
 /**
- * Applies the IDE-4 scoping rule ([CloseScope]) to the candidates of a built-in close action, while a host is attached.
+ * Applies the scoping rule ([CloseScope]) to the candidates of a built-in close action, while a host is attached.
  *
  * Wraps internal API: `EditorWindow`, `EditorComposite`, `EditorWindow.getContextFile()` (the right-clicked tab, else the
  * selected tab) and `FileEditorManagerEx.closeFilesWithChecks` (the single place every bulk close goes through).
@@ -34,7 +34,7 @@ internal object CloseScoping {
     /** The tab bar service if a host is attached (the plugin is active), else null: then the built-in behaviour runs unchanged. */
     private fun activeTabBar(project: Project): TabBar? = project.serviceIfCreated<TabBar>()?.takeIf { it.host != null }
 
-    /** True if the IDE-4 scoping applies to [e] (a host is attached). When false the actions behave exactly like the built-in ones. */
+    /** True if the scoping applies to [e] (a host is attached). When false the actions behave exactly like the built-in ones. */
     fun isActive(e: AnActionEvent): Boolean = e.project?.let { activeTabBar(it) } != null
 
     fun scope(e: AnActionEvent, candidates: CloseCandidates): CloseCandidates {
@@ -47,7 +47,7 @@ internal object CloseScoping {
     }
 
     /**
-     * SPLIT-6: the placeholder of a temporary split is not a tab of the user's; no close action takes it along with real tabs (it
+     * The placeholder of a temporary split is not a tab of the user's; no close action takes it along with real tabs (it
      * closes by itself when a real tab is there). A split that holds nothing else is closed by an action that names it, which is the
      * user closing the temporary split (its groups move to another split, `TabBarHost.temporarySplitClosing`).
      */
@@ -60,7 +60,7 @@ internal object CloseScoping {
     fun contextWindow(e: AnActionEvent, project: Project): EditorWindow? =
         e.getData(EditorWindow.DATA_KEY) ?: FileEditorManagerEx.getInstanceEx(project).currentWindow
 
-    /** The context tab: the right-clicked tab, or the selected tab when there is no popup (IDE-4). */
+    /** The context tab: the right-clicked tab, or the selected tab when there is no popup. */
     fun contextFile(e: AnActionEvent, project: Project): VirtualFile? {
         val window = contextWindow(e, project) ?: return null
         return window.getContextFile() ?: window.selectedFile
@@ -76,7 +76,7 @@ internal object CloseScoping {
         files.mapNotNull { file -> window.getComposite(file)?.let { Pair.create(it, window) } }
 }
 
-/** Close All Tabs (`CloseAllEditors`). Copy of the built-in selection logic plus the IDE-4 filter. */
+/** Close All Tabs (`CloseAllEditors`). Copy of the built-in selection logic plus the scoping filter. */
 class CloseAllAction : CloseAllEditorsAction() {
     init {
         templatePresentation.setText(ActionsBundle.actionText("CloseAllEditors"))
@@ -99,7 +99,7 @@ class CloseAllAction : CloseAllEditorsAction() {
     }
 }
 
-/** Close Other Tabs (`CloseAllEditorsButActive`). Copy of the built-in selection logic plus the IDE-4 filter. */
+/** Close Other Tabs (`CloseAllEditorsButActive`). Copy of the built-in selection logic plus the scoping filter. */
 class CloseOthersAction : CloseAllEditorsButActiveAction() {
     init {
         templatePresentation.setText(ActionsBundle.actionText("CloseAllEditorsButActive"))
@@ -127,7 +127,7 @@ class CloseOthersAction : CloseAllEditorsButActiveAction() {
 
 /**
  * Close Tabs to the Left (`CloseAllToTheLeft`). Subclasses the built-in action, so the candidate logic is inherited;
- * `getFilesToClose` (also used for enablement) is narrowed by the IDE-4 filter.
+ * `getFilesToClose` (also used for enablement) is narrowed by the scoping filter.
  */
 open class CloseLeftAction : CloseAllEditorsToTheLeftAction() {
     override fun getFilesToClose(event: AnActionEvent): CloseCandidates = CloseScoping.scope(event, super.getFilesToClose(event))

@@ -14,12 +14,12 @@ import java.awt.geom.RoundRectangle2D
  * The group pill and where its sizes live: one painter for the strip ([GroupHeader]) and for the floating picture of a group drag
  * (`GroupChipImage`), so the pill in the picture is the strip's pill by construction (same font, truncation, shape, colours).
  *
- * A group with a name is a rounded rectangle in the group's opaque colour (HDR-1) with the name in the colour of better contrast on
- * it (HDR-2, as the current theme resolves the fill); a group without a name is a plain dot (HDR-1). Sizes are in layout pixels
+ * A group with a name is a rounded rectangle in the group's opaque colour with the name in the colour of better contrast on
+ * it (as the current theme resolves the fill); a group without a name is a plain dot. Sizes are in layout pixels
  * (scaled with `JBUI.scale`). Wraps `JBUI.CurrentTheme.EditorTabs.font()`. EDT only.
  */
 internal object PillPainter {
-    /** Space between the pill's edge and the name, each side (user request 2026-11-13: was 8). */
+    /** Space between the pill's edge and the name, each side. */
     private const val PAD = 5
 
     /** Space above and below the name's line in a named pill that is coloured. */
@@ -29,16 +29,16 @@ internal object PillPainter {
     /** Extra width of the dot's slot over the dot itself (as before the extraction: `DOT_SIZE + 8`). */
     private const val DOT_SLOT_EXTRA = 8
 
-    /** Corner arc diameter of a named pill: a rounded rectangle rather than a full capsule (user request, 2026-11-13). */
+    /** Corner arc diameter of a named pill: a rounded rectangle rather than a full capsule. */
     private const val PILL_ARC = 10
 
-    /** How much of the group colour a count pill has (COLL-8, INT-6); the rest is the background it stands on. */
+    /** How much of the group colour a count pill has; the rest is the background it stands on. */
     private const val COUNT_STRENGTH = 0.55
 
     /** The font of the name, the one the editor tabs use. */
     fun font(): Font = JBUI.CurrentTheme.EditorTabs.font()
 
-    /** The text drawn in the pill: [name] cut at [maxLength] characters with an ellipsis (HDR-3). */
+    /** The text drawn in the pill: [name] cut at [maxLength] characters with an ellipsis. */
     fun displayName(name: String, maxLength: Int): String {
         val max = maxLength.coerceAtLeast(1)
         return if (name.length > max) name.take(max) + "…" else name
@@ -52,7 +52,7 @@ internal object PillPainter {
         if (isDot) dotSize() + JBUI.scale(DOT_SLOT_EXTRA) else fm.stringWidth(text) + JBUI.scale(2 * PAD)
 
     /**
-     * Height of a named pill: the name's line height plus a small margin above and below (user request 2026-11-13: a pill that hugs its
+     * Height of a named pill: the name's line height plus a small margin above and below (a pill that hugs its
      * name, not one as tall as the tab), never more than [maxHeight] (the row's height less its insets).
      */
     fun namedHeight(fm: FontMetrics, maxHeight: Int): Int = minOf(maxHeight, fm.height + 2 * JBUI.scale(TEXT_V_PAD)).coerceAtLeast(1)
@@ -65,7 +65,7 @@ internal object PillPainter {
     }
 
     /**
-     * The named pill filling `x, y, w, h`: HDR-1 fully opaque (the tint opacity, SET-1, is for member tabs only), then the name
+     * The named pill filling `x, y, w, h`: fully opaque (the tint opacity is for member tabs only), then the name
      * ([text], already truncated) centred in it in [Contrast.textOn] the fill. Sets the font; the caller's antialiasing hints apply.
      */
     fun paintNamed(g: Graphics2D, color: Color, text: String, x: Double, y: Double, w: Double, h: Double) {
@@ -80,7 +80,7 @@ internal object PillPainter {
         g.drawString(text, tx.toFloat(), ty.toFloat())
     }
 
-    /** The fill of a count pill (COLL-8 "+N", the drag chip's tab count): the group colour mixed into [background], lighter than the group's pill. */
+    /** The fill of a count pill (the "+N" of a partly shown group, the drag chip's tab count): the group colour mixed into [background], lighter than the group's pill. */
     fun countFill(background: Color, groupColor: Color): Color = ColorUtil.mix(background, groupColor, COUNT_STRENGTH)
 
     /** Width of a count pill showing [text]: never narrower than [height] (a single digit is a rounded square). */

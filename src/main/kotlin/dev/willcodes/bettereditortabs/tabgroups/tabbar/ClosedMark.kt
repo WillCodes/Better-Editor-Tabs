@@ -4,7 +4,7 @@ import com.intellij.openapi.fileEditor.impl.EditorWindow
 
 /**
  * Opaque marker of "the close that [TabBar.closeTabsQuietly] did": remembers the split and the top of its Reopen Closed Tab history
- * right after that close. [TabBar.isMostRecentClose] tells whether nothing has been closed or reopened there since (LIFE-5). Only
+ * right after that close. [TabBar.isMostRecentClose] tells whether nothing has been closed or reopened there since. Only
  * `tabbar/` creates marks.
  */
 class ClosedMark internal constructor(internal val window: EditorWindow, internal val historyTop: Any?, internal val historyReadable: Boolean)

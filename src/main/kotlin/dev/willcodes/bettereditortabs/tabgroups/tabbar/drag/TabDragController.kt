@@ -35,16 +35,16 @@ private val LOG = logger<TabDragController>()
  * session of `DockManagerImpl`): the dragged tab's place is an empty slot (`StripDragSurface.setDragGap`, the look of
  * `TabLabel.paint` for a drop target, `TabLabel.kt:321-339`) and one picture of the tab floats centred on the pointer
  * (`DockManagerImpl.kt:236-243`, 90 % opaque, [DragOverlay]); there is no second copy of the tab in the strip. The picture is
- * the platform's own tab picture, made again whenever the previewed membership changes, so it carries the live tint (DRAG-7); the slot
+ * the platform's own tab picture, made again whenever the previewed membership changes, so it carries the live tint; the slot
  * stays neutral like the platform's.
  *
  * Gesture: a left press on a tab label (not on a pill, not on a close button) is only remembered; nothing is consumed, the tab is
  * selected as usual and clicks, middle-click and the context menu work. Once the pointer moved past the platform's drag threshold
  * the drag is ours: [DragObserver] consumes the drag events so `DragHelper` never starts.
  * - Over a tab strip (this split's or another split's, see [TabDragTargets]): a [TabDragSession] re-orders the strip live (or opens a
- *   gap in another split's strip) whenever the slot (or the group the tab would join) changes and shows the previewed pill and tint
- *   (DRAG-7); membership is only committed to the model on release ([SplitGroups.commit]); a release over another split's strip moves
- *   the file there ([moveTabToSplit], DRAG-5). Esc restores order and membership everywhere.
+ *   gap in another split's strip) whenever the slot (or the group the tab would join) changes and shows the previewed pill and tint;
+ *   membership is only committed to the model on release ([SplitGroups.commit]); a release over another split's strip moves
+ *   the file there ([moveTabToSplit]). Esc restores order and membership everywhere.
  * - Pointer off every strip (more than the platform's drop tolerance beyond a strip's rows, or past its ends): the strips are
  *   restored and the gesture is handed over to the platform's drag-out ([DragHandOff]); from then on it is exactly the platform drag
  *   (split edges, a new window, tool windows). If the pointer comes back onto any strip the platform's session is cancelled and the
@@ -53,8 +53,8 @@ private val LOG = logger<TabDragController>()
  *   platform's session offers no split edge there, so the drag stays ours and the edge makes the new split.
  * - With the platform's alphabetical sorting on and no group in the strip, the press is ignored and the platform's own drag runs (it
  *   re-sorts the strip itself and turns sorting off after a manual drag); so does a drag the platform starts itself (a file from the
- *   Project view). A strip with groups is sorted by the plugin ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripSort],
- *   IDE-2): the drag runs as usual with join / leave of groups, and after the drop the sort puts the tab where it belongs.
+ *   Project view). A strip with groups is sorted by the plugin ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripSort]):
+ *   the drag runs as usual with join / leave of groups, and after the drop the sort puts the tab where it belongs.
  *
  * Internal APIs wrapped: `JBTabsImpl` (tab labels, `TabInfo.dragOutDelegate`, `DragHelper` press state). EDT only.
  */
@@ -89,7 +89,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         if (phase != Phase.IDLE) abort()
         if (e.button != MouseEvent.BUTTON1 || e.isConsumed || !MouseDragHelper.checkModifiers(e)) return
         // Sorted alphabetically with no groups here, the platform re-sorts the strip itself and turns sorting off after a manual drag:
-        // leave it alone. A strip with groups is sorted by the plugin (IDE-2, StripSort): the drag runs, and its drop (a new membership)
+        // leave it alone. A strip with groups is sorted by the plugin (StripSort): the drag runs, and its drop (a new membership)
         // is followed by the sort, which decides the position.
         if (UISettings.getInstance().sortTabsAlphabetically && !dnd.adapter.ownsSort) return
         val screen = RelativePoint(e).screenPoint
@@ -197,7 +197,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
 
     /**
      * The pointer at [screen] is back on a strip, or over the editor area of a split whose strip shows no tab but the dragged one (a "bare"
-     * split: the platform's drop session would see no visible tab there and offer no split edge, Stage 11.5 fix round 5): the drag is ours.
+     * split: the platform's drop session would see no visible tab there and offer no split edge): the drag is ours.
      */
     private fun takesBack(screen: Point): Boolean {
         val d = drag ?: return false
@@ -210,7 +210,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         try {
             if (dropsOnItsOwnEmptySplit()) {
                 // the split's only tab released on its own editor: the platform would close the tab first, which closes the split, and
-                // then open the file in the split that is current by then, another one (user report, Stage 11.5 fix round 4); the tab
+                // then open the file in the split that is current by then, another one; the tab
                 // stays where it is instead, as if it had not moved
                 LOG.info("tab drag: the only tab of its split dropped on its own editor: nothing moves")
                 h?.cancel()
@@ -300,7 +300,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         removeDispatcher()
         handOff = null
         if (!keepPhase) phase = Phase.IDLE
-        dnd.adapter.recheckSort() // IDE-2: a cancelled or handed-over drag ends sorted too
+        dnd.adapter.recheckSort() // a cancelled or handed-over drag ends sorted too
     }
 
     private fun removeDispatcher() {

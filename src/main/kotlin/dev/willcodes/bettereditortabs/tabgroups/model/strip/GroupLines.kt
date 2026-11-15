@@ -3,7 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 import java.awt.Rectangle
 
 /**
- * LINE-6 (Islands, user request 2026-11-14): where the line in the group colour runs under a group's island tabs, from its header to
+ * Islands theme: where the line in the group colour runs under a group's island tabs, from its header to
  * its last tab. Pure geometry; the painter is `tabbar/strip/GroupLine`.
  *
  * The Islands theme draws each tab as a rounded "island" inset in its label: by [Metrics.tabInset] along the strip, and centred across
@@ -12,8 +12,8 @@ import java.awt.Rectangle
  * line, between the tabs and the page), centred in it, so it never touches an island or its selected outline.
  *
  * Along the strip it spans the group's units on each row (one bar per row in multi-row mode): from the header pill's start (or the row's
- * first tab island) to the end of the last unit (a tab island, or a trailing unit such as the "+N" count of a partial expand, COLL-8).
- * A group without a visible tab has no line (collapsed, LINE-5; empty, RULE-6), and a row with only the group's pill on it (the header
+ * first tab island) to the end of the last unit (a tab island, or a trailing unit such as the "+N" count of a partial expand).
+ * A group without a visible tab has no line (collapsed or empty), and a row with only the group's pill on it (the header
  * wrapped to the end of a row) has none either.
  */
 object GroupLines {

@@ -40,7 +40,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
 
     override fun hoverEnded(header: HeaderRef) = tabList.hoverEnded(header)
 
-    /** LIFE-5, PERS-4: modal warning naming the skipped files (at most [MAX_LISTED]), or saying that nothing could be restored. */
+    /** Modal warning naming the skipped files (at most [MAX_LISTED]), or saying that nothing could be restored. */
     override fun warnMissingFiles(groupName: String, missing: List<String>, restored: Int) {
         val message = if (restored <= 0) {
             BetterEditorTabsBundle.message("restore.missing.none", groupName)
@@ -54,7 +54,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
     }
 
     /**
-     * LIFE-3a: three buttons, Merge Tabs (the default, LIFE-3a's Move), Close Tabs, Cancel, and a "Don't ask again" box that only counts with Move or Close. `MessageDialogBuilder.yesNoCancel` maps them to yes, no and cancel;
+     * Three buttons, Merge Tabs (the default: Move), Close Tabs, Cancel, and a "Don't ask again" box that only counts with Move or Close. `MessageDialogBuilder.yesNoCancel` maps them to yes, no and cancel;
      * Escape and the window's close button answer cancel.
      */
     override fun askLinkedDelete(groupName: String, tabCount: Int): LinkedDeleteChoice {
@@ -82,7 +82,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
         }
     }
 
-    /** LIFE-3b: warning dialog with Delete / Cancel and a "Don't ask again" box that only counts together with Delete. */
+    /** Warning dialog with Delete / Cancel and a "Don't ask again" box that only counts together with Delete. */
     override fun confirmDelete(groupName: String, tabCount: Int): DeleteAnswer {
         var stopAsking = false
         val option = object : DoNotAskOption.Adapter() {
@@ -108,9 +108,9 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
     }
 
     /**
-     * POP-2: "N open tabs match this rule. Move them into "‹name›"?" with Move / Leave; true for Move. Like [confirmDelete] a
+     * "N open tabs match this rule. Move them into "‹name›"?" with Move / Leave; true for Move. Like [confirmDelete] a
      * `MessageDialogBuilder.yesNo` dialog, with the question icon (nothing is lost whichever way it is answered) and no "don't
-     * ask again" box: the prompt is switched off in the settings (SET-8).
+     * ask again" box: the prompt is switched off in the settings.
      */
     override fun askMoveMatching(groupName: String, count: Int): Boolean =
         MessageDialogBuilder
@@ -124,7 +124,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
             .ask(project)
 
     /**
-     * MEM-5, RULE-6 amended: *"‹name›" is empty. Delete it?* for a group without a rule, *"‹name›" has no tabs left. Keep it so that new
+     * *"‹name›" is empty. Delete it?* for a group without a rule, *"‹name›" has no tabs left. Keep it so that new
      * matching files join it?* for one with a rule, each worded for the [case] (closed, dragged out, popup closed). Buttons Delete / Keep
      * (Delete is the dialog's yes, so Escape and the close button answer Keep, the safe one) and a "Don't ask again" box that counts
      * with either answer.
@@ -148,7 +148,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
     }
 
     /**
-     * SPLIT-6: one warning for the empty groups of a temporary split that was closed: *"‹name›" had no tabs, so it was moved to the split
+     * One warning for the empty groups of a temporary split that was closed: *"‹name›" had no tabs, so it was moved to the split
      * you used last.* and / or *"‹name›" had no tabs and no other split to go to, so it was deleted.* (several names are listed together).
      */
     override fun warnTemporarySplitClosed(moved: List<String>, deleted: List<String>) {
@@ -161,7 +161,7 @@ class TabGroupsUiImpl(private val project: Project) : TabGroupsUi {
 
     private fun quoted(names: List<String>): String = names.joinToString(", ") { "\"$it\"" }
 
-    /** CTX-5: a native context menu with *New Group* at [point] in [component]. */
+    /** A native context menu with *New Group* at [point] in [component]. */
     override fun showStripMenu(split: SplitHandle, component: JComponent, point: Point) {
         val newGroup = object : AnAction(BetterEditorTabsBundle.message("strip.newGroup")), DumbAware {
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

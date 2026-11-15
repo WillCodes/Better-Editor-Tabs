@@ -14,11 +14,11 @@ import java.awt.RenderingHints
 import java.awt.geom.RoundRectangle2D
 
 /**
- * LINE-6 (Islands, user request 2026-11-14): a line in the group colour under each expanded (or partially expanded, COLL-8) group's
- * island tabs, from its header to its last tab, in addition to the tint (LINE-1). Only where the strip's painter is the Islands one
+ * A line in the group colour under each expanded (or partially expanded) group's
+ * island tabs, from its header to its last tab, in addition to the tint. Only where the strip's painter is the Islands one
  * ([PlatformInternals.isIslandsPainter]); other New UI themes keep tint and underline only. Where the line runs: [GroupLines].
  *
- * Painted from the strip's border wrapper after the platform's post-children border layer ([PillAwareTabsBorder], like the POP-4
+ * Painted from the strip's border wrapper after the platform's post-children border layer ([PillAwareTabsBorder], like the rule
  * outline), so no tab label or selected island paints over it. The lines are recomputed after every layout pass ([refresh]: the
  * collapse animation, drags and scrolling move the labels), opaque, with rounded ends. Island metrics as `IslandsTabPainter.paintTab`
  * (262 source): along-the-strip inset 4 px (2 compact, 6 in a side strip), margin across the strip half of

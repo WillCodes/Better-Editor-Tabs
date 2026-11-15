@@ -10,9 +10,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 
 /**
- * Empty groups (CTX-5, MEM-1, MEM-5 amended 2026-11-14, RULE-6 amended, DRAG-8 amended) for [TabGroupsService], which delegates to it:
+ * Empty groups for [TabGroupsService], which delegates to it:
  * *New Group* ([create]), and the question whether to keep a group that is left empty, for every way a group ends up empty: its last
- * tab was closed or pinned ([lastTabLeaving], MEM-1, MEM-3), dragged out ([emptiedByDrag], DRAG-8), or its popup closed while empty and without an enabled
+ * tab was closed or pinned ([lastTabLeaving]), dragged out ([emptiedByDrag]), or its popup closed while empty and without an enabled
  * rule ([popupClosed]; a ruled group is empty on purpose and not asked then). Groups with an enabled rule are asked too, with their
  * own wording and their own remembered answer ([TabGroupsSettings.emptyRuledGroupChoice] / [TabGroupsSettings.emptyGroupChoice]).
  *
@@ -21,10 +21,10 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
  * group however many of its tabs or splits were involved (Close All, Close Others). Nothing is asked for a split that is gone, for a
  * group that has a member again, for an instance that was empty before the event (a drag that does not touch it), during the project
  * close ([SavedGroups.isFrozen], disposal), and never for groups removed by our own operations (Stash, Delete Group remove the instance
- * first). Pinning the last tab (MEM-3) is not closing: that group is removed as before.
+ * first). Pinning the last tab is not closing: that group is removed as before.
  *
- * A kept group has [TabGroup.keepWhileEmpty] set (session only; the instance itself is stored empty, PERS-3 amended), which exempts it
- * from MEM-5 until a tab joins it. Shares the service's [state]; [refresh] and [arrange] are the service's own. EDT only.
+ * A kept group has [TabGroup.keepWhileEmpty] set (session only; the instance itself is stored empty), which exempts it
+ * from automatic removal until a tab joins it. Shares the service's [state]; [refresh] and [arrange] are the service's own. EDT only.
  */
 internal class EmptyGroups(
     private val project: Project,
@@ -42,7 +42,7 @@ internal class EmptyGroups(
 
     private class Pending(val case: EmptyCase, val splits: LinkedHashSet<SplitHandle> = LinkedHashSet())
 
-    /** CTX-5: see [TabGroupsService.createEmptyGroup]; the caller has attached the host. */
+    /** See [TabGroupsService.createEmptyGroup]; the caller has attached the host. */
     fun create(split: SplitHandle): TabGroup {
         val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor, settings.startColor)
         val group = state.createEmptyGroup(split, color)
@@ -51,7 +51,7 @@ internal class EmptyGroups(
         return group
     }
 
-    /** MEM-5 amended: the group popup of [groupId] closed; asks about its empty instances if it has no enabled rule (a ruled one is empty on purpose). */
+    /** The group popup of [groupId] closed; asks about its empty instances if it has no enabled rule (a ruled one is empty on purpose). */
     fun popupClosed(groupId: String) {
         val group = state.group(groupId) ?: return
         if (group.hasEnabledRule) return
@@ -60,9 +60,9 @@ internal class EmptyGroups(
     }
 
     /**
-     * MEM-1 / MEM-3: the last member of [groupId]'s instance in [split] is being closed or pinned ([case]: [EmptyCase.CLOSED] or
+     * The last member of [groupId]'s instance in [split] is being closed or pinned ([case]: [EmptyCase.CLOSED] or
      * [EmptyCase.PINNED]). Call before the state removes it. Unruled group: a
-     * remembered Delete lets MEM-5 remove it at once, otherwise it is kept provisionally (and asked about after the event unless Keep is
+     * remembered Delete removes it at once, otherwise it is kept provisionally (and asked about after the event unless Keep is
      * remembered). Ruled group: the rule keeps the instance; asked after the event unless Keep is remembered.
      */
     fun lastTabLeaving(split: SplitHandle, groupId: String, case: EmptyCase) {
@@ -80,7 +80,7 @@ internal class EmptyGroups(
     }
 
     /**
-     * DRAG-8 amended: of [groups] (a drag result for [split]), the groups that the drag left empty (they had members before): first the
+     * Of [groups] (a drag result for [split]), the groups that the drag left empty (they had members before): first the
      * ones whose empty instance must survive the state update for now (unruled, no Delete remembered), then the ones to ask about after
      * the drop ([askAfterDrag]). A ruled group's instance stays by its rule. Groups whose instance was empty already are not touched.
      */
@@ -103,7 +103,7 @@ internal class EmptyGroups(
         return keep to ask
     }
 
-    /** DRAG-8 amended: asks (after the event) about each group that was left empty by a drag and still is. */
+    /** Asks (after the event) about each group that was left empty by a drag and still is. */
     fun askAfterDrag(split: SplitHandle, groupIds: List<String>) {
         for (id in groupIds) schedule(split, id, EmptyCase.DRAGGED_OUT)
     }
@@ -134,7 +134,7 @@ internal class EmptyGroups(
 
     /**
      * Decides what happens to the empty instances of [groupId] in [splits]: the remembered answer for its kind (ruled or not), else
-     * [TabGroupsUi.askDeleteEmpty] ("Don't ask again" remembers it). Delete removes the instances (MEM-6 may end the group); Keep sets
+     * [TabGroupsUi.askDeleteEmpty] ("Don't ask again" remembers it). Delete removes the instances (the group goes with its last instance); Keep sets
      * [TabGroup.keepWhileEmpty]. The state is re-read after the modal question.
      */
     private fun resolve(groupId: String, splits: List<SplitHandle>, case: EmptyCase) {

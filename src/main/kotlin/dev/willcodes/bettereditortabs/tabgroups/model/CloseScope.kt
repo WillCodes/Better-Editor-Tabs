@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model
 
 /**
- * The close-scoping rule of IDE-4 as a pure function, independent of the IDE.
+ * The close-scoping rule as a pure function, independent of the IDE.
  *
  * The built-in close actions (Close Others, Close All, Close Unmodified, Close Tabs to the Left/Right, Close All
  * but Pinned) each compute a candidate set. This rule narrows that set by the group of the *context tab*

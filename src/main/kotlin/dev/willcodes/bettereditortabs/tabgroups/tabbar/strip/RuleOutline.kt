@@ -14,7 +14,7 @@ import java.awt.geom.RoundRectangle2D
 import javax.swing.JComponent
 
 /**
- * POP-4 (rule preview, user request 2026-11-14): the outline in the group's colour around the tabs an auto-group rule would match, in one
+ * The outline in the group's colour around the tabs an auto-group rule would match, in one
  * split's strip. A child of the tab component above the tab labels (and so above the label the platform moves to the front when a tab is
  * selected: [update] puts it first in the z-order again after every layout pass), invisible to the mouse, like [DragGap]. It paints
  * nothing but the outlines: tint, selection rendering, pill slots and drags are untouched.
@@ -88,7 +88,7 @@ internal class RuleOutline(private val tabs: JBEditorTabs) : JComponent() {
     }
 
     /**
-     * Fix round 2 (user request 2026-11-14, bug 4): the platform draws the selected tab's indicator (and the Islands outline) in the
+     * The platform draws the selected tab's indicator (and the Islands outline) in the
      * border pass that ends `paintChildren`, over every child of the tab component, so a child that paints the outline is covered by it.
      * With the border hook installed ([PillAwareTabsBorder], which calls [paintAfterChildren] at the end of each of its passes) the
      * outline is therefore painted from there: this component, painted last of the children, only notes that the outlines are due.

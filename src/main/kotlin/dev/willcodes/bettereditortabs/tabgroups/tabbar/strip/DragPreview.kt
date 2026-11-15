@@ -7,7 +7,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.GapRuns
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 
 /**
- * State of the plugin's own drag in this split (DRAG-7): the previewed group membership of dragged tabs, the dragged file, and the
+ * State of the plugin's own drag in this split: the previewed group membership of dragged tabs, the dragged file, and the
  * empty drop slot ([DragGap]) shown for what is being dragged.
  *
  * Owns plain state plus the [DragGap] component; it changes nothing in the platform. The coordinator ([TabBarAdapter]) reads it when
@@ -26,7 +26,7 @@ internal class DragPreview(tabs: JBEditorTabs) {
     /** The tabs in front of each expanded group when the drag began. */
     private val before = HashMap<String, Set<VirtualFile>>()
 
-    /** DRAG-8: for each parked group (its only tab is the dragged one), whether the drop now puts the dragged tab in front of its pill. */
+    /** For each parked group (its only tab is the dragged one), whether the drop now puts the dragged tab in front of its pill. */
     private val draggedInFront = HashMap<String, Boolean>()
 
     /** See [draggedInFront]; set by the drag session with every new landing ([setParkedSides]). Null: not decided (old hosting). */
@@ -67,7 +67,7 @@ internal class DragPreview(tabs: JBEditorTabs) {
         draggedFile = file
         before.clear()
         for (g in groups) {
-            // COLL-8: a partly shown group whose peek is the dragged tab parks its pill like a group whose only tab is dragged
+            // A partly shown group whose peek is the dragged tab parks its pill like a group whose only tab is dragged
             if (g.collapsed && g.peek != file) continue
             val first = visible.indexOfFirst { it in g.members }
             if (first >= 0) before[g.id] = visible.subList(0, first).toHashSet()

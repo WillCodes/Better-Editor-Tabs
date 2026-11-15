@@ -5,7 +5,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
  */
 object TabOrderRules {
     /**
-     * COLL-2: the tab to select when the selected tab is about to be hidden. The nearest tab outside the group,
+     * The tab to select when the selected tab is about to be hidden. The nearest tab outside the group,
      * first to the right, then to the left. Null if every tab is in the group.
      */
     fun <T> nearestOutside(order: List<T>, selectedIndex: Int, inGroup: (T) -> Boolean): T? {
@@ -15,7 +15,7 @@ object TabOrderRules {
     }
 
     /**
-     * COLL-3: the order after a collapsed group comes back: [members] go immediately after [anchor]
+     * The order after a collapsed group comes back: [members] go immediately after [anchor]
      * (the tab that preceded the group when it was collapsed), or at the start if the anchor is gone.
      * [order] must not contain the members.
      */

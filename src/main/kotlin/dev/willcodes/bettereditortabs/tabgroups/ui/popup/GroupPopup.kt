@@ -19,9 +19,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import java.awt.event.KeyEvent
 
 /**
- * The group popup (§6): the only place a group is renamed, recoloured, ungrouped or deleted from. Opens next to its header (below it for a strip on top; see
- * [PopupPlacement]) with the name field focused, all text selected. Closes on Enter, Escape or a click outside (POP-1); name and
- * colour are applied while editing, the auto-group rule (Advanced, RULE-1) is committed when the popup closes (see [create]). See
+ * The group popup: the only place a group is renamed, recoloured, ungrouped or deleted from. Opens next to its header (below it for a strip on top; see
+ * [PopupPlacement]) with the name field focused, all text selected. Closes on Enter, Escape or a click outside; name and
+ * colour are applied while editing, the auto-group rule (Advanced) is committed when the popup closes (see [create]). See
  * [GroupPopupContent] for the layout and the keyboard navigation.
  *
  * **The popup and its own child windows.** The platform closes a popup on a click outside it (`StackingPopupDispatcherImpl.dispatchMouseEvent`)
@@ -33,14 +33,14 @@ import java.awt.event.KeyEvent
  * refuses while [GroupPopupContent.childWindowOpen]. A real click outside the popup still closes it: nothing else is changed.
  */
 object GroupPopup {
-    /** INT-4: the popup for the group of [header] (a right click on it), next to the header. */
+    /** The popup for the group of [header] (a right click on it), next to the header. */
     fun show(project: Project, header: HeaderRef) {
         val popup = create(project, header.split, header.groupId) ?: return
         popup.show(PopupPlacement.beside(header, popup))
     }
 
     /**
-     * CTX-1, §13 Rename Current Group: the popup for the group [groupId] of [split], with the name field focused and its text selected
+     * The popup for the group [groupId] of [split], with the name field focused and its text selected
      * (a group that was just created, or the current group renamed by the action). The header is placed by a layout pass, which
      * [TabBar.header] runs; if it is still not showing, one more try follows in `invokeLater`, then the best position for [dataContext]
      * (or the middle of the window without one).
@@ -74,12 +74,12 @@ object GroupPopup {
         var committed = false
         lateinit var content: GroupPopupContent
 
-        // POP-1, POP-2: the rule is committed exactly once, when the popup closes; the service asks about the matching open tabs
-        // (POP-2) in a dialog, which must not open on a closing popup, hence invokeLater. offerMatching is false when the popup
+        // The rule is committed exactly once, when the popup closes; the service asks about the matching open tabs
+        // in a dialog, which must not open on a closing popup, hence invokeLater. offerMatching is false when the popup
         // closed because one of its actions was chosen.
-        // POP-4: the preview ends with the popup. MEM-5 (amended): after a close by Enter / Escape / a click outside, the service asks
+        // The preview ends with the popup. After a close by Enter / Escape / a click outside, the service asks
         // whether to keep the group if it is empty and has no enabled rule (groupPopupClosed, after the rule is applied).
-        // POP-2 (amended 2026-11-14, user request): offered again on every normal close while Advanced is open, also with the rule
+        // The offer to move matching tabs is made again on every normal close while Advanced is open, also with the rule
         // unchanged; with Advanced collapsed only when the rule changed.
         fun commit(closedNormally: Boolean) {
             if (committed) return
@@ -106,7 +106,7 @@ object GroupPopup {
         }
 
         // PopupPlacement: a popup opened above its header (Bottom placement) or beside it would grow downwards when re-packed, over the
-        // header and past the screen's end, where packing cuts it off (user report). So it is moved first, to where its new size fits
+        // header and past the screen's end, where packing cuts it off. So it is moved first, to where its new size fits
         // next to the header as it is now (a new group's header may have been placed late), and packed afterwards; the content is
         // laid out before either, so no half-laid-out frame shows.
         fun repack() {
@@ -154,7 +154,7 @@ object GroupPopup {
             })
             .createPopup()
         popup = created
-        content.previewNow() // POP-4: a group that has a rule shows what it matches as soon as Advanced is open
+        content.previewNow() // A group that has a rule shows what it matches as soon as Advanced is open
         return created
     }
 }

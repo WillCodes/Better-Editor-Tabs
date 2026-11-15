@@ -17,18 +17,18 @@ import java.awt.Color
  * children and wires the collaborators together; each collaborator owns one concern and wraps its own internal API:
  *
  * - [CollapseController]: hiding and showing the tabs of collapsed groups, anchors, saved selection (`TabInfo.isHidden`, `sortTabs`);
- * - [CollapseAnimator]: the collapse / expand animation (COLL-7): while a group collapses its tabs are still visible and the
+ * - [CollapseAnimator]: the collapse / expand animation: while a group collapses its tabs are still visible and the
  *   collaborators see the group as expanded ([GroupsApplier.shown]); the animator sets the member labels' preferred widths each frame and
  *   the platform lays the strip out (`TabLabel.preferredSize`). The tabs are hidden when it ends;
  * - [GroupsApplier]: which groups the strip has and shows ([GroupsApplier.shown]), applying new groups (headers, hidden tabs, tint, the
  *   animations' start) and the own-change counter that tells the strip's own changes from the user's navigation;
- * - [EmptyPills]: RULE-6, the bookkeeping of empty-group pills (where they stand, seating a first member, placing them);
- * - [StripOrder]: re-ordering around collapsed groups, re-pinning hidden tabs, the pin-change order fix (IDE-1, MEM-3);
+ * - [EmptyPills]: the bookkeeping of empty-group pills (where they stand, seating a first member, placing them);
+ * - [StripOrder]: re-ordering around collapsed groups, re-pinning hidden tabs, the pin-change order fix;
  * - [StripLayoutHook]: the post-layout pass (pill space, header placement, backdrop, empty state, outline);
  * - [PillLayout]: which tab label hosts each pill and the space reserved there ([TabLabelSpace], `TabLabel.border`);
  * - [StripGeometry]: pill areas, border cuts and [StripUnit]s from the labels' bounds;
  * - [PillHeaders]: the header components, their placement and z-order;
- * - [CountPills]: COLL-8, the "+N" count behind the peek of a partly shown group: a collapsed group that shows one member beside its header
+ * - [CountPills]: the "+N" count behind the peek of a partly shown group: a collapsed group that shows one member beside its header
  *   (the peek, [GroupDecoration.peek]) and the number of members still hidden. The count's space is reserved in the trailing side of the
  *   peek's label like a pill's (Top / Bottom) or a row of its own below the peek (Left / Right); a click on it is a click on the header;
  * - [TabTransit]: the dragged tab that is out of this strip while its drag is over another split (hidden, selection handed over); a
@@ -37,13 +37,13 @@ import java.awt.Color
  * - [StripDragSurface] (`drag`): the drag surface callers use: drag preview, drop slot, foreign gap, transit and the platform's drag state;
  * - [TabTint]: the group colour on member tabs (`TabInfo.setTabColor`);
  * - [EmptyEditorOverlay]: the empty state when every tab is hidden;
- * - [StripBackdrop]: the strip row's background and lines while the strip shows only pills (bug 11);
- * - [RuleOutline]: POP-4, the outline around the tabs an auto-group rule matches (the group popup's preview);
- * - [StripRightClick]: CTX-5, a right click on the free part of the strip;
+ * - [StripBackdrop]: the strip row's background and lines while the strip shows only pills;
+ * - [RuleOutline]: the outline around the tabs an auto-group rule matches (the group popup's preview);
+ * - [StripRightClick]: a right click on the free part of the strip;
  * - [SpareRow]: the row for pills beside a separate pinned row when no unpinned tab is left to host them;
  * - [CloseSelectionGuard]: keeps a close from selecting a hidden tab;
  * - [PillAwareTabsBorder]: cuts the pills' slots out of the strip border;
- * - [StripSort]: IDE-2, the alphabetical order of a strip that has groups (pinned, groups by name, ungrouped; the platform's own sorting
+ * - [StripSort]: the alphabetical order of a strip that has groups (pinned, groups by name, ungrouped; the platform's own sorting
  *   is off for such a strip and the manual order is remembered and put back).
  *
  * Hosting: all extra components (headers, a layout hook, the drop slot, the empty-state overlay) are direct children of the tab
@@ -126,12 +126,12 @@ internal class TabBarAdapter(
         { dragActive() || drag.isForeignBusy() }, { events?.stripSorted(it) }, { collapse.emptyAnchors() }, { placeEmptyPills(it) },
     )
 
-    /** True while the plugin sorts this strip (IDE-2: "Sort tabs alphabetically" is on and the strip has groups). */
+    /** True while the plugin sorts this strip ("Sort tabs alphabetically" is on and the strip has groups). */
     val ownsSort: Boolean get() = sort.isOwning
 
     /**
      * `UISettings` changed: sorting may have been switched on or off, and the tab placement may have changed. A placement change is
-     * not animated (COLL-7): running collapse / expand animations snap to their end. Read from `UISettings` itself, so it does not
+     * not animated: running collapse / expand animations snap to their end. Read from `UISettings` itself, so it does not
      * matter whether the platform's own listener has re-laid out the strip yet (listener order is undefined).
      */
     fun uiSettingsChanged() {
@@ -149,13 +149,13 @@ internal class TabBarAdapter(
     /** A pin or a drag ended: the sorted order may be out of date (looked at after the current event). */
     fun recheckSort() = sort.recheckLater()
 
-    /** IDE-2: the manual order while the plugin sorts this strip, else null (see [StripSort.manualOrder]). */
+    /** The manual order while the plugin sorts this strip, else null (see [StripSort.manualOrder]). */
     fun manualOrder(): List<VirtualFile>? = sort.manualOrder()
 
-    /** IDE-2: the manual order stored before a restart (see [StripSort.seedManual]). */
+    /** The manual order stored before a restart (see [StripSort.seedManual]). */
     fun seedManualOrder(order: List<VirtualFile>) = sort.seedManual(order)
 
-    /** Sorts now if the plugin sorts this strip and it is out of order (a new tab was placed: the sort replaces MEM-2). */
+    /** Sorts now if the plugin sorts this strip and it is out of order (a new tab was placed: the sort replaces the manual placement). */
     fun sortNow() = sort.sync()
 
     /** Whether the strip is on screen (an animation of a strip nobody sees is skipped); a test hook. */
@@ -164,7 +164,7 @@ internal class TabBarAdapter(
     /** The animator (tests only: drive frames with [CollapseAnimator.tick] and an injected clock). */
     internal val collapseAnimator: CollapseAnimator get() = animator
 
-    /** Receives header gestures and the COLL-4 event. */
+    /** Receives header gestures and the hidden-tab selection event. */
     var events: StripEvents?
         get() = headers.listener
         set(value) {
@@ -176,7 +176,7 @@ internal class TabBarAdapter(
         Disposer.register(parent, this)
         Disposer.register(this, disposable)
         tabs.add(hook)
-        // POP-4 (fix round 2) and LINE-6: the outline and the Islands group line are painted from the border wrapper, after the
+        // The rule outline and the Islands group line are painted from the border wrapper, after the
         // platform's own border layer (without the wrapper there is no group line: it would be covered by the labels)
         outline.paintsAfterBorder = PillAwareTabsBorder.installOn(tabs, { geometry.pillCuts() }, { spareRow.rect }) { g ->
             outline.paintAfterChildren(g)
@@ -193,23 +193,23 @@ internal class TabBarAdapter(
                 val file = newSelection?.`object` as? VirtualFile ?: return
                 if (applier.isOwnChange) {
                     // Our own re-ordering (show, sort, hide again around collapsed groups; collapse and expand) makes the platform move
-                    // the selection, also onto a tab that is still hidden. That is no navigation by the user: reporting it as COLL-4
+                    // the selection, also onto a tab that is still hidden. That is no navigation by the user: reporting it as a navigation
                     // would expand the group (animated) in the middle of a drop.
                     if (!newSelection.isHidden) collapse.visibleTabSelected()
                     tabs.repaint()
                     return
                 }
-                // COLL-8: a partly shown group whose shown tab is no longer selected collapses again (the host decides), also when the
-                // selection comes from the press that starts a tab drag (fix round 2: a partial group never stays open under a drag of
+                // A partly shown group whose shown tab is no longer selected collapses again (the host decides), also when the
+                // selection comes from the press that starts a tab drag (a partial group never stays open under a drag of
                 // another tab). Not during a drag of ours: its own selection changes are part of the drag.
                 if (!dragActive()) events?.tabSelected(file)
                 if (newSelection.isHidden) {
-                    // COLL-4: the group's owner expands the group; show() then selects `file` for real.
+                    // The group's owner expands the group; show() then selects `file` for real.
                     collapse.hiddenTabSelected(file) { groupId -> events?.hiddenTabSelected(groupId, file) }
                 }
                 else {
                     collapse.visibleTabSelected()
-                    // A tab that is shrinking away was selected (click, Ctrl+E): same as COLL-4, the owner expands the group, which
+                    // A tab that is shrinking away was selected (click, Ctrl+E): same as a navigation to a hidden tab: the owner expands the group, which
                     // reverses the animation. Our own selection change at the start of a collapse never lands here (it leaves the group).
                     animator.collapsingGroupOf(file)?.let { events?.hiddenTabSelected(it, file) }
                 }
@@ -250,18 +250,18 @@ internal class TabBarAdapter(
     fun headerComponents(): List<GroupHeader> = headers.all
 
     /**
-     * The header at [point] (tab component coordinates): the header itself, or the header of the group whose count pill is there (COLL-8: the
+     * The header at [point] (tab component coordinates): the header itself, or the header of the group whose count pill is there (the
      * count is part of the header, a drag that starts on it moves the group). Null if neither.
      */
     fun headerAt(point: java.awt.Point): GroupHeader? =
         headers.all.firstOrNull { !it.bounds.isEmpty && it.bounds.contains(point) }
             ?: counts.all.firstOrNull { !it.bounds.isEmpty && it.bounds.contains(point) }?.let { headers.of(it.groupId) }
 
-    /** COLL-8: the count pill of [groupId] if it shows (has a visible area), else null (tests, and the group line, LINE-6). */
+    /** The count pill of [groupId] if it shows (has a visible area), else null (tests, and the group line). */
     internal fun countPill(groupId: String): CountPill? = counts.of(groupId)?.takeIf { !it.bounds.isEmpty }
 
     /**
-     * COLL-8, LINE-6: the visible rectangle of the count pill of [groupId] in tab component coordinates (Top / Bottom: right behind the
+     * The visible rectangle of the count pill of [groupId] in tab component coordinates (Top / Bottom: right behind the
      * peek; Left / Right: in the row below it), or null if the group shows no count. Lays the strip out first if it is invalid.
      */
     fun countArea(groupId: String): java.awt.Rectangle? {
@@ -270,18 +270,18 @@ internal class TabBarAdapter(
         return counts.of(groupId)?.bounds?.takeIf { !it.isEmpty }?.let { java.awt.Rectangle(it) }
     }
 
-    /** COLL-8: the member that [groupId] shows beside its header while it is partly shown, else null (as the strip shows it now). */
+    /** The member that [groupId] shows beside its header while it is partly shown, else null (as the strip shows it now). */
     fun peekOf(groupId: String): VirtualFile? = applier.shown.firstOrNull { it.id == groupId }?.peek
 
     // ---- group state -----------------------------------------------------------------------------------------------------
 
     /**
      * Replaces the groups shown in this tab bar. Creates/removes headers and collapses/expands tabs to match. [animate]: a group whose
-     * collapsed flag differs from what the strip shows collapses / expands with the COLL-7 animation (only [SplitBar] passes true, for
+     * collapsed flag differs from what the strip shows collapses / expands with the collapse animation (only [SplitBar] passes true, for
      * a host refresh); false snaps every running animation to its end first. A strip that cannot animate (hidden tab bar,
      * not on screen) is instant. A group that is new or gone never animates.
      *
-     * A collapse moves the selection off the group now (COLL-2), the tabs are hidden when the animation ends; an expand shows the tabs
+     * A collapse moves the selection off the group now, the tabs are hidden when the animation ends; an expand shows the tabs
      * at once and the animator grows them from nothing. [before]: the groups a flip is measured against (the host's previous state,
      * passed by [SplitBar]); null = what this strip was last given, which during a drag can be a temporary all-expanded state.
      */
@@ -292,8 +292,8 @@ internal class TabBarAdapter(
     }
 
     /**
-     * The group [groupId] of [newGroups] comes back expanded after a drag that showed it collapsed (INT-6, COLL-7): it plays the expand
-     * animation (unless [StripStyle.animateCollapse], SET-10, is off or the strip cannot animate), and nothing else does: every other
+     * The group [groupId] of [newGroups] comes back expanded after a drag that showed it collapsed: it plays the expand
+     * animation (unless [StripStyle.animateCollapse] is off or the strip cannot animate), and nothing else does: every other
      * group is measured against itself, so its flag is no flip. For a drag that ends without a commit; a commit goes through
      * `SplitBar.apply`, which passes the same measure.
      */
@@ -301,14 +301,14 @@ internal class TabBarAdapter(
         setGroups(newGroups, style().animateCollapse, expandMeasure(newGroups, groupId))
 
     /**
-     * DRAG-6: [newGroups] differ from what the strip shows by a group that a tab drag expands (a hold behind its collapsed or partly shown
-     * unit completed: its tabs grow out; it stays expanded, Stage 11.5 fix round 3), with the COLL-7 animation (unless [StripStyle.animateCollapse], SET-10, is off or the strip cannot animate). Every other group is measured against
+     * [newGroups] differ from what the strip shows by a group that a tab drag expands (a hold behind its collapsed or partly shown
+     * unit completed: its tabs grow out; it stays expanded), with the collapse animation (unless [StripStyle.animateCollapse] is off or the strip cannot animate). Every other group is measured against
      * what this strip was last given, so none of them animates.
      */
     fun expandForDrag(newGroups: List<GroupDecoration>) = setGroups(newGroups, style().animateCollapse)
 
     /**
-     * Selects [file] (a drag that moved the selection off a group's tabs puts it back). The strip's own change: no COLL-4. No-op for
+     * Selects [file] (a drag that moved the selection off a group's tabs puts it back). The strip's own change: not a navigation to a hidden tab. No-op for
      * null, for a file that is not open or hidden here, and if it is selected already.
      */
     fun reselect(file: VirtualFile?) = applier.own {
@@ -324,8 +324,8 @@ internal class TabBarAdapter(
     fun <T> ownChange(block: () -> T): T = applier.ownChange(block)
 
     /**
-     * A group drag shows its group collapsed (INT-6) while [on]: if that hides every tab, the editor keeps showing (as during the
-     * platform's drag-out) instead of going empty (COLL-2). Off when the drag ends.
+     * A group drag shows its group collapsed while [on]: if that hides every tab, the editor keeps showing (as during the
+     * platform's drag-out) instead of going empty. Off when the drag ends.
      */
     fun keepEditorDuringDrag(on: Boolean) {
         collapse.keepEditor = on
@@ -339,8 +339,8 @@ internal class TabBarAdapter(
 
     /**
      * The tint colour tabs of group [groupId] have in this strip (a `GroupTintColor`, evaluated at paint time), or null if the group is
-     * not in this split. A collapsed group counts as one a tab can join: an empty instance (RULE-6, DRAG-3) and, by a hold on its header,
-     * a collapsed or partly shown one (COLL-8). The floating picture of a tab dragged in from another split is tinted with it (DRAG-7).
+     * not in this split. A collapsed group counts as one a tab can join: an empty instance and, by a hold on its header,
+     * a collapsed or partly shown one. The floating picture of a tab dragged in from another split is tinted with it.
      */
     fun tintFor(groupId: String): Color? =
         applier.shown.firstOrNull { it.id == groupId }?.let { tint.colorFor(it.color) }
@@ -381,7 +381,7 @@ internal class TabBarAdapter(
         return headers.of(groupId)?.takeIf { !it.bounds.isEmpty }
     }
 
-    // ---- empty instances (RULE-6): see EmptyPills -------------------------------------------------------------------------
+    // ---- empty instances: see EmptyPills -------------------------------------------------------------------------
 
     /** See [EmptyPills.emptyGroupIds]. */
     fun emptyGroupIds(): Set<String> = emptyPills.emptyGroupIds()
@@ -401,7 +401,7 @@ internal class TabBarAdapter(
     // ---- strip geometry for the drag layer ---------------------------------------------------------------------------------
 
     /**
-     * LINE-6: for every group with visible tabs (expanded, or partially expanded, COLL-8), its colour and its visible units in strip
+     * For every group with visible tabs (expanded, or partially expanded), its colour and its visible units in strip
      * order: the pill as painted, its tabs (with a drag preview applied; not the dragged tab, whose place is the drop slot), its count.
      */
     private fun lineGroups(): List<Pair<Color, List<GroupLines.Unit>>> {
@@ -444,7 +444,7 @@ internal class TabBarAdapter(
     /** The row beside a separate pinned row that holds loose pills ([SpareRow]), or null (tests only). */
     internal fun spareRowRect(): java.awt.Rectangle? = spareRow.rect
 
-    /** The space reserved in the label of [file] for pills (leading, trailing); also read by DRAG-6's opening slot (`TabDragSession`). */
+    /** The space reserved in the label of [file] for pills (leading, trailing); also read by the drag's opening slot (`TabDragSession`). */
     internal fun reservedSpace(file: VirtualFile): Pair<Int, Int>? =
         StripReader.infoOf(tabs, file)?.let { tabs.getTabLabel(it) }?.let { layout.space.reserved(it) }
 
@@ -456,7 +456,7 @@ internal class TabBarAdapter(
     private fun updateReservations(): Boolean = layout.update()
 
     /**
-     * POP-4: outlines the tabs of [files] in [color] (the group's colour) in this strip, replacing the previous outline; an empty
+     * Outlines the tabs of [files] in [color] (the group's colour) in this strip, replacing the previous outline; an empty
      * collection or a null colour clears it. Purely visual ([RuleOutline]); tabs hidden by collapsed groups are not outlined.
      */
     fun setRuleOutline(files: Collection<VirtualFile>, color: Color?) {
@@ -472,10 +472,10 @@ internal class TabBarAdapter(
     /** The rectangles of the outlines drawn now (tests). */
     internal fun outlineRects(): List<java.awt.Rectangle> = outline.shown()
 
-    /** The row of the strip the backdrop paints while the strip shows only pills (bug 11), or null (tests: it is what the pills-only row looks like). */
+    /** The row of the strip the backdrop paints while the strip shows only pills, or null (tests: it is what the pills-only row looks like). */
     internal fun pillsOnlyRow(): java.awt.Rectangle? = backdrop.row.takeIf { !it.isEmpty }
 
-    /** CTX-5: true if [p] (tab component coordinates) is on the free part of the tab strip (see [FreeStripArea]). */
+    /** True if [p] (tab component coordinates) is on the free part of the tab strip (see [FreeStripArea]). */
     internal fun isFreeStripPoint(p: java.awt.Point): Boolean = alive() && freeArea.contains(p)
 
     /** See [StripOrder.pinChanged]. */
@@ -502,8 +502,7 @@ internal class TabBarAdapter(
 }
 
 /**
- * The groups a flip is measured against when group [groupId] comes back expanded after being dragged as its collapsed header (INT-6,
- * COLL-7): [groups] with that group collapsed, so it flips and nothing else does.
+ * The groups a flip is measured against when group [groupId] comes back expanded after being dragged as its collapsed header: [groups] with that group collapsed, so it flips and nothing else does.
  */
 internal fun expandMeasure(groups: List<GroupDecoration>, groupId: String): List<GroupDecoration> =
     groups.map { if (it.id == groupId) it.copy(collapsed = true) else it }

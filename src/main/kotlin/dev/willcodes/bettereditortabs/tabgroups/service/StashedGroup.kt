@@ -5,13 +5,13 @@ import com.intellij.util.messages.Topic
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
 
 /**
- * One entry of the project's stash (LIFE-2, LIFE-4, SET-9) as the UI shows it: the Restore Tab Group… popup and, from Stage 12, the
+ * One entry of the project's stash as the UI shows it: the Restore Tab Group… popup and the
  * settings page's "Stashed groups (this project)" list. Immutable; [TabGroupsService.stashedGroups] builds a fresh list on every call.
  *
  * [entryId] identifies the entry (pass it to [TabGroupsService.restoreStashed] / [TabGroupsService.removeStashed]); [displayName] is
- * the group's name, or "Unnamed group (Blue)" (CTX-2's wording), and [color] its colour, both taken from the live group if the group
+ * the group's name, or "Unnamed group (Blue)", and [color] its colour, both taken from the live group if the group
  * still has an instance in another split (a linked group renamed there shows its new name), else from the snapshot. [fileCount] is
- * the number of files in the snapshot (whether they still exist is only checked when restoring, PERS-4). [stashedAt] is the time of
+ * the number of files in the snapshot (whether they still exist is only checked when restoring). [stashedAt] is the time of
  * the Stash Group, in epoch milliseconds.
  */
 data class StashedGroup(
@@ -24,7 +24,7 @@ data class StashedGroup(
 
 /**
  * The project's stash changed (an entry was added, restored or removed). Published on the project's message bus, on the EDT, after
- * the change; read the new list with [TabGroupsService.stashedGroups]. For views that stay open while the stash can change (Stage 12's
+ * the change; read the new list with [TabGroupsService.stashedGroups]. For views that stay open while the stash can change (the
  * settings page).
  */
 fun interface TabGroupStashListener {

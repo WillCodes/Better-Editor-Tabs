@@ -6,7 +6,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleKind
 import dev.willcodes.bettereditortabs.tabgroups.model.splits.SplitKey
 
 /**
- * The stored form of the groups (PERS-1) as plain, immutable data: no IDE types, no XML annotations, so the restore rules can be
+ * The stored form of the groups as plain, immutable data: no IDE types, no XML annotations, so the restore rules can be
  * unit tested. `service/GroupsPersistence` converts it to and from the XML beans of the workspace file.
  *
  * Files are stored as VFS URLs ([StoredInstance.members], [StoredSplit.order]), colours by [GroupColor] name, split keys encoded
@@ -16,13 +16,13 @@ import dev.willcodes.bettereditortabs.tabgroups.model.splits.SplitKey
 data class StoredGroup(val id: String, val name: String, val color: String, val rule: StoredRule? = null)
 
 /**
- * A stored auto-group rule (RULE-1): the [kind] by [RuleKind] name, the [value] (module name, directory URL or pattern) and whether it
+ * A stored auto-group rule: the [kind] by [RuleKind] name, the [value] (module name, directory URL or pattern) and whether it
  * is [enabled]. A kind name this version does not know gives no rule ([toRule]).
  */
 data class StoredRule(val kind: String, val value: String, val enabled: Boolean) {
     fun toRule(): AutoGroupRule? = RuleKind.values().firstOrNull { it.name == kind }?.let { AutoGroupRule(enabled, it, value) }
 
-    /** MEM-4: a [RuleKind.DIRECTORY] rule's value follows a moved file or directory. */
+    /** A [RuleKind.DIRECTORY] rule's value follows a moved file or directory. */
     fun withUrlMoved(oldUrl: String, newUrl: String): StoredRule =
         if (kind == RuleKind.DIRECTORY.name) copy(value = rewriteUrl(value, oldUrl, newUrl)) else this
 }
@@ -30,8 +30,8 @@ data class StoredRule(val kind: String, val value: String, val enabled: Boolean)
 fun AutoGroupRule.toStored(): StoredRule = StoredRule(kind.name, value, enabled)
 
 /**
- * One group instance of a split: members in tab order and its collapsed flag (COLL-5). [place]: only for an instance stored *empty*
- * (PERS-3 amended: the user kept it, ruled or not), the number of tabs of the split's logical order in front of its pill; null for an
+ * One group instance of a split: members in tab order and its collapsed flag. [place]: only for an instance stored *empty*
+ * (the user kept it, ruled or not), the number of tabs of the split's logical order in front of its pill; null for an
  * instance with members, and in files written before this existed.
  */
 data class StoredInstance(val groupId: String, val members: List<String>, val collapsed: Boolean, val place: Int? = null)
@@ -39,7 +39,7 @@ data class StoredInstance(val groupId: String, val members: List<String>, val co
 /**
  * One split with group instances. [key] is the encoded [SplitKey]; [order] is the split's whole *logical* tab order (every open tab,
  * the hidden tabs of a collapsed group at its header's place), because the platform reopens hidden tabs at the end of the strip;
- * [instances] are in strip order. [manualOrder]: while the plugin sorts the split alphabetically (IDE-2), the manual order the strip
+ * [instances] are in strip order. [manualOrder]: while the plugin sorts the split alphabetically, the manual order the strip
  * goes back to when sorting is switched off, so it survives a restart; empty otherwise.
  */
 data class StoredSplit(
@@ -51,7 +51,7 @@ data class StoredSplit(
     fun splitKey(): SplitKey = SplitKey.decode(key) ?: SplitKey("?", "")
 
     /**
-     * SPLIT-6: true for a split that held no tab at all, only empty group instances: a temporary split (kept open by a placeholder tab
+     * True for a split that held no tab at all, only empty group instances: a temporary split (kept open by a placeholder tab
      * that is never stored) or a window whose last tab closed. No file to match it by, so a restart never finds it again; its empty
      * instances are restored into the main area's first split instead ([RestorePlanner]).
      */
@@ -59,7 +59,7 @@ data class StoredSplit(
 }
 
 /**
- * One stashed group (LIFE-2, PERS-4): the group's identity, name, [color] ([GroupColor] name), member file URLs in order and the time
+ * One stashed group: the group's identity, name, [color] ([GroupColor] name), member file URLs in order and the time
  * it was stashed, and the group's [rule] then (null if none).
  */
 data class StoredStash(
@@ -72,7 +72,7 @@ data class StoredStash(
     val rule: StoredRule? = null,
 )
 
-/** [stash]: the stashed groups, newest first (PERS-4); stored independently of splits, a restart never touches it. */
+/** [stash]: the stashed groups, newest first; stored independently of splits, a restart never touches it. */
 data class StoredGroups(
     val groups: List<StoredGroup>,
     val splits: List<StoredSplit>,
@@ -87,7 +87,7 @@ data class StoredGroups(
 fun colorFromName(name: String?): GroupColor = GroupColor.values().firstOrNull { it.name == name } ?: GroupColor.GREY
 
 /**
- * MEM-4 for state that has not been restored yet: a file or directory was renamed or moved, so every stored URL at or below [oldUrl]
+ * Moves for state that has not been restored yet: a file or directory was renamed or moved, so every stored URL at or below [oldUrl]
  * now starts with [newUrl]. Pure string work on VFS URLs (`protocol://path`).
  */
 fun rewriteUrl(url: String, oldUrl: String, newUrl: String): String = when {
@@ -109,7 +109,7 @@ fun StoredGroups.rewriteUrls(oldUrl: String, newUrl: String): StoredGroups {
 }
 
 /**
- * PERS-3 pending splits: this (the live state, captured) plus [pending] stored splits that no live split has claimed yet, so a save
+ * Pending splits: this (the live state, captured) plus [pending] stored splits that no live split has claimed yet, so a save
  * during the waiting time keeps them. Group identities already present here win (the live name and colour); pending splits come last.
  */
 fun StoredGroups.withPending(pending: StoredGroups): StoredGroups {

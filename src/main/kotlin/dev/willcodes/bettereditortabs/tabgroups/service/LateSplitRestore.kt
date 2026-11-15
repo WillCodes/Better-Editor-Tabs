@@ -11,7 +11,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 
 /**
- * PERS-3 for splits that appear after the first restore pass: a detached window that the platform restores after the editor layout
+ * The startup restore for splits that appear after the first restore pass: a detached window that the platform restores after the editor layout
  * has settled (`DockableEditorTabbedContainer.showNotify` opens its files late).
  *
  * The stored splits of detached windows that no split claimed in the first pass stay *pending* for [PENDING_MS]. The main area's do
@@ -21,8 +21,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
  * opening), [check] matches the pending stored splits against them ([RestorePlanner]; the match needs shared files) and restores the
  * matches like the first pass ([apply]). Each candidate is looked at once. At the deadline what is left pending is dropped.
  *
- * SPLIT-2 waits for this: files opened in a candidate are held back ([tabsOpened]) and handed to [joinLinked] once the candidate has
- * been looked at (unless it was restored or got groups of its own), so a restored window is not first filled by SPLIT-2.
+ * The linked-file rule (a file grouped in one split joins its group when opened in another) waits for this: files opened in a candidate are held back ([tabsOpened]) and handed to [joinLinked] once the candidate has
+ * been looked at (unless it was restored or got groups of its own), so a restored window is not first filled by it.
  *
  * Owned by [TabGroupsService]; EDT only.
  */
@@ -37,7 +37,7 @@ internal class LateSplitRestore(
     private val hasInstances: (SplitHandle) -> Boolean,
     /** Applies a restore plan made for the given splits (attach, order, instances, refresh without animation). */
     private val apply: (RestorePlan, List<SplitInfo>) -> Unit,
-    /** SPLIT-2 for files that were held back. */
+    /** The linked-file rule for files that were held back. */
     private val joinLinked: (SplitHandle, List<VirtualFile>) -> Unit,
 ) {
     private var firstPassSplits: Set<SplitHandle> = emptySet()
@@ -74,7 +74,7 @@ internal class LateSplitRestore(
         if (isCandidate(split)) scheduleCheck()
     }
 
-    /** Files were opened in [split]. True if they are held back (the split is a candidate); false: the caller applies SPLIT-2 now. */
+    /** Files were opened in [split]. True if they are held back (the split is a candidate); false: the caller applies the linked-file rule now. */
     fun tabsOpened(split: SplitHandle, files: List<VirtualFile>): Boolean {
         if (!isCandidate(split)) return false
         deferredOpened.getOrPut(split) { ArrayList() } += files
@@ -94,7 +94,7 @@ internal class LateSplitRestore(
 
     /**
      * Matches the pending stored splits against the candidates, restores the matches and keeps the rest pending until the deadline.
-     * The candidates count as evaluated afterwards, and their held-back files go through SPLIT-2 unless they were restored.
+     * The candidates count as evaluated afterwards, and their held-back files go through the linked-file rule unless they were restored.
      * Internal for tests; the alarm calls it after the debounce.
      */
     fun check() {
@@ -116,7 +116,7 @@ internal class LateSplitRestore(
         if (saved.pending.splits.isEmpty()) end()
     }
 
-    /** The waiting time is over: the stored splits nobody claimed are dropped, and SPLIT-2 gets the files it was holding back. */
+    /** The waiting time is over: the stored splits nobody claimed are dropped, and the linked-file rule gets the files it was holding back. */
     private fun expire() {
         if (saved.pending.splits.isEmpty()) return
         end()
@@ -133,7 +133,7 @@ internal class LateSplitRestore(
         evaluated.clear()
     }
 
-    /** SPLIT-2 for the held-back files of splits that are no candidates any more; a split with groups of its own now is left alone. */
+    /** The linked-file rule for the held-back files of splits that are no candidates any more; a split with groups of its own now is left alone. */
     private fun flushDeferred() {
         val ready = deferredOpened.keys.filter { !isCandidate(it) }
         for (split in ready) {

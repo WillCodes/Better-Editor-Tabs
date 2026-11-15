@@ -11,7 +11,7 @@ import javax.swing.SwingUtilities
 /**
  * What a group drag needs to know about the editor area of a split, as the platform knows it for a dragged tab
  * (`DockableEditorTabbedContainer.processDropOver`, `JBTabsImpl.processDropOver`, `TabsUtil`): which side of the area the pointer is on
- * and which rectangle the platform highlights for it (INT-6, SPLIT-5). The pointer being over a strip is decided before any of this
+ * and which rectangle the platform highlights for it. The pointer being over a strip is decided before any of this
  * (precedence strip > edge > centre > new window, `GroupDropRules`).
  */
 internal class EditorAreaHit(val dnd: TabBarDnd, val side: EditorSide)

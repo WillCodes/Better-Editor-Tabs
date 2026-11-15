@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.ui.popup
 
 /**
- * The match hint under the regex field of the group popup (POP-4, user request 2026-11-14): the first [LIMIT] open tabs the rule would
+ * The match hint under the regex field of the group popup: the first [LIMIT] open tabs the rule would
  * move, by file name, each cut to [NAME_LIMIT] characters with "..." for the rest, the part of the name the pattern matched in bold,
  * then "..." if there are more. Pure text work (HTML for a wrapping label); the label wraps between the names at the popup's width.
  */

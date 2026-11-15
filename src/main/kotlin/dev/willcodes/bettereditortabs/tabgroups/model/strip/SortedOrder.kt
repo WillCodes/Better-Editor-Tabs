@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 /**
- * IDE-2 with groups: the order of a strip while "Sort tabs alphabetically" is on. Pure, no platform types, unit tested.
+ * The order of a strip while "Sort tabs alphabetically" is on. Pure, no platform types, unit tested.
  *
  * Pinned tabs come first, then every group, then the ungrouped tabs. Groups are ordered by name (the passed comparator, case
  * insensitive), unnamed groups (empty name) last in creation order; the tabs are sorted within each group. [restoreManual] is the way
@@ -15,8 +15,8 @@ object SortedOrder {
     class Group(val id: String, val name: String, val creationIndex: Int)
 
     /**
-     * The IDE-2 order of [tabs] (given in their current order, hidden tabs of collapsed groups included). Ties between equal titles
-     * keep the current relative order (a stable sort). A pinned tab is never part of a group (INV-3), whatever [Tab.group] says; a
+     * The sorted order of [tabs] (given in their current order, hidden tabs of collapsed groups included). Ties between equal titles
+     * keep the current relative order (a stable sort). A pinned tab is never part of a group, whatever [Tab.group] says; a
      * group id that is not in [groups] counts as ungrouped; a group without a tab leaves no trace.
      */
     fun <K> order(tabs: List<Tab<K>>, groups: List<Group>, titleOrder: Comparator<String>, nameOrder: Comparator<String>): List<K> {
@@ -35,7 +35,7 @@ object SortedOrder {
     }
 
     /**
-     * RULE-6 with IDE-2: where the pills of the empty groups [emptyIds] (groups with an enabled rule and no tab) stand in the sorted
+     * Where the pills of the empty groups [emptyIds] (groups with an enabled rule and no tab) stand in the sorted
      * strip [sorted] (the result of [order] for [tabs] and [groups]): among the groups, by name like the others. The result maps each
      * empty group to its anchor, the last tab in front of its pill (the last tab of the group before it that has tabs, else the last
      * pinned tab, else null: first), in group order, so that several pills behind one tab keep their order ([EmptyPillSpots]).

@@ -1,4 +1,6 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel
 
 plugins {
@@ -29,7 +31,15 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            recommended()
+            // `-PverifyEap` checks against the newest EAP builds instead (run it before every release).
+            if (providers.gradleProperty("verifyEap").isPresent) {
+                select {
+                    types = listOf(IntelliJPlatformType.IntellijIdea)
+                    channels = listOf(ProductRelease.Channel.EAP)
+                    sinceBuild = "263"
+                }
+            }
+            else recommended()
         }
         // The editor tab bar has no public API, so internal and experimental API usage is expected (kept inside tabbar/)
         // and only reported. Everything that can break at runtime still fails the build.

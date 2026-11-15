@@ -38,14 +38,14 @@ import javax.swing.JList
 import javax.swing.JSlider
 
 /**
- * The settings page Settings > Editor > General > Editor Tabs - Groups (§14): SET-1 to SET-10 (and SET-3a, the starting colour), plus the remembered "Don't ask
- * again" answers (LIFE-3a, MEM-5, RULE-6) shown as unticked confirmation toggles. The values are application-level (PERS-2); the page
- * is a project configurable only because it lists the current project's stash (SET-9).
+ * The settings page Settings > Editor > General > Editor Tabs - Groups: tint opacity, name length, new-group colour and the starting colour, behaviour and confirmation toggles, plus the remembered "Don't ask
+ * again" answers shown as unticked confirmation toggles. The values are application-level; the page
+ * is a project configurable only because it lists the current project's stash.
  *
  * Built with the Kotlin UI DSL. The whole page is reset, compared and written by one `onReset` / `onIsModified` / `onApply` trio at
  * the end of [createPanel], so every control's state is handled in one place. Apply writes [TabGroupsSettings.state] and then calls
- * [TabGroupsSettings.changed], so the cached strip look (SET-1, SET-2, SET-10) is re-applied in every open project at once; nothing
- * needs a restart. Removing stashed groups (SET-9) is pending until Apply: [pendingRemovals] hides them, Reset or Cancel brings them
+ * [TabGroupsSettings.changed], so the cached strip look is re-applied in every open project at once; nothing
+ * needs a restart. Removing stashed groups is pending until Apply: [pendingRemovals] hides them, Reset or Cancel brings them
  * back.
  *
  * Registered in `plugin.xml` as a project configurable under Editor > General ([PARENT_ID]), next to IntelliJ's own Editor Tabs page.
@@ -87,7 +87,7 @@ class TabGroupsConfigurable(private val project: Project) :
 
     private val stashModel = CollectionListModel<StashedGroup>()
 
-    /** SET-9: the entry ids whose removal waits for Apply. */
+    /** The entry ids whose removal waits for Apply. */
     internal val pendingRemovals = LinkedHashSet<String>()
 
     /** Lives from [createPanel] to [disposeUIResources]; holds the stash subscription. */
@@ -118,7 +118,7 @@ class TabGroupsConfigurable(private val project: Project) :
 
     // ---- layout ---------------------------------------------------------------------------------------------------------------
 
-    /** SET-1, SET-2, SET-3. */
+    /** Tint opacity, name length and group colours. */
     private fun Panel.appearance() {
         row(message("settings.opacity")) {
             opacitySlider = slider(OPACITY_MIN, OPACITY_MAX, 10, 0)
@@ -140,11 +140,11 @@ class TabGroupsConfigurable(private val project: Project) :
                 startColor = comboBox(GroupColor.values().toList(), startColorRenderer()).component
             }
         }
-        // SET-3a only matters while new groups take the next unused colour
+        // The starting colour only matters while new groups take the next unused colour
         newColor.addItemListener { startColor.isEnabled = newColor.selectedItem == null }
     }
 
-    /** SET-6, SET-7, SET-10. */
+    /** Auto-expand, hover list and animation toggles. */
     private fun Panel.behaviour() {
         plainRow {
             autoExpand = checkBox(message("settings.autoExpand"))
@@ -155,7 +155,7 @@ class TabGroupsConfigurable(private val project: Project) :
         plainRow { animate = checkBox(message("settings.animate")).component }
     }
 
-    /** SET-4, SET-5, SET-8 and the remembered answers of LIFE-3a, MEM-5, RULE-6: ticked means the question is asked. */
+    /** Delete and move-matching confirmations and the remembered "Don't ask again" answers: ticked means the question is asked. */
     private fun Panel.confirmations() {
         plainRow { confirmDelete = checkBox(message("settings.confirmDelete")).component }
         plainRow { confirmMiddleClick = checkBox(message("settings.confirmMiddleClick")).component }
@@ -184,7 +184,7 @@ class TabGroupsConfigurable(private val project: Project) :
         tie(askEmptyRuledGroup, emptyRuledGroupAnswer)
     }
 
-    /** SET-9. */
+    /** The stash list. */
     private fun Panel.stash() {
         plainRow {
             stashList = JBList(stashModel)
@@ -286,7 +286,7 @@ class TabGroupsConfigurable(private val project: Project) :
         settings.changed()
     }
 
-    // ---- stash list (SET-9) ---------------------------------------------------------------------------------------------------
+    // ---- stash list ---------------------------------------------------------------------------------------------------
 
     /** Shows the stash entries that are not pending removal, newest first as the service returns them. */
     private fun refreshStash() {

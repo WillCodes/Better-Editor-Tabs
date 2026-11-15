@@ -14,22 +14,22 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitIdentity
 
 /**
- * What [TabGroupsService.getState] hands to the platform (PERS-1), kept apart from the live state because of threads. The platform
+ * What [TabGroupsService.getState] hands to the platform, kept apart from the live state because of threads. The platform
  * reads the state on a background thread while saving (`ComponentStoreImpl.getStateForComponent`: a read action, not the EDT), but
  * the live [GroupsState] and the tab bar are EDT only. So [bean] is an immutable snapshot, replaced as a whole and never mutated once
  * published, rebuilt on the EDT ([capture]) after every change of the groups.
  *
  * Lifecycle:
  * - until the startup restore has run ([restored]) the bean is the loaded state (its splits and groups unchanged, so an early save
- *   loses nothing; file renames re-address them, [filesMoved]) with the live stash, which is usable before the restore (PERS-4);
- * - after it, every [capture] reflects the live state and the live stash, plus the stored splits that are still [pending] (PERS-3: no
+ *   loses nothing; file renames re-address them, [filesMoved]) with the live stash, which is usable before the restore;
+ * - after it, every [capture] reflects the live state and the live stash, plus the stored splits that are still [pending] (no
  *   live split has claimed them yet, a detached window may still be restoring), so a save during that time loses nothing;
- * - [freeze] (project closing): the platform then closes every tab, which would empty the groups (MEM-1), so later captures are ignored.
+ * - [freeze] (project closing): the platform then closes every tab, which would empty the groups, so later captures are ignored.
  */
 internal class SavedGroups(
     private val project: Project,
     private val state: GroupsState<SplitHandle, VirtualFile>,
-    /** The live stash (PERS-4): always part of the saved state, restored or not. */
+    /** The live stash: always part of the saved state, restored or not. */
     private val stash: GroupStash,
 ) {
     @Volatile
@@ -110,7 +110,7 @@ internal class SavedGroups(
         frozen = true
     }
 
-    /** MEM-4: files or directories moved from the first URL to the second; the state not restored yet is re-addressed. EDT only. */
+    /** Files or directories moved from the first URL to the second; the state not restored yet is re-addressed. EDT only. */
     fun filesMoved(moves: List<Pair<String, String>>) {
         for ((oldUrl, newUrl) in moves) stash.rewriteUrls(oldUrl, newUrl)
         if (!restored) {

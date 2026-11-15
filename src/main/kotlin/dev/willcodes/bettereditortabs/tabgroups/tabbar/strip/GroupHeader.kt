@@ -13,7 +13,7 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
- * The clickable group header shown in the editor tab bar (HDR-1..HDR-4).
+ * The clickable group header shown in the editor tab bar.
  *
  * Hosted as a direct child of the split's tab component (never inside a tab label, so that `DragHelper` does not mistake
  * a press on it for a tab drag). The space it needs is reserved inside a tab label (see [TabLabelSpace]); the adapter then
@@ -30,7 +30,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
             styleChanged()
         }
 
-    /** The current style changed (or the decoration did): refreshes the tooltip (HDR-3), the length of the pill and the paint. */
+    /** The current style changed (or the decoration did): refreshes the tooltip, the length of the pill and the paint. */
     fun styleChanged() {
         val max = maxNameLength()
         toolTipText = decoration?.name?.takeIf { it.length > max }
@@ -51,7 +51,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
     /**
      * Paints the plain strip background into the given rectangle (component coordinates); set by [PillHeaders]. The pill's slot is
      * cleared to strip by its host label's border ([ReservedSpaceBorder]), but a label paints its content *after* its border, and a
-     * label squeezed by the collapse animation (COLL-7) lays its content (icon, close button) out over the slot. The pill is above the
+     * label squeezed by the collapse animation lays its content (icon, close button) out over the slot. The pill is above the
      * labels, so filling its own bounds first keeps the slot plain in every case.
      */
     internal var stripBackground: ((Graphics2D, Rectangle) -> Unit)? = null
@@ -82,7 +82,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
         }
     }
 
-    /** The text drawn in the pill: the name, cut at the style's maximum length with an ellipsis (HDR-3). */
+    /** The text drawn in the pill: the name, cut at the style's maximum length with an ellipsis. */
     internal val displayName: String
         get() = PillPainter.displayName(decoration?.name.orEmpty(), maxNameLength())
 
@@ -110,7 +110,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
     /**
      * The pill as painted (the filled shape: the rounded rectangle, or the dot of an unnamed group), in this component's coordinates.
      * The component also covers a small gap on each side of the pill, and the pill may be cut at the edge of the strip, so this can
-     * reach outside the component's bounds. For anchoring the group popup to the pill's leading edge (§6).
+     * reach outside the component's bounds. For anchoring the group popup to the pill's leading edge.
      */
     fun pillBounds(): Rectangle {
         val w0 = if (fullWidth > 0) fullWidth else width
@@ -131,8 +131,7 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
     private fun headerFont() = PillPainter.font()
 
     /**
-     * Height of a named pill in a row of height [rowHeight]: the name's line height plus a small margin above and below (user request
-     * 2026-11-13: a pill that hugs its name, not one as tall as the tab), never more than the row minus [V_INSET] on each side.
+     * Height of a named pill in a row of height [rowHeight]: the name's line height plus a small margin above and below: a pill that hugs its name, never more than the row minus [V_INSET] on each side.
      */
     private fun namedPillHeight(rowHeight: Int): Int = PillPainter.namedHeight(getFontMetrics(headerFont()), rowHeight - 2 * JBUI.scale(V_INSET))
 
@@ -171,13 +170,13 @@ internal class GroupHeader(val groupId: String, private val style: () -> StripSt
  * The single place where header mouse gestures are interpreted. Left, middle and right click are reported on release when
  * the pointer has not moved more than [CLICK_SLOP]. Every event is consumed, and since the header is a mouse-listening
  * child of the tab component, Swing delivers the event to it and not to the tab component, so
- * `EditorTabbedContainer`'s double-click-to-maximise listener (INT-2) never sees it.
+ * `EditorTabbedContainer`'s double-click-to-maximise listener never sees it.
  */
 internal class HeaderMouseHandler(private val header: GroupHeader) : MouseAdapter() {
     private var pressPoint: java.awt.Point? = null
     private var pressButton = 0
 
-    /** INT-5: the pointer enters or leaves the pill. Not reported while the group is dragged or a platform tab drag is on. */
+    /** The pointer enters or leaves the pill. Not reported while the group is dragged or a platform tab drag is on. */
     override fun mouseEntered(e: MouseEvent) {
         if (header.suppressed || header.transparentToHitTest()) return
         header.listener?.headerHoverChanged(header, true)

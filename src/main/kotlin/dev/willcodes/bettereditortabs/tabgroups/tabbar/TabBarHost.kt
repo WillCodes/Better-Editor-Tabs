@@ -8,11 +8,11 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
- * A group header as seen from outside `tabbar/`: enough to anchor a popup or dialog (§6) and to tell which group instance was hit.
+ * A group header as seen from outside `tabbar/`: enough to anchor a popup or dialog and to tell which group instance was hit.
  * [component] is the header's Swing component (showing, so a popup can be placed relative to it); it is only valid while the
  * split shows the group. [pillBounds] is the pill as painted, in [component]'s coordinates, taken when the ref was made: the
- * component is a little wider than the pill (a gap on each side), so a popup aligned to the pill's leading edge (§6) uses this.
- * [stripSide] tells on which side of the editor the strip stands, which decides where a popup opens (§6). Only `tabbar/` creates refs.
+ * component is a little wider than the pill (a gap on each side), so a popup aligned to the pill's leading edge uses this.
+ * [stripSide] tells on which side of the editor the strip stands, which decides where a popup opens. Only `tabbar/` creates refs.
  */
 class HeaderRef internal constructor(
     val split: SplitHandle,
@@ -24,7 +24,7 @@ class HeaderRef internal constructor(
 )
 
 /**
- * The single interface the service layer implements to plug into the tab bar (Stage 2: `TabGroupsService`). The tab bar *pulls* state
+ * The single interface the service layer implements to plug into the tab bar (`TabGroupsService`). The tab bar *pulls* state
  * from it ([groupsIn]) and *reports* gestures and events to it; everything else is the [TabBar] facade.
  *
  * Threading: every callback except [canReopenClosedGroup] runs on the EDT. [canReopenClosedGroup] is called from action updates,
@@ -38,78 +38,78 @@ interface TabBarHost {
     /** The groups to show in [split], in order. Pulled by [TabBar.refresh]; the answer must be a complete description of the split. */
     fun groupsIn(split: SplitHandle): List<GroupDecoration>
 
-    // ---- header gestures (INT-1, INT-3, INT-4) --------------------------------------------------------------------------
+    // ---- header gestures --------------------------------------------------------------------------
 
-    /** Left click on a header (INT-1: collapse / expand). */
+    /** Left click on a header (collapse / expand). */
     fun headerClicked(header: HeaderRef, event: MouseEvent) {}
 
-    /** Right click on a header (INT-4: the group menu). */
+    /** Right click on a header (the group menu). */
     fun headerRightClicked(header: HeaderRef, event: MouseEvent) {}
 
-    /** Middle click on a header (INT-3: delete group). */
+    /** Middle click on a header (delete group). */
     fun headerMiddleClicked(header: HeaderRef, event: MouseEvent) {}
 
     /**
-     * CTX-5 (user request 2026-11-14): a right click on the tab strip of [split] where there is no tab and no header (the free part of
+     * A right click on the tab strip of [split] where there is no tab and no header (the free part of
      * the strip, also a strip that shows only pills). [component] and [point] (in its coordinates) are where a context menu opens.
      */
     fun stripRightClicked(split: SplitHandle, component: JComponent, point: java.awt.Point) {}
 
     /**
-     * INT-5: the pointer entered ([hovering] true) or left (false) the header. A press on the header (click or the start of a drag)
+     * The pointer entered ([hovering] true) or left (false) the header. A press on the header (click or the start of a drag)
      * also reports false. Called for expanded and collapsed groups alike; the host decides what to show (the tab list of a collapsed
      * group, after a delay).
      */
     fun headerHoverChanged(header: HeaderRef, hovering: Boolean) {}
 
-    // ---- results of drag and drop (DRAG-*, INT-6) -------------------------------------------------------------------------
+    // ---- results of drag and drop -------------------------------------------------------------------------
 
     /**
      * A tab or group drop changed membership and/or order in [split]; [groups] is the complete new state (collapsed flags unchanged).
-     * A group left without a member is still in [groups] with an empty member list: the host decides (MEM-5).
+     * A group left without a member is still in [groups] with an empty member list: the host decides.
      */
     fun groupsChangedByDrag(split: SplitHandle, groups: List<GroupDecoration>)
 
     /**
-     * IDE-2: the strip re-sorted itself alphabetically (a tab opened or was renamed, a group was renamed, sorting was switched on or
+     * The strip re-sorted itself alphabetically (a tab opened or was renamed, a group was renamed, sorting was switched on or
      * off), so the order of [split]'s groups and of their members changed; [groups] is the complete new state (membership and
      * collapsed flags unchanged). Like [groupsChangedByDrag], the tab bar refreshes the split itself afterwards (never animated).
      */
     fun groupsReordered(split: SplitHandle, groups: List<GroupDecoration>) = groupsChangedByDrag(split, groups)
 
     /**
-     * A whole group instance arrived from another split (INT-6, SPLIT-5). [group] is already merged with the split's instance of the
+     * A whole group instance arrived from another split. [group] is already merged with the split's instance of the
      * same group, if it had one. The source split has been told about its new groups through [groupsChangedByDrag] before.
      */
     fun groupMovedIn(split: SplitHandle, group: GroupDecoration)
 
     // ---- events ----------------------------------------------------------------------------------------------------------
 
-    /** COLL-4: [file], a tab hidden by collapsed group [groupId], was selected (navigation, Ctrl+E, ...). Expand the group and [TabBar.refresh]. */
+    /** [file], a tab hidden by collapsed group [groupId], was selected (navigation, Ctrl+E, ...). Expand the group and [TabBar.refresh]. */
     fun hiddenTabSelected(split: SplitHandle, groupId: String, file: VirtualFile) {}
 
     /**
      * The user selected [file] in [split] (a click, navigation, closing the selected tab; not the strip's own re-ordering or a drag's
-     * own selection). Reported before [hiddenTabSelected] when the tab was hidden. COLL-8: a partly shown group whose shown tab is no
+     * own selection). Reported before [hiddenTabSelected] when the tab was hidden. A partly shown group whose shown tab is no
      * longer the selected one collapses again.
      */
     fun tabSelected(split: SplitHandle, file: VirtualFile) {}
 
     /**
-     * COLL-6: [file], a tab hidden by collapsed group [groupId], was picked in the strip's overflow ("more") list. An explicit request
-     * like picking it in the hover list (INT-5): expand the group whatever SET-6 says, [TabBar.refresh] and select the tab. The tab bar
+     * [file], a tab hidden by collapsed group [groupId], was picked in the strip's overflow ("more") list. An explicit request
+     * like picking it in the hover list: expand the group whatever the partial-expand setting says, [TabBar.refresh] and select the tab. The tab bar
      * selects nothing itself. Default: treated like a navigation ([hiddenTabSelected]).
      */
     fun collapsedTabChosen(split: SplitHandle, groupId: String, file: VirtualFile) = hiddenTabSelected(split, groupId, file)
 
     /**
-     * MEM-1: [file] no longer has a tab in [split] although the groups last applied there list it as a member. Not reported for the
+     * [file] no longer has a tab in [split] although the groups last applied there list it as a member. Not reported for the
      * source split when a group is moved to another split (the source was told about its new groups first).
      */
     fun tabClosed(split: SplitHandle, file: VirtualFile) {}
 
     /**
-     * MEM-3: [file] has just been pinned in [split] although the groups last applied there list it as a member (a pin in another split,
+     * [file] has just been pinned in [split] although the groups last applied there list it as a member (a pin in another split,
      * or of a file the groups of this split do not list, is not reported; unpinning is not reported). The platform has already changed
      * the pin state when this is called. The host is expected to remove the file from its group and call [TabBar.refresh].
      *
@@ -124,9 +124,9 @@ interface TabBarHost {
     fun tabPinned(split: SplitHandle, file: VirtualFile) {}
 
     /**
-     * SPLIT-2: [files] have just got a tab in [split] (opened there by the user or by the platform: Split Right, Open in Split, a copy,
+     * [files] have just got a tab in [split] (opened there by the user or by the platform: Split Right, Open in Split, a copy,
      * a file merged by an unsplit), and [split] is not showing them as group members. The host may make them members of a group; it
-     * must then call [TabBar.refresh] for [split] itself. The tab bar applies MEM-2 (a new tab never lands inside a group) afterwards,
+     * must then call [TabBar.refresh] for [split] itself. The tab bar applies the placement rule (a new tab never lands inside a group) afterwards,
      * only to the files that are still not members, reading the groups again. Not reported: the tabs of the splits that exist when the
      * host attaches, tabs that arrive while a drag runs, and the files our own drag and group-move code opens in a target split (they
      * already got their membership from the drop). A split that appears later reports the files it starts with, in the first call
@@ -135,7 +135,7 @@ interface TabBarHost {
     fun tabsOpened(split: SplitHandle, files: List<VirtualFile>) {}
 
     /**
-     * RULE-2: the preview tab of [file] in [split] has just become a normal tab (a double click on it, an edit in it, opening the file
+     * The preview tab of [file] in [split] has just become a normal tab (a double click on it, an edit in it, opening the file
      * again for good, ...). Not reported for [TabBar.makePermanent] (the host's own call), for tabs that were never preview tabs, or
      * while a drag runs. The host may make the file a member of a group; it then calls [TabBar.refresh] itself. EDT.
      */
@@ -148,7 +148,7 @@ interface TabBarHost {
     fun splitDisposed(split: SplitHandle) {}
 
     /**
-     * SPLIT-6: the user is closing, or has closed, the temporary split [split], a split that holds nothing but empty groups ([groups],
+     * The user is closing, or has closed, the temporary split [split], a split that holds nothing but empty groups ([groups],
      * the groups last applied there, all of them without a tab) and is kept open by a hidden placeholder tab. Asked once per split
      * (Unsplit, Close All in it, closing the detached window, anything that closes the placeholder or disposes the split), never for a
      * split the tab bar ends itself (its last group is gone, a real tab arrived) and never while the project closes.
@@ -160,7 +160,7 @@ interface TabBarHost {
      */
     fun temporarySplitClosing(split: SplitHandle, groups: List<GroupDecoration>) {}
 
-    // ---- LIFE-5 --------------------------------------------------------------------------------------------------------------
+    // ---- Reopen Closed Tab --------------------------------------------------------------------------------------------------------------
 
     /**
      * True if a deleted group is recorded in some split (not necessarily the one Reopen Closed Tab will act on); keeps Reopen Closed Tab

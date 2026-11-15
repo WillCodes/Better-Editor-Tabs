@@ -23,11 +23,11 @@ import javax.swing.JComponent
 import javax.swing.ToolTipManager
 
 /**
- * The colour row of the group popup (§6): the nine palette colours as filled circles in enum order. The current colour is marked with
+ * The colour row of the group popup: the nine palette colours as filled circles in enum order. The current colour is marked with
  * a ring in its own colour (Chrome style), hover shows a faint ring, keyboard focus a ring in the platform focus colour.
  *
  * One Tab stop for the whole row. Left / Right move among the swatches, Space or Enter applies the focused one ([onPick]) and keeps the
- * popup open, so colours can be tried one after another (unlike Enter elsewhere in the popup, POP-1). A click applies at once and leaves
+ * popup open, so colours can be tried one after another (unlike Enter elsewhere in the popup, where Enter closes it). A click applies at once and leaves
  * the popup open and the focus where it was; the mark moves immediately.
  * Tooltip and accessible description are the colour's name.
  */
@@ -70,8 +70,8 @@ internal class ColorSwatches(
         })
         bindKey("LEFT") { moveFocus(-1) }
         bindKey("RIGHT") { moveFocus(1) }
-        // Space and Enter both apply the focused colour and keep the popup open, so the user can keep trying colours (user decision,
-        // Stage 3: the one exception to POP-1's "Enter closes"). Escape or a click outside closes.
+        // Space and Enter both apply the focused colour and keep the popup open, so the user can keep trying colours (the one exception to
+        // "Enter closes the popup"). Escape or a click outside closes.
         bindKey("SPACE") { apply(colors[focusedIndex]) }
         bindKey("ENTER") { apply(colors[focusedIndex]) }
     }

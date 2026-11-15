@@ -9,7 +9,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 
 /**
- * A tab that is **in transit**: it has left its strip because the drag that carries it is over another split's strip (DRAG-5), as the
+ * A tab that is **in transit**: it has left its strip because the drag that carries it is over another split's strip, as the
  * platform's own tab drag does it when the tab is dragged out (`EditorTabbedContainerDragOutDelegate.dragOutStarted`, `EditorTabbedContainer.kt:460`):
  * the editor area first selects the tab it would select if this one was closed ([PlatformInternals.tabToSelectOnDragOut], the platform's rule),
  * then the tab is hidden (`TabInfo.isHidden`); `dragOutCancelled` shows it again. Dropping it back on its own strip, Esc and a copy show it
@@ -18,9 +18,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternal
  * `TabInfo.isHidden` is also how [CollapseController] hides the tabs of collapsed groups, so the two must not meet: a tab in transit is
  * hidden by this class only and is **not** in the collapse bookkeeping (`hiddenFiles`, anchors, the end-of-the-list rule). It stays
  * where it was in the platform's list (the platform remembers the index it had, `JBTabsImpl.updateHiding`), the collapse code only
- * ever sorts and counts the visible tabs and its own hidden ones, so none of it sees the tab; MEM-1 and COLL-4 are not involved (the tab
- * is not closed, and every selection made here runs as the adapter's own change, which reports no COLL-4). The pill of a group whose only
- * tab is in transit stays parked where it was (DRAG-8, [tabsBefore]), like the pill of a group whose only tab is dragged inside its strip.
+ * ever sorts and counts the visible tabs and its own hidden ones, so none of it sees the tab; the close and hidden-tab-selection handling is not involved (the tab
+ * is not closed, and every selection made here runs as the adapter's own change, which reports no hidden-tab selection). The pill of a group whose only
+ * tab is in transit stays parked where it was ([tabsBefore]), like the pill of a group whose only tab is dragged inside its strip.
  *
  * Internal APIs wrapped: `TabInfo.isHidden`, `EditorWindow.setSelectedComposite`, `EditorWindow.getTabToSelect` (via [PlatformInternals]),
  * `JBTabsImpl.getIndexOf`. EDT only.
@@ -62,7 +62,7 @@ internal class TabTransit(
         if (next != null && next != file) window.setSelectedComposite(next, false)
         state = State(info, file, selected, before)
         // The platform hides the tab and nothing else: when it was the strip's last showing tab the editor keeps showing its file until
-        // the drop (a move closes the tab, a copy or Esc shows it again), so the user sees only the tab leave (user report 2026-11-13).
+        // the drop (a move closes the tab, a copy or Esc shows it again), so the user sees only the tab leave.
         info.isHidden = true
         return true
     }

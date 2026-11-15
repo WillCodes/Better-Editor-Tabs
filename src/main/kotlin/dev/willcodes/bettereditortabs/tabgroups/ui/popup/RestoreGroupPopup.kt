@@ -36,7 +36,7 @@ import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 
 /**
- * The Restore Tab Group… popup (LIFE-4): the project's stash, newest first, one row per entry (colour dot, name, "3 tabs"). Enter or a
+ * The Restore Tab Group… popup: the project's stash, newest first, one row per entry (colour dot, name, "3 tabs"). Enter or a
  * click restores the entry into the split (after the popup has closed), Delete removes it from the stash; speed search finds a group by
  * name. See [RestoreGroupContent] for the list itself.
  */

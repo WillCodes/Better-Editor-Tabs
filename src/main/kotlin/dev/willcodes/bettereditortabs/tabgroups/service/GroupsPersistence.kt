@@ -18,10 +18,10 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 
 /**
- * The XML form of the project's groups in the workspace file (PERS-1): `<component name="BetterEditorTabsGroups">`. Plain beans with
- * defaults, so the serializer leaves out what is empty or false. The stash (PERS-4) is [stash]; a group's auto-group rule (RULE-1) is
+ * The XML form of the project's groups in the workspace file: `<component name="BetterEditorTabsGroups">`. Plain beans with
+ * defaults, so the serializer leaves out what is empty or false. The stash is [stash]; a group's auto-group rule is
  * three attributes of its bean ([GroupBean.rule] ...). The serializer ignores elements it does not know and keeps the defaults of
- * those missing, so state written by another version stays readable (PERS-4).
+ * those missing, so state written by another version stays readable.
  *
  * Never mutated after it has been handed to the platform: [TabGroupsService.getState] may be read on another thread while the saved
  * state is serialized, so every change builds a new bean.
@@ -33,7 +33,7 @@ class GroupsStateBean {
     @XCollection(propertyElementName = "splits")
     var splits: MutableList<SplitBean> = ArrayList()
 
-    /** PERS-4: the stashed groups, newest first. */
+    /** The stashed groups, newest first. */
     @XCollection(propertyElementName = "stash")
     var stash: MutableList<StashBean> = ArrayList()
 }
@@ -61,7 +61,7 @@ class StashBean {
     @XCollection(propertyElementName = "files", elementName = "f", valueAttributeName = "url")
     var files: MutableList<String> = ArrayList()
 
-    /** The group's rule then: a [dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleKind] name, "" for none (RULE-1). */
+    /** The group's rule then: a [dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleKind] name, "" for none. */
     @Attribute
     var rule: String = ""
 
@@ -86,11 +86,11 @@ class GroupBean {
     @Attribute
     var color: String = ""
 
-    /** The group's rule (RULE-1): a [dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleKind] name, "" for none. */
+    /** The group's rule: a [dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleKind] name, "" for none. */
     @Attribute
     var rule: String = ""
 
-    /** The rule's value: module name, directory URL (rewritten on moves, MEM-4) or pattern. */
+    /** The rule's value: module name, directory URL (rewritten on moves) or pattern. */
     @Attribute
     var ruleValue: String = ""
 
@@ -112,7 +112,7 @@ class SplitBean {
     @XCollection(propertyElementName = "instances")
     var instances: MutableList<InstanceBean> = ArrayList()
 
-    /** IDE-2: the manual order of a split the plugin sorts alphabetically, as VFS URLs; empty otherwise. */
+    /** The manual order of a split the plugin sorts alphabetically, as VFS URLs; empty otherwise. */
     @XCollection(propertyElementName = "manualOrder", elementName = "f", valueAttributeName = "url")
     var manualOrder: MutableList<String> = ArrayList()
 }
@@ -125,7 +125,7 @@ class InstanceBean {
     @Attribute
     var collapsed: Boolean = false
 
-    /** PERS-3 amended: for an instance stored empty, the number of logical tabs in front of its pill; -1 (not written) otherwise. */
+    /** For an instance stored empty, the number of logical tabs in front of its pill; -1 (not written) otherwise. */
     @Attribute
     var place: Int = -1
 
@@ -182,8 +182,8 @@ internal object GroupsPersistence {
 
     /**
      * The stored form of the live [state]: every split in [infos] that has a group instance, with its key, its logical tab order
-     * ([logicalOrder], PERS-1), its instances and, while the plugin sorts it alphabetically, its manual order ([manualOrder], IDE-2).
-     * Members whose file is no longer valid (deleted, MEM-4) are left out; identities that no stored instance uses are not stored (the
+     * ([logicalOrder]), its instances and, while the plugin sorts it alphabetically, its manual order ([manualOrder]).
+     * Members whose file is no longer valid (deleted) are left out; identities that no stored instance uses are not stored (the
      * stash keeps its own copy of a group's name and colour, [StoredStash]). The result has no stash: [SavedGroups] adds it.
      */
     fun capture(
@@ -201,10 +201,10 @@ internal object GroupsPersistence {
                 val members = inst.members.filter { it.isValid }
                 when {
                     members.isNotEmpty() -> StoredInstance(inst.groupId, members.map { it.url }, inst.collapsed)
-                    // PERS-3 amended: an instance that is empty in the live state (kept or ruled) is stored empty, with its place.
+                    // An instance that is empty in the live state (kept or ruled) is stored empty, with its place.
                     inst.members.isEmpty() ->
                         StoredInstance(inst.groupId, emptyList(), inst.collapsed, (headerIndex(info.handle, inst.groupId) ?: order.size).coerceIn(0, order.size))
-                    else -> null // its files were all deleted (MEM-4)
+                    else -> null // its files were all deleted
                 }
             }
             if (instances.isEmpty()) continue

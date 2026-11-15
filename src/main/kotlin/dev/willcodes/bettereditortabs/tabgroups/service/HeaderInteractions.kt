@@ -10,7 +10,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * What the user does with a group header, and the expand / collapse decisions (INT-1, INT-3, INT-4, INT-5, COLL-4, COLL-6, COLL-8) for
+ * What the user does with a group header, and the expand / collapse decisions for
  * [TabGroupsService], which delegates to it: click ([headerClicked]), middle click, right click, hover, picking a tab from the list
  * ([openFromTabList]) and navigating to a tab of a collapsed group ([hiddenTabSelected]). Shares the service's [state]; [refresh] is the
  * service's own, [requestDelete] is [GroupDeletes.requestDelete]. EDT only.
@@ -25,7 +25,7 @@ internal class HeaderInteractions(
     private val settings get() = TabGroupsSettings.getInstance()
 
     /**
-     * COLL-4 as changed by COLL-8 (partial expand), unless SET-6 (auto-expand on navigate) is off: navigating to [file] of a collapsed
+     * Unless the auto-expand-on-navigate setting is off, navigating to [file] of a collapsed
      * group shows only that tab beside the header (with the "+N" count of the others); navigating to another of its tabs moves the
      * partial expand there. The group stays collapsed: a click on the header shows the rest ([headerClicked]).
      */
@@ -35,8 +35,8 @@ internal class HeaderInteractions(
     }
 
     /**
-     * COLL-8 (fix round 1, user request): a partial expand lasts while its tab is the split's selected tab. When the user selects another
-     * tab of the split, every partly shown group that does not contain it collapses fully again (animated, COLL-7). The group that
+     * A partial expand lasts while its tab is the split's selected tab. When the user selects another
+     * tab of the split, every partly shown group that does not contain it collapses fully again (animated). The group that
      * contains [file] is left to [hiddenTabSelected], which moves its partial expand there (no collapse-then-expand in between).
      * Focus moving to another split does not count: the tab is still that split's selected tab.
      */
@@ -47,7 +47,7 @@ internal class HeaderInteractions(
         refresh(split)
     }
 
-    /** COLL-8: [file] shown beside the header of the collapsed group [groupId]; an expanded group is left alone. */
+    /** [file] shown beside the header of the collapsed group [groupId]; an expanded group is left alone. */
     private fun showPartially(split: SplitHandle, groupId: String, file: VirtualFile) {
         val instance = state.instance(split, groupId) ?: return
         if (!instance.collapsed || instance.peek == file) return
@@ -55,8 +55,8 @@ internal class HeaderInteractions(
     }
 
     /**
-     * INT-5: the pointer rests on (or left) a header. The tab list is offered only for a collapsed group with open tabs, and only while
-     * SET-7 is on; leaving or pressing the header always ends the hover.
+     * The pointer rests on (or left) a header. The tab list is offered only for a collapsed group with open tabs, and only while
+     * the hover-list setting is on; leaving or pressing the header always ends the hover.
      */
     fun headerHoverChanged(header: HeaderRef, hovering: Boolean) {
         val ui = TabGroupsUi.getInstance(project)
@@ -71,8 +71,8 @@ internal class HeaderInteractions(
     }
 
     /**
-     * INT-5 (and COLL-6): [file] was picked in the hover list (or the overflow list) of group [groupId] in [split]. A collapsed group
-     * shows that tab partially (COLL-8, animated, COLL-7) and the tab is selected and focused. Done even with SET-6 off: picking from
+     * [file] was picked in the hover list (or the overflow list) of group [groupId] in [split]. A collapsed group
+     * shows that tab partially (animated) and the tab is selected and focused. Done even with auto-expand on navigate off: picking from
      * the list is an explicit request, not a navigation.
      */
     fun openFromTabList(split: SplitHandle, groupId: String, file: VirtualFile) {
@@ -82,7 +82,7 @@ internal class HeaderInteractions(
     }
 
     /**
-     * INT-1: collapse / expand. COLL-8: a partially shown group expands fully (the count goes); the next click collapses it. Also the
+     * Collapse / expand. A partially shown group expands fully (the count goes); the next click collapses it. Also the
      * click on the "+N" count, which the tab bar reports as a click on its group's header.
      */
     fun headerClicked(header: HeaderRef) {
@@ -90,8 +90,8 @@ internal class HeaderInteractions(
     }
 
     /**
-     * INT-1, §13 Toggle Collapse of Current Group: a collapsed group, with or without a partial expand (COLL-8), expands fully; an
-     * expanded one collapses (COLL-2 selection move and COLL-7 animation happen in the refresh, SET-10). Returns whether the group is
+     * Toggle Collapse of Current Group: a collapsed group, with or without a partial expand, expands fully; an
+     * expanded one collapses (the selection move and the animation happen in the refresh). Returns whether the group is
      * collapsed now, null if [split] has no such instance.
      */
     fun toggleCollapsed(split: SplitHandle, groupId: String): Boolean? {
@@ -102,12 +102,12 @@ internal class HeaderInteractions(
         return !expand
     }
 
-    /** INT-3: Delete Group, with the middle-click confirmation setting (SET-5). */
+    /** Delete Group, with the middle-click confirmation setting. */
     fun headerMiddleClicked(header: HeaderRef) {
         requestDelete(header.split, header.groupId, DeleteTrigger.MIDDLE_CLICK)
     }
 
-    /** INT-4: the group popup. */
+    /** The group popup. */
     fun headerRightClicked(header: HeaderRef) {
         TabGroupsUi.getInstance(project).showGroupPopup(header)
     }

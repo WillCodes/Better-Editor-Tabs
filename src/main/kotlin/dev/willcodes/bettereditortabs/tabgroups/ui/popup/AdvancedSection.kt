@@ -8,15 +8,15 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * The "Advanced" part of the group popup (§6): a disclosure row ("Advanced ▸": the text, then the chevron) and, below it, a [body] that is hidden until
- * the row is expanded. The body holds the auto-group rule editor ([RuleEditor], RULE-1); the popup must re-pack when the row is
+ * The "Advanced" part of the group popup: a disclosure row ("Advanced ▸": the text, then the chevron) and, below it, a [body] that is hidden until
+ * the row is expanded. The body holds the auto-group rule editor ([RuleEditor]); the popup must re-pack when the row is
  * toggled, so [onToggled] is called after every change and the owner packs the popup to its new content size.
  *
- * POP-3 (amended 2026-11-14, user request): [startExpanded] is the state the popup opens in: what the user left last in this IDE session
+ * [startExpanded] is the state the popup opens in: what the user left last in this IDE session
  * ([sessionExpanded], once they have toggled it), else expanded for a group that has a rule. Every toggle is remembered.
  *
  * The body is laid out once while it is still hidden ([prepareLayout]), so the first expansion does not show a frame of components that
- * have never been laid out (user report: a glitch on the first expansion only).
+ * have never been laid out, which would otherwise glitch.
  */
 internal class AdvancedSection(enabled: Boolean, startExpanded: Boolean, private val onToggled: () -> Unit) {
     private val row = PopupMenuRow(BetterEditorTabsBundle.message("popup.advanced"), enabled) { toggle() }
@@ -77,14 +77,14 @@ internal class AdvancedSection(enabled: Boolean, startExpanded: Boolean, private
 
     companion object {
         /**
-         * POP-3: whether the user left Advanced expanded, null until they have toggled it in this IDE session (a static, so it is shared
+         * Whether the user left Advanced expanded, null until they have toggled it in this IDE session (a static, so it is shared
          * by all popups and projects).
          */
         @Volatile
         var sessionExpanded: Boolean? = null
             internal set
 
-        /** POP-3: the state a popup opens in: the remembered one, else expanded for a group with a rule. */
+        /** The state a popup opens in: the remembered one, else expanded for a group with a rule. */
         fun startExpanded(hasRule: Boolean): Boolean = sessionExpanded ?: hasRule
     }
 }

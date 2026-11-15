@@ -41,15 +41,15 @@ import javax.swing.border.EmptyBorder
 import javax.swing.event.DocumentEvent
 
 /**
- * The body of the popup's Advanced section (§6 item 4, RULE-1): the *Auto-group* checkbox, the rule type combo box and, below it, the
+ * The body of the popup's Advanced section: the *Auto-group* checkbox, the rule type combo box and, below it, the
  * field of the selected type only (module combo, directory field with a browse button, or regex field). The combo and the fields are
  * disabled while *Auto-group* is unticked. An invalid regex or directory shows an inline error under the fields.
  *
- * [edited] is what the popup commits when it closes (POP-1): see there. The editor keeps no state outside its components, so the
+ * [edited] is what the popup commits when it closes: see there. The editor keeps no state outside its components, so the
  * owner builds one per popup. [onResized] is called when the content's height changed (another field, an error line) so that the owner
- * re-packs the popup; [onEnter] when Enter was pressed in a text field (POP-1: closes the popup like in the name field).
+ * re-packs the popup; [onEnter] when Enter was pressed in a text field (closes the popup like Enter in the name field).
  *
- * **Directory validity** (§6 "Only directories inside the project can be chosen"): a typed or chosen path counts if [resolveDirectory]
+ * **Directory validity** (only directories inside the project can be chosen): a typed or chosen path counts if [resolveDirectory]
  * finds an existing directory for it (by default `LocalFileSystem`) and `ProjectFileIndex.isInContent` says it is under a content root
  * of the project (in a read action). The chooser is limited to the content roots, so the same rule holds for it. The rule stores the
  * directory's VFS URL; the field shows the system-dependent path.
@@ -62,9 +62,9 @@ internal class RuleEditor(
     private val onResized: () -> Unit,
     private val onEnter: () -> Unit,
     private val resolveDirectory: (String) -> VirtualFile? = { path -> resolveOnDisk(path) },
-    /** POP-4: the edited rule changed (any user edit); the owner refreshes the preview from [previewRule]. */
+    /** The edited rule changed (any user edit); the owner refreshes the preview from [previewRule]. */
     private val onRuleChanged: () -> Unit = {},
-    /** POP-4 match hint: the open tabs a rule would move (ungrouped, unpinned, not preview), in order, as name and matched path. */
+    /** Match hint: the open tabs a rule would move (ungrouped, unpinned, not preview), in order, as name and matched path. */
     private val matchingTabs: (AutoGroupRule) -> List<MatchHint.Entry> = { emptyList() },
 ) {
     val autoGroupBox: JBCheckBox = JBCheckBox(BetterEditorTabsBundle.message("popup.rule.autoGroup"), previous?.enabled == true)
@@ -75,7 +75,7 @@ internal class RuleEditor(
     /** The inline error (see [WrappingLabel]). */
     private val errorLabel = WrappingLabel { errorWidth }
 
-    /** POP-4: under a valid regex, the first open tabs it would move ([MatchHint]); wraps at the popup's width like the error. */
+    /** Under a valid regex, the first open tabs it would move ([MatchHint]); wraps at the popup's width like the error. */
     private val hintLabel = WrappingLabel { errorWidth }
     private var shownHint: String? = null
 
@@ -192,7 +192,7 @@ internal class RuleEditor(
     }
 
     /**
-     * What the popup commits when it closes (POP-1, §6, POP-2):
+     * What the popup commits when it closes:
      *  - not touched: exactly the previous rule;
      *  - *Auto-group* ticked and the selected type's value valid: `AutoGroupRule(true, kind, value)`;
      *  - ticked but the value empty or invalid: the previous rule, unchanged (an invalid rule is not saved);
@@ -229,7 +229,7 @@ internal class RuleEditor(
     /** The match hint showing under the regex field (HTML body), or null. For tests. */
     val hintText: String? get() = shownHint
 
-    /** POP-4: the rule as it would match right now: ticked with a valid value; null otherwise (nothing to preview). */
+    /** The rule as it would match right now: ticked with a valid value; null otherwise (nothing to preview). */
     fun previewRule(): AutoGroupRule? {
         if (!autoGroupBox.isSelected) return null
         val kind = selectedKind
@@ -367,7 +367,7 @@ internal class RuleEditor(
 
 /**
  * A small HTML label as wide as the popup's fields ([width]), whatever its text: a wrapped HTML label otherwise asks for the width of
- * its unwrapped text and widens the popup (user report). Its height is that of the text wrapped to that width.
+ * its unwrapped text and widens the popup. Its height is that of the text wrapped to that width.
  */
 private class WrappingLabel(private val width: () -> Int) : JBLabel() {
     override fun getPreferredSize(): Dimension {

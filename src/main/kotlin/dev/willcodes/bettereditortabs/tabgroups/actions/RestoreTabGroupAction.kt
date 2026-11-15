@@ -9,11 +9,12 @@ import dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.ui.popup.RestoreGroupPopup
 
-/** LIFE-4: Restore Tab Group…: a list of the groups closed with Stash Group; picking one brings it back in the split the action ran in. Enabled only with a non-empty stash. */
+/** Restore Tab Group…: a list of the groups closed with Stash Group; picking one brings it back in the split the action ran in. Enabled only with a non-empty stash. */
 class RestoreTabGroupAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (hideOutsideNewUi(e)) return
         val service = e.project?.getServiceIfCreated(TabGroupsService::class.java)
         e.presentation.isEnabled = service != null && service.stashedGroups().isNotEmpty()
     }

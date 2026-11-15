@@ -3,7 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 import java.awt.Rectangle
 
 /**
- * Pure rules for scrolling a tab strip while something is dragged over it (DRAG-0: dragging to the end of a strip that is longer than
+ * Pure rules for scrolling a tab strip while something is dragged over it (dragging to the end of a strip that is longer than
  * the window). No platform types, unit tested; `DragAutoScroll` (in `tabbar/drag`) feeds it the live strip and runs the timer.
  *
  * Geometry (all along the strip's main axis, in the tab component's coordinates; the "visible span" is the part of the strip where

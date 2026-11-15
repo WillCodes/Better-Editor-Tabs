@@ -32,10 +32,10 @@ internal class StripGeometry(
     private val spareRow: () -> Rectangle? = { null },
     /**
      * Side strips: the height of a row (a pill row is as tall as its host label's row). A label of a group that collapses / expands is
-     * drawn shorter than its row ([VerticalRows], COLL-7), so its own height cannot be used.
+     * drawn shorter than its row ([VerticalRows]), so its own height cannot be used.
      */
     private val rowHeightOf: (TabLabel) -> Int = { it.height },
-    /** RULE-6: the group is an empty instance (its pill stands alone). */
+    /** The group is an empty instance (its pill stands alone). */
     private val isEmptyGroup: (String) -> Boolean = { false },
 ) {
     fun stripThickness(horizontal: Boolean): Int {
@@ -121,7 +121,7 @@ internal class StripGeometry(
     private class Areas(
         val pills: LinkedHashMap<GroupHeader, PillHosting.PillRect>,
         val spacer: Rectangle?,
-        /** COLL-8: the count pills' slots by group id. */
+        /** The count pills' slots by group id. */
         val counts: LinkedHashMap<String, PillHosting.PillRect> = LinkedHashMap(),
     )
 
@@ -133,7 +133,7 @@ internal class StripGeometry(
     fun pillAreas(): LinkedHashMap<GroupHeader, PillHosting.PillRect> = areas().pills
 
     /**
-     * COLL-8: where every count pill is: in a Top / Bottom strip its slot in the trailing side of the peek's label, in a Left / Right
+     * Where every count pill is: in a Top / Bottom strip its slot in the trailing side of the peek's label, in a Left / Right
      * strip a row of its own right below the peek's label (as tall as a pill row, as wide as the count needs); by group id.
      */
     fun countAreas(): LinkedHashMap<String, PillHosting.PillRect> = areas().counts
@@ -231,7 +231,7 @@ internal class StripGeometry(
             val band = slot.intersection(edge).let { if (it.width <= 0 || it.height <= 0) Rectangle() else it }
             result += PillCut(slot, band, label === selected)
         }
-        // COLL-8: the count's slot is plain strip too (Top / Bottom: inside the peek's label)
+        // The count's slot is plain strip too (Top / Bottom: inside the peek's label)
         for (c in layout.counts) {
             val full = all.counts[c.groupId]?.full ?: continue
             val lb = c.label.bounds

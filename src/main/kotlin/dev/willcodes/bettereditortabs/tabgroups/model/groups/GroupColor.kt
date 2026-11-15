@@ -1,13 +1,13 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * The group colour palette (§3.3), in table order. [light] and [dark] are RGB values (0xRRGGBB) for light and dark themes.
+ * The group colour palette, in table order. [light] and [dark] are RGB values (0xRRGGBB) for light and dark themes.
  * [messageKey] is the bundle key of the user-visible colour name.
  */
 enum class GroupColor(val light: Int, val dark: Int, val messageKey: String) {
     /**
-     * COL-3: pushed away from the strip background (darker in light themes, lighter in dark ones), so its tint stays visible on the
-     * strip and while a tab is held to join (DRAG-3, DRAG-7).
+     * Pushed away from the strip background (darker in light themes, lighter in dark ones), so its tint stays visible on the
+     * strip and while a tab is held to join.
      */
     GREY(0x70757A, 0xE8EAED, "color.grey"),
     BLUE(0x1A73E8, 0x8AB4F8, "color.blue"),

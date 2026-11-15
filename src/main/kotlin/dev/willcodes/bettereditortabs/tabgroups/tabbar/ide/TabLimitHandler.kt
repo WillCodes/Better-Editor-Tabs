@@ -10,7 +10,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 
 /**
- * IDE-3: grouped tabs, collapsed or not, don't count toward the editor tab limit and are never closed by it.
+ * Grouped tabs, collapsed or not, don't count toward the editor tab limit and are never closed by it.
  *
  * Wraps the internal, experimental extension point `com.intellij.editorAutoClosingHandler`
  * ([EditorAutoClosingHandler]). The platform calls [isClosingAllowed] for every tab when it trims a split to
@@ -23,7 +23,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
  */
 class TabLimitHandler : EditorAutoClosingHandler {
     override fun isClosingAllowed(composite: EditorComposite): Boolean {
-        // SPLIT-6: the placeholder of a temporary split is never closed by the limit (and does not count toward it)
+        // The placeholder of a temporary split is never closed by the limit (and does not count toward it)
         if (isPlaceholder(composite.file)) return false
         // EditorComposite.fileEditorManager is deprecated (error level) and .project is internal, so find the owner by scanning.
         for (project in ProjectManager.getInstance().openProjects) {

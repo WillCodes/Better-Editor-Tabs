@@ -10,7 +10,7 @@ data class CurrentSplit(val key: SplitKey, val files: List<String>)
 /**
  * What to do for the split at index [current] of the list given to [RestorePlanner.plan]: re-order its tabs to [order] (every open
  * file of the split, exactly once), then create [instances] (strip order, only members that reopened, none empty). [manualOrder]: the
- * stored manual order of an alphabetically sorted split (IDE-2), restricted to the files that reopened; empty if none was stored.
+ * stored manual order of an alphabetically sorted split, restricted to the files that reopened; empty if none was stored.
  */
 data class PlannedSplit(
     val current: Int,
@@ -23,17 +23,17 @@ data class PlannedSplit(
 data class RestorePlan(val groups: List<StoredGroup>, val splits: List<PlannedSplit>)
 
 /**
- * The startup rules of PERS-3 as a pure function, for when the editor layout has been restored.
+ * The startup restore rules as a pure function, for when the editor layout has been restored.
  *
  * - Stored splits are matched to current splits by [SplitMatcher]: the best overlap of reopened files wins, the split key breaks ties.
  *   A stored split that shares no file with any current split is dropped, so with "Reopen files on startup" off (nothing reopened) no
  *   group survives.
  * - Membership is restored only for tabs that actually reopened (in *that* matched split); members that did not are dropped. A file
- *   belongs to the first instance that lists it (INV-1).
- * - An instance stored empty (PERS-3 amended: the user kept it, ruled or not) is restored empty at its stored place, counted in the tabs
+ *   belongs to the first instance that lists it.
+ * - An instance stored empty (the user kept it, ruled or not) is restored empty at its stored place, counted in the tabs
  *   that reopened.
- * - An instance stored with members of which none reopened is dropped, whatever its group (a rule does not exempt it, RULE-5 fills restored groups
- *   separately). A group without any remaining instance is dropped (MEM-6). The stash (Stage 10) is stored apart from the
+ * - An instance stored with members of which none reopened is dropped, whatever its group (a rule does not exempt it; a rule fills restored groups
+ *   separately). A group without any remaining instance is dropped. The stash is stored apart from the
  *   groups and is not touched by a restore.
  * - Tab order: the stored order restricted to the files that reopened, then the reopened files it did not list in their current
  *   relative order, so tabs that are new since the layout was stored end up behind the known ones.
@@ -53,7 +53,7 @@ object RestorePlanner {
             for (inst in s.instances) {
                 if (inst.groupId !in known) continue
                 if (inst.members.isEmpty()) {
-                    // PERS-3 amended: an instance stored empty (kept by the user) comes back empty at its place, counted in the tabs
+                    // an instance stored empty (kept by the user) comes back empty at its place, counted in the tabs
                     // that reopened (the place is a number of tabs of the stored order); no place stored = at the end.
                     val place = inst.place?.let { p -> s.order.take(p.coerceAtLeast(0)).count { it in openSet } } ?: open.size
                     instances += StoredInstance(inst.groupId, emptyList(), inst.collapsed, place.coerceIn(0, open.size))
@@ -74,7 +74,7 @@ object RestorePlanner {
     }
 
     /**
-     * SPLIT-6: the empty instances of the stored splits that held no tab at all ([StoredSplit.isEmptyOnly]: a temporary split, or a
+     * The empty instances of the stored splits that held no tab at all ([StoredSplit.isEmptyOnly]: a temporary split, or a
      * window whose tabs had closed) and that no current split matched come back in the main area's first split that has an open tab,
      * at the end of its strip (an instance already there is not doubled). With no such split (nothing reopened) they are dropped, as every
      * group is when nothing reopened. Adds to [splits], the planned splits (appends to the target's entry, or creates it).
@@ -110,11 +110,11 @@ object RestorePlanner {
     }
 
     /**
-     * PERS-3, detached windows that appear late: the stored splits that no split of [current] claims, with the group identities their
+     * Detached windows that appear late: the stored splits that no split of [current] claims, with the group identities their
      * instances use. They stay *pending* for a limited time ([dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService]
      * decides how long): a window restored after the first pass is matched against them later with [plan]. Same matching as [plan], so
      * a split that [plan] would restore is not pending. [detachedOnly]: only splits of detached windows can be late (the main area is
-     * restored as a whole before the first pass, and with "Reopen files on startup" off no group of it may survive, PERS-3), so the
+     * restored as a whole before the first pass, and with "Reopen files on startup" off no group of it may survive), so the
      * splits of the main area are never pending.
      */
     fun pending(stored: StoredGroups, current: List<CurrentSplit>, detachedOnly: Boolean = false): StoredGroups {

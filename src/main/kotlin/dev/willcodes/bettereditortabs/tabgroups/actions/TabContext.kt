@@ -8,8 +8,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * The tab a grouping action applies to (CTX-1..CTX-4): the right-clicked tab, else the selected tab, of the split the event comes
- * from. [pinned] tabs get the items disabled (CTX-4).
+ * The tab a grouping action applies to: the right-clicked tab, else the selected tab, of the split the event comes
+ * from. [pinned] tabs get the items disabled.
  */
 internal class TabContext(val project: Project, val split: SplitHandle, val file: VirtualFile, val pinned: Boolean) {
     companion object {

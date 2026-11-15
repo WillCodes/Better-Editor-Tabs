@@ -8,7 +8,7 @@ import java.awt.image.BufferedImage
 
 /**
  * What the user sees of a drag besides the strips themselves: the floating picture and, for a group drag in another split, the
- * merge outline. Used by the group drag (INT-6, [HeaderDragHelper]) and by the tab drag across splits ([CrossSplitTabDrag]).
+ * merge outline. Used by the group drag ([HeaderDragHelper]) and by the tab drag across splits ([CrossSplitTabDrag]).
  * Rendering only: it draws through the [DragOverlay] of the frame the pointer is over and decides nothing; the gesture tells it where
  * the pointer and the target are.
  *
@@ -89,7 +89,7 @@ internal class GroupDragFeedback(private val home: TabBarDnd) {
     }
 
     /**
-     * The platform's drop-area highlight of the editor split [target] ([screenRect], screen coordinates; INT-6: a group dropped at the
+     * The platform's drop-area highlight of the editor split [target] ([screenRect], screen coordinates; a group dropped at the
      * edge of an editor area or into it), drawn by that split's frame; null removes it wherever it was.
      */
     fun showDropArea(target: TabBarDnd?, screenRect: Rectangle?) {

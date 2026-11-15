@@ -8,7 +8,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 
 /**
- * The bookkeeping of empty-group pills (RULE-6, MEM-5; PERS-3: where a stored empty group stands; CTX-5 / DRAG: what a drag or the
+ * The bookkeeping of empty-group pills (where a stored empty group stands, and what a drag or the
  * sort asks of them): remembering where a group's tabs stand so its pill stays when the last tab goes, keeping the pills out of other
  * groups' spans, seating a group's first members behind its pill, and placing pills behind given tabs. The places themselves live in
  * [CollapseController]; this class decides when and where.
@@ -49,7 +49,7 @@ internal class EmptyPills(
         preview.draggedFile == null && !preview.hasMembershipPreview && transit.state == null
 
     /**
-     * Fix round 2, bug 1: an empty pill never stands inside another group's span. A tab that a rule or the join path adds to a group at
+     * An empty pill never stands inside another group's span. A tab that a rule or the join path adds to a group at
      * its end lands behind the empty pill that stood behind the group's old last tab (`[G a b][E] c`); with [newGroups] applied the pill
      * would be in the middle of G. It is put behind G's new last tab instead ([EmptyPillSpots.outsideSpans]), before the groups are
      * applied. Not during a drag (the live order is a preview) and not while the plugin sorts the strip (the sort places the pills).
@@ -66,7 +66,7 @@ internal class EmptyPills(
     }
 
     /**
-     * RULE-6, bug 12: an empty group that gets its first member(s) keeps its pill where it was and the new members stand right behind
+     * An empty group that gets its first member(s) keeps its pill where it was and the new members stand right behind
      * the pill, in front of whatever followed it (other empty pills included). The strip is put in that order before the groups are
      * applied: the members come from wherever the platform or the host's `openInOrder` put them, the pill's place is the sequence's
      * ([CollapseController.sequence]), and the empty pills that stood behind it are anchored behind the arrivals. Nothing animates.
@@ -98,11 +98,11 @@ internal class EmptyPills(
         updateReservations()
     }
 
-    /** The ids of the groups the strip shows as their pill alone (RULE-6), as of the last group change. */
+    /** The ids of the groups the strip shows as their pill alone, as of the last group change. */
     fun emptyGroupIds(): Set<String> = collapse.emptyGroups()
 
     /**
-     * RULE-6: moves the pills of empty groups behind the tabs [spots] gives (see [CollapseController.placeEmpty]); what a drag or the
+     * Moves the pills of empty groups behind the tabs [spots] gives (see [CollapseController.placeEmpty]); what a drag or the
      * sort does after it has put the tabs into the order it wants. Ids that are not empty groups are ignored. Lays the strip out again.
      */
     fun placeEmptyPills(spots: Map<String, VirtualFile?>) = applier.own {
@@ -114,7 +114,7 @@ internal class EmptyPills(
     }
 
     /**
-     * PERS-3 amended: puts the pill of the empty group [groupId] behind the first [index] tabs of the logical order (0 = in front of all,
+     * Puts the pill of the empty group [groupId] behind the first [index] tabs of the logical order (0 = in front of all,
      * past the end = at the end), never inside another group's span (the pill goes behind that group, [keepEmptyOutsideGroups]). Not an
      * empty group of this strip: no-op.
      */

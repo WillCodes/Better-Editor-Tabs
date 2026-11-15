@@ -22,13 +22,13 @@ import java.util.WeakHashMap
 private val LOG = logger<TemporarySplits>()
 
 /**
- * SPLIT-6, temporary splits: the machinery that keeps a split alive while it holds only empty groups (RULE-6, MEM-5, round 3).
+ * Temporary splits: the machinery that keeps a split alive while it holds only empty groups.
  *
  * An editor split exists only while it has a tab: closing its last tab closes the split (`EditorWindow.closeFile`: `tabCount == 0` ->
  * `removeFromSplitter`, or, in a detached window, `DockWindow.closeIfEmpty`), and `EditorWindow.split` / `openFileInNewWindow` need a
  * file. An empty group has no tab, so the split it stands in is held open by one **placeholder tab** ([PlaceholderFile]): opened in the
  * split and hidden at once (`TabInfo.isHidden`, as collapse hides tabs; `EditorWindow.tabCount` counts hidden tabs, so the split
- * stays; the strip shows only the pills and the empty-editor overlay covers the content, COLL-2). The placeholder is never a file of
+ * stays; the strip shows only the pills and the empty-editor overlay covers the content). The placeholder is never a file of
  * the user's: `StripReader.allFiles`, `SplitIdentity`, `TabPlacement` and the close scoping leave it out, the tab limit never closes it,
  * and no history records it ([PlaceholderFile]).
  *
@@ -187,12 +187,12 @@ internal class TemporarySplits(private val project: Project, private val tabBar:
             if (StripReader.allFiles(StripReader.tabsOf(window)) != listOf(file)) continue
             if (!wouldClose(window)) continue
             // an empty group, or a group whose only tab this is (it is about to become empty and the user is asked whether to keep it,
-            // MEM-5: the split must still be there to keep it in; a Delete answer then ends the temporary split)
+            // the split must still be there to keep it in; a Delete answer then ends the temporary split)
             if (bar.groups.none { g -> g.members == listOf(file) || g.members.none { window.getComposite(it) != null } }) continue
             LOG.info("keep-alive: the split's last tab ${file.name} is closing while it holds an empty group")
             // the placeholder must stay visible until the close is over (a detached window closes when no tab is visible) and opening
             // it lets the event queue run: a picture of the split as it is now hides those frames, so the user sees the split go from
-            // its last tab straight to its pills (round 0 of Stage 11.5: no one-frame "(empty groups)" tab)
+            // its last tab straight to its pills (no one-frame "(empty groups)" tab)
             val freeze = freezeSplit(window)
             // marked first: opening the file lets the event queue run (`blockingWaitForCompositeFileOpen`), and a look at this split
             // would find its closing tab still there and take the placeholder for a leftover

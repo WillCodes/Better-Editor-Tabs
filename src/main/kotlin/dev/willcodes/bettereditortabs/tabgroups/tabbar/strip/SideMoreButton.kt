@@ -9,7 +9,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillRows
 import java.awt.Rectangle
 
 /**
- * Shows the platform's "more" button in a side strip that fits without its pill rows but not with them (HDR-6), where the platform
+ * Shows the platform's "more" button in a side strip that fits without its pill rows but not with them, where the platform
  * shows none: it only sets `LayoutPassInfo.moreRect` when `requiredLength > toFitLength` (`ScrollableSingleRowLayout.layoutMoreButton`)
  * and gives the more toolbar empty bounds then (`JBTabsImpl.centerMoreToolbarPosition`, 262 `JBTabsImpl.kt:2236`). [VerticalRows] calls
  * [rectFor] after a pass in which it pushed labels out, and [show] with the result: `pass.moreRect` is set to the rectangle the platform

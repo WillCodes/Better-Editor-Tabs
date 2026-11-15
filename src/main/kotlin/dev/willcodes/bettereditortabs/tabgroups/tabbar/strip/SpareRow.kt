@@ -6,10 +6,10 @@ import com.intellij.ui.tabs.impl.TabLayout
 import java.awt.Rectangle
 
 /**
- * The row for pills that a separate pinned row leaves without a host (HDR-6, SCOPE-5).
+ * The row for pills that a separate pinned row leaves without a host.
  *
  * With "Show pinned tabs in a separate row" the platform lays the pinned tabs out in a row of their own and the other tabs in the rows
- * after it (`MultiRowLayout.splitToPinnedUnpinned`). Groups are never pinned (INV-3), so a pill belongs in the unpinned rows. When every
+ * after it (`MultiRowLayout.splitToPinnedUnpinned`). Groups are never pinned, so a pill belongs in the unpinned rows. When every
  * unpinned tab is hidden by collapsed groups, the platform has no unpinned row at all, and a pill hosted by the last pinned tab would
  * show up in the pinned row. Instead [PillLayout] leaves such pills without a host (loose), and this class makes room for them: after
  * every platform layout pass ([TabBarAdapter]'s layout hook) it moves the selected editor component down by one row (Top; for Bottom it

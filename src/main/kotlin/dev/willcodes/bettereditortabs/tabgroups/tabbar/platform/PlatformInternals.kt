@@ -150,7 +150,7 @@ internal object PlatformInternals {
      * The single-row layouts do: `ScrollableSingleRowLayout.applyTabLayout` lays the label that does not fit out with the visible part
      * as its bounds (`SingleRowLayoutStrategy.drawPartialOverflowTabs`). So does the unpinned row of the separate-pinned-row layout,
      * `ScrollableMultiRowLayout` (its `ScrollableTabsRow.layoutTabs` gives the last label `x + tabsLength - curX` instead of its preferred
-     * width; user report 2026-11-13: a collapsed group's trailing pill moved onto the cut tab). Its pinned row (`CompressibleTabsRow`) never
+     * width; a collapsed group's trailing pill moved onto the cut tab). Its pinned row (`CompressibleTabsRow`) never
      * hosts pills in that mode. The wrapping and squeezing layouts lay out whole labels. Both classes are public (`@ApiStatus.Internal`);
      * false if the layout cannot be read.
      */
@@ -320,12 +320,12 @@ internal object PlatformInternals {
         false
     }
 
-    // ---- JBEditorTabs.isAlphabeticalModeChanged (IDE-2) -------------------------------------------------------------------------
+    // ---- JBEditorTabs.isAlphabeticalModeChanged -------------------------------------------------------------------------
 
     /**
      * `JBEditorTabs.isAlphabeticalModeChanged` (private boolean, `JBEditorTabs.kt:23`). `JBEditorTabs.isAlphabeticalMode()` follows
      * `UISettings.sortTabsAlphabetically` only until `setAlphabeticalMode(..)` is called once on the strip; this flag is then set for
-     * good (`JBEditorTabs.kt:71-77`) and the strip ignores the setting. IDE-2 with groups switches the platform's view sorting off for
+     * good (`JBEditorTabs.kt:71-77`) and the strip ignores the setting. Alphabetical sorting with groups switches the platform's view sorting off for
      * a strip whose order the plugin sorts itself (`setAlphabeticalMode(false)`), and clears the flag again to give the strip back to
      * the platform. Missing: [followUiSettings] returns false and the caller sets the mode by hand (`setAlphabeticalMode(UISettings...)`),
      * which then has to be repeated whenever the setting changes.

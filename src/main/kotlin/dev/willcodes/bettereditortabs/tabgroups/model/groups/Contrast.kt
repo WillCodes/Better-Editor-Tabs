@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * HDR-2: the text colour of a group name on its opaque pill (HDR-1). Of the two candidates, [DARK_TEXT] and [LIGHT_TEXT], the one with
+ * The text colour of a group name on its opaque pill. Of the two candidates, [DARK_TEXT] and [LIGHT_TEXT], the one with
  * the higher WCAG 2 contrast ratio against the fill wins. The fill is the group colour as the current theme resolves it, so the choice is
  * made per palette colour and theme. Pure; colours are RGB ints (0xRRGGBB, alpha ignored).
  */

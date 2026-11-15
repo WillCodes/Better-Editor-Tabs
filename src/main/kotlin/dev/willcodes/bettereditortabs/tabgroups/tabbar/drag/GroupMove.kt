@@ -13,7 +13,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 private val LOG = logger<TabBarDnd>()
 
 /**
- * Moves a whole group instance from this split to [target] (INT-6, SPLIT-5), merging with the target's instance of the same
+ * Moves a whole group instance from this split to [target], merging with the target's instance of the same
  * group if it has one (the merged tabs go where the existing instance is; otherwise at [boundary] of [targetUnits]).
  *
  * The platform has no "move editor to another split" API that keeps the tab: its own drag and "Move to opposite group" close the
@@ -23,8 +23,8 @@ private val LOG = logger<TabBarDnd>()
  * expected to work like the platform's own tab drag but is unverified. The Reopen Closed Tab entry that each close adds to the source split is removed again
  * (`TabClose.closeForMove`). The per-file move is [transferFile], shared with the tab drag ([moveTabToSplit]).
  *
- * A group that was dragged as its collapsed header (INT-6) comes back as it was: [expanding] is its id when it was expanded, and the
- * arrival plays the expand animation in the target (nothing else animates, COLL-7); [selectedBefore] is the tab that was selected when the
+ * A group that was dragged as its collapsed header comes back as it was: [expanding] is its id when it was expanded, and the
+ * arrival plays the expand animation in the target (nothing else animates); [selectedBefore] is the tab that was selected when the
  * drag began (the drag moved the selection off the group), selected in the target again if it was one of the group's.
  *
  * Order of work: leave the source model first (so no header/hidden tab refers to files that are about to be closed), open the
@@ -81,7 +81,7 @@ internal fun TabBarDnd.moveNow(
 ) {
     val groupId = unit.groupId ?: return
     val files = unit.keys
-    // fix round 2, bug 7: an empty instance (RULE-6: no tab, its pill alone) moves too; it has no files, and its pill is placed at the drop
+    // an empty instance (no tab, its pill alone) moves too; it has no files, and its pill is placed at the drop
     val empty = files.isEmpty()
     if (empty && !unit.isEmptyPill) return
     val sourceGroups = model.groups()
@@ -93,7 +93,7 @@ internal fun TabBarDnd.moveNow(
     val existingUnit = targetUnits.firstOrNull { it.groupId == groupId }
     val merged: List<VirtualFile>
     val targetOrder: List<VirtualFile>
-    // the target's order with the pills of its empty groups in it (RULE-6), to keep them in place around the arrival
+    // the target's order with the pills of its empty groups in it, to keep them in place around the arrival
     val targetSequence: List<StripItem<VirtualFile>>
     if (existingUnit != null) {
         merged = existingUnit.keys + files.filter { it !in existingUnit.keys }
@@ -123,7 +123,7 @@ internal fun TabBarDnd.moveNow(
     target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))
     val mergedOpen = order.filter { it in merged }
     target.model.acceptGroup(
-        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed, peek = null), expanding, // COLL-8: arrives collapsed, no peek
+        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed, peek = null), expanding, // arrives collapsed, no peek
     )
     // the arriving empty pill is known to the target's strip only now: it stands at the drop place (a merge keeps the existing instance's)
     if (empty && existingUnit == null) target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))
