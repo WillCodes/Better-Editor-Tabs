@@ -86,10 +86,20 @@ internal class HeaderInteractions(
      * click on the "+N" count, which the tab bar reports as a click on its group's header.
      */
     fun headerClicked(header: HeaderRef) {
-        val instance = state.instance(header.split, header.groupId) ?: return
-        val expand = instance.collapsed // collapsed, with or without a partial expand
-        state.setCollapsed(header.split, header.groupId, !expand)
-        refresh(header.split)
+        toggleCollapsed(header.split, header.groupId)
+    }
+
+    /**
+     * INT-1, §13 Toggle Collapse of Current Group: a collapsed group, with or without a partial expand (COLL-8), expands fully; an
+     * expanded one collapses (COLL-2 selection move and COLL-7 animation happen in the refresh, SET-10). Returns whether the group is
+     * collapsed now, null if [split] has no such instance.
+     */
+    fun toggleCollapsed(split: SplitHandle, groupId: String): Boolean? {
+        val instance = state.instance(split, groupId) ?: return null
+        val expand = instance.collapsed
+        state.setCollapsed(split, groupId, !expand)
+        refresh(split)
+        return !expand
     }
 
     /** INT-3: Delete Group, with the middle-click confirmation setting (SET-5). */

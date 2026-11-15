@@ -65,3 +65,15 @@ class TabGroupsVfsListener : BulkFileListener {
         return "$protocol://$oldPath" to "$protocol://$newPath"
     }
 }
+
+/**
+ * §14: the settings changed; every open project's service re-applies the cached look ([TabGroupsService.settingsChanged]). Application
+ * listener in `plugin.xml`; reaches only services that already exist.
+ */
+class TabGroupsSettingsApplier : TabGroupsSettingsListener {
+    override fun settingsChanged() {
+        for (project in ProjectManager.getInstance().openProjects) {
+            if (!project.isDisposed) project.getServiceIfCreated(TabGroupsService::class.java)?.settingsChanged()
+        }
+    }
+}

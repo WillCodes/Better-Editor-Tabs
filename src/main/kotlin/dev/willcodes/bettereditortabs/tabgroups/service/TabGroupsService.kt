@@ -106,6 +106,9 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     /** Header clicks, hover and the expand / collapse decisions (INT-*, COLL-4). */
     private val headers = HeaderInteractions(project, state, refresh = { refresh(it) }, requestDelete = { s, g, t -> requestDelete(s, g, t) })
 
+    /** The §13 actions on the current group and on all groups (toggle, collapse others, expand all, move, select). */
+    private val commands = GroupCommands(project, state, headers, refresh = { refresh(it) }, addToGroup = { s, f, g -> addToGroup(s, f, g) })
+
     /** PERS-3 for detached windows restored after the first pass (see [restore]). Internal for tests. */
     internal val lateRestore: LateSplitRestore = LateSplitRestore(
         this,
@@ -146,7 +149,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
     fun createGroup(split: SplitHandle, file: VirtualFile): TabGroup? {
         if (!prepare(split, file)) return null
         leaveGroup(split, file)
-        val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor)
+        val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor, settings.startColor)
         val group = state.createGroup(split, file, color)
         refresh(split)
         arrange(split)
@@ -220,6 +223,26 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
      * are never touched by a delete. See [GroupDeletes].
      */
     fun requestDelete(split: SplitHandle, groupId: String, trigger: DeleteTrigger) = deletes.requestDelete(split, groupId, trigger)
+
+    // ---- §13 actions (the work is in GroupCommands; "current group" = the group of the context tab) ----------------------
+
+    /** §13 Toggle Collapse of Current Group; for an ungrouped tab the group this action collapsed last in [split] (see [GroupCommands]). */
+    fun toggleCurrentGroup(split: SplitHandle, file: VirtualFile?) = commands.toggleCurrent(split, file)
+    fun canToggleCurrentGroup(split: SplitHandle, file: VirtualFile?) = commands.toggleTarget(split, file) != null
+
+    /** §13 Collapse Other Groups / Expand All Groups (this split only, SPLIT-4); empty groups are not touched. */
+    fun collapseOtherGroups(split: SplitHandle, file: VirtualFile?) = commands.collapseOthers(split, file)
+    fun canCollapseOtherGroups(split: SplitHandle, file: VirtualFile?) = commands.canCollapseOthers(split, file)
+    fun expandAllGroups(split: SplitHandle) = commands.expandAll(split)
+    fun canExpandAllGroups(split: SplitHandle) = commands.canExpandAll(split)
+
+    /** §13 Move Tab to Next / Previous Group: as picking that group in CTX-2 ([addToGroup]). */
+    fun moveToAdjacentGroup(split: SplitHandle, file: VirtualFile, next: Boolean) = commands.moveToAdjacent(split, file, next)
+    fun canMoveToAdjacentGroup(split: SplitHandle, file: VirtualFile, next: Boolean) = commands.adjacentGroup(split, file, next) != null
+
+    /** §13 Select Next / Previous Tab in Group (cycling). */
+    fun selectInGroup(split: SplitHandle, file: VirtualFile, next: Boolean) = commands.selectInGroup(split, file, next)
+    fun canSelectInGroup(split: SplitHandle, file: VirtualFile) = commands.canSelectInGroup(split, file)
 
     // ---- auto-group rules (RULE-1..RULE-6, POP-2; the work is in AutoGroupRules) --------------------------------------
 
@@ -360,8 +383,20 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
 
     private fun attach() {
         if (tabBar.host === this) return
-        tabBar.style = StripStyle(settings.opacity, settings.nameLimit, settings.state.animateCollapse)
+        tabBar.style = currentStyle()
         tabBar.host = this
+    }
+
+    /** The strip look from the settings (SET-1, SET-2, SET-10). */
+    private fun currentStyle() = StripStyle(settings.opacity, settings.nameLimit, settings.state.animateCollapse)
+
+    /**
+     * §14: the settings changed (the settings page's Apply); the look the tab bars cache is re-applied at once (no restart): tints
+     * repaint with the new opacity, headers re-measure with the new name length. Everything else is read where it is used. Only once
+     * attached; before that the first [attach] takes the current settings.
+     */
+    internal fun settingsChanged() {
+        if (tabBar.host === this) tabBar.style = currentStyle()
     }
 
     // ---- persistence (PERS-1, PERS-3, MEM-4) ----------------------------------------------------------------------------
@@ -490,6 +525,7 @@ class TabGroupsService(private val project: Project) : Disposable, TabBarHost, P
      */
     override fun splitDisposed(split: SplitHandle) {
         state.splitRemoved(split)
+        commands.splitGone(split)
         empties.splitGone(split)
         lateRestore.splitDisposed(split)
         comeback.splitDisposed(split)

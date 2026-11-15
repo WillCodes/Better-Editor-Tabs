@@ -34,7 +34,7 @@ class NewEmptyGroupAction : AnAction(), DumbAware {
         /** Creates the empty group in [split] and opens its popup; returns the group's id, null if the split is gone. */
         fun createAndName(project: Project, split: SplitHandle, dataContext: DataContext?): String? {
             val group = project.service<TabGroupsService>().createEmptyGroup(split) ?: return null
-            GroupPopup.showForNewGroup(project, split, group.id, dataContext)
+            GroupPopup.showForGroup(project, split, group.id, dataContext)
             return group.id
         }
     }

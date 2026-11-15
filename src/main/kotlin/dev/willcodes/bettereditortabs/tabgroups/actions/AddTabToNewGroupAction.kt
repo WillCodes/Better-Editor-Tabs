@@ -28,6 +28,6 @@ open class AddTabToNewGroupAction : AnAction(), DumbAware {
 
     internal fun createAndName(context: TabContext, e: AnActionEvent) {
         val group = context.project.service<TabGroupsService>().createGroup(context.split, context.file) ?: return
-        GroupPopup.showForNewGroup(context.project, context.split, group.id, e.dataContext)
+        GroupPopup.showForGroup(context.project, context.split, group.id, e.dataContext)
     }
 }

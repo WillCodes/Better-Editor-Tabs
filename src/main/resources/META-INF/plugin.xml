@@ -53,6 +53,12 @@
         <projectViewNodeDecorator implementation="dev.willcodes.bettereditortabs.tabgroups.ui.projectview.RulePreviewDecorator"/>
         <projectService serviceInterface="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsUi"
                         serviceImplementation="dev.willcodes.bettereditortabs.tabgroups.ui.TabGroupsUiImpl"/>
+        <!-- §14: Settings > Editor > General > Editor Tabs - Groups, right below Editor Tabs (children are listed by name). A project configurable because it lists the project's
+             stash (SET-9); the values are application-level. parentId is Editor > General (EditorOptionsPanel): Editor Tabs is only an
+             editorOptionsProvider child of that page, not a node of the settings tree, so it cannot be a parent (see TabGroupsConfigurable). -->
+        <projectConfigurable parentId="preferences.editor" id="dev.willcodes.bettereditortabs.tabgroups"
+                             instance="dev.willcodes.bettereditortabs.tabgroups.settings.TabGroupsConfigurable"
+                             bundle="messages.BetterEditorTabsBundle" key="settings.display.name" nonDefaultProject="true"/>
     </extensions>
 
     <projectListeners>
@@ -70,6 +76,9 @@
         <!-- MEM-4: renamed and moved files keep their group; stored URLs follow. -->
         <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsVfsListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+        <!-- §14: settings take effect without a restart; the cached strip look is re-applied in every open project. -->
+        <listener class="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsSettingsApplier"
+                  topic="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsSettingsListener"/>
     </applicationListeners>
 
     <actions>
@@ -109,6 +118,60 @@
                     class="dev.willcodes.bettereditortabs.tabgroups.actions.RemoveTabFromGroupAction"/>
             <separator/>
             <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="KeepTabOpen"/>
+        </group>
+
+        <!-- §13: the other actions, reachable through Find Action and Window > Editor Tabs > Tab Groups. No default shortcuts. -->
+        <action id="BetterEditorTabs.RenameCurrentGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.RenameCurrentGroupAction"/>
+        <action id="BetterEditorTabs.ToggleCollapseCurrentGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.ToggleCollapseCurrentGroupAction"/>
+        <action id="BetterEditorTabs.CollapseOtherGroups"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.CollapseOtherGroupsAction"/>
+        <action id="BetterEditorTabs.ExpandAllGroups"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.ExpandAllGroupsAction"/>
+        <action id="BetterEditorTabs.MoveTabToNextGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.MoveTabToNextGroupAction"/>
+        <action id="BetterEditorTabs.MoveTabToPreviousGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.MoveTabToPreviousGroupAction"/>
+        <action id="BetterEditorTabs.SelectNextTabInGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.SelectNextTabInGroupAction"/>
+        <action id="BetterEditorTabs.SelectPreviousTabInGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.SelectPreviousTabInGroupAction"/>
+        <action id="BetterEditorTabs.UngroupCurrentGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.UngroupCurrentGroupAction"/>
+        <action id="BetterEditorTabs.StashCurrentGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.StashCurrentGroupAction"/>
+        <action id="BetterEditorTabs.DeleteCurrentGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.DeleteCurrentGroupAction"/>
+
+        <!-- §13: Window > Editor Tabs > Tab Groups. "EditorTabsGroup" is the Editor Tabs submenu of the Window menu (PlatformActions.xml:
+             WindowMenu > EditorTabsGroup); the block goes last, after a separator of its own. The submenu itself is not searchable in
+             Find Action (its actions are); the nested Add Tab to Group group stays searchable. -->
+        <group id="BetterEditorTabs.WindowMenuBlock">
+            <separator/>
+            <group id="BetterEditorTabs.WindowMenu" popup="true" searchable="false">
+                <reference ref="BetterEditorTabs.NewEmptyGroup"/>
+                <reference ref="BetterEditorTabs.AddTabToNewGroup"/>
+                <reference ref="BetterEditorTabs.AddTabToGroup"/>
+                <reference ref="BetterEditorTabs.RemoveTabFromGroup"/>
+                <separator/>
+                <reference ref="BetterEditorTabs.RenameCurrentGroup"/>
+                <reference ref="BetterEditorTabs.ToggleCollapseCurrentGroup"/>
+                <reference ref="BetterEditorTabs.CollapseOtherGroups"/>
+                <reference ref="BetterEditorTabs.ExpandAllGroups"/>
+                <separator/>
+                <reference ref="BetterEditorTabs.MoveTabToNextGroup"/>
+                <reference ref="BetterEditorTabs.MoveTabToPreviousGroup"/>
+                <reference ref="BetterEditorTabs.SelectNextTabInGroup"/>
+                <reference ref="BetterEditorTabs.SelectPreviousTabInGroup"/>
+                <separator/>
+                <reference ref="BetterEditorTabs.UngroupCurrentGroup"/>
+                <reference ref="BetterEditorTabs.StashCurrentGroup"/>
+                <reference ref="BetterEditorTabs.DeleteCurrentGroup"/>
+                <separator/>
+                <reference ref="BetterEditorTabs.RestoreTabGroup"/>
+            </group>
+            <add-to-group group-id="EditorTabsGroup" anchor="last"/>
         </group>
     </actions>
 </idea-plugin>
