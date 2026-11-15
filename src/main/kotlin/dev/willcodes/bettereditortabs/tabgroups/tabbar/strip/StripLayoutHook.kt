@@ -8,7 +8,7 @@ import java.awt.Rectangle
 import javax.swing.JPanel
 
 /**
- * The strip's post-layout hook (HDR placement, bug 11 backdrop, empty state, POP-4 outline, LINE-6 line): a zero-size child that is always "invalid",
+ * The strip's post-layout hook (header placement, pills-only backdrop, empty state, rule outline, Islands group line): a zero-size child that is always "invalid",
  * so `Container.validateTree` of the tab component calls its [doLayout] right after the platform finished its own `doLayout`. That is
  * the only synchronous "after platform layout" callback available without subclassing the (private) editor tab component.
  *
@@ -31,7 +31,7 @@ internal class StripLayoutHook(
     private val backdrop: StripBackdrop,
     private val emptyOverlay: EmptyEditorOverlay,
     private val outline: RuleOutline,
-    /** LINE-6: the Islands group line and, per group to underline, its colour and visible units (see [GroupLine.refresh]). */
+    /** The Islands group line and, per group to underline, its colour and visible units (see [GroupLine.refresh]). */
     private val groupLine: GroupLine,
     private val lineGroups: () -> List<Pair<Color, List<GroupLines.Unit>>>,
     private val logicalOrder: () -> List<VirtualFile>,
@@ -73,24 +73,24 @@ internal class StripLayoutHook(
         verticalRows.apply()
         spareRow.apply()
         headers.place(geometry.pillAreas(), preview.gap)
-        counts.place(geometry.countAreas()) // COLL-8: after the headers, so the count stays above the drop slot
+        counts.place(geometry.countAreas()) // After the headers, so the count stays above the drop slot
         drag().updateGap()
         // a drag that takes the last tab or group out of the strip keeps the editor showing, as the platform's drag-out does
         val dragging = collapse.keepEditor || transit.state != null
-        // Also with placement None (IDE-5): the strip is gone but the split still has only hidden tabs, and without the overlay the
+        // Also with placement None: the strip is gone but the split still has only hidden tabs, and without the overlay the
         // platform paints a blank editor area there (no strip to paint then).
-        // SPLIT-6: the placeholder tab of a temporary split is hidden like a collapsed tab, so the split shows the empty state too
+        // The placeholder tab of a temporary split is hidden like a collapsed tab, so the split shows the empty state too
         val showEmpty = tabs.width > 0 && tabs.isEmptyVisible && (collapse.hasHiddenFiles() || StripReader.holdsPlaceholder(tabs)) && !dragging
-        // bug 11: a strip that shows only pills (no tab for the platform to draw a strip for) gets its row's background and lines. The
+        // A strip that shows only pills (no tab for the platform to draw a strip for) gets its row's background and lines. The
         // backdrop goes to the bottom of the z-order first and the overlay below it after, so that the row's lines show over the overlay too.
         val pillsOnly = tabs.width > 0 && !tabs.isHideTabs && tabs.isEmptyVisible && layout.hasLoosePills()
         backdrop.update(pillsOnly, if (pillsOnly) geometry.emptyStrip(tabs.tabsPosition) else Rectangle())
         emptyOverlay.update(showEmpty, if (tabs.isHideTabs) Rectangle() else geometry.emptyStrip(tabs.tabsPosition))
         updateOutline()
-        groupLine.refresh(!tabs.isHideTabs, lineGroups) // LINE-6: after the headers and counts are placed
+        groupLine.refresh(!tabs.isHideTabs, lineGroups) // After the headers and counts are placed
     }
 
-    /** Brings the POP-4 outline in line with the current tab bounds (also called when the outline is set). */
+    /** Brings the rule outline in line with the current tab bounds (also called when the outline is set). */
     fun updateOutline() = outline.refresh(!tabs.isHideTabs, preview.draggedFile) {
         geometry.units().filterIsInstance<StripUnit.Tab>().map { it.file to it.rect }
     }

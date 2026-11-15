@@ -18,7 +18,7 @@ import javax.swing.SwingUtilities
 private val LOG = logger<TabPlacement>()
 
 /**
- * MEM-2 for one split: a file opened for the first time in this split never lands inside a group.
+ * For one split: a file opened for the first time in this split never lands inside a group.
  *
  * The platform inserts a new tab at `selectedIndex + 1` (or at the end with "open tabs at the end", `EditorWindow.addComposite`),
  * so with a group member selected it lands in the middle of the group. `TabsListener` has no "tab added" callback, but
@@ -31,8 +31,8 @@ private val LOG = logger<TabPlacement>()
  * tab list) and [TabBarAdapter.applyOrder]. [isDragActive] tells that a drag is running (then nothing is placed: re-orders by the
  * drag are not new tabs).
  *
- * SPLIT-2: the files that are new in this split are reported to [opened] first (the host may make them members of a group; it
- * refreshes the split itself), then MEM-2 is applied to the ones that are still not members. [reportInitial]: the split appeared after
+ * The files that are new in this split are reported to [opened] first (the host may make them members of a group; it
+ * refreshes the split itself), then the placement rule is applied to the ones that are still not members. [reportInitial]: the split appeared after
  * the host attached (Split Right, Open in Split, a new window): the platform adds the first tab's label before the split's bar exists
  * (`EditorWindow.split` adds the window, then `openFileInNewCompositeInEdt` inserts the tab; our bar is created from the `fileOpened`
  * that follows), so the files it already has count as opened here. Splits that exist when the host attaches (a restart, the first
@@ -44,7 +44,7 @@ internal class TabPlacement(
     private val isDragActive: () -> Boolean,
     private val opened: (List<VirtualFile>) -> Unit,
     reportInitial: Boolean,
-    /** A tab label was added to the strip (any tab, also a placeholder): SPLIT-6 looks at the split once the event is over. */
+    /** A tab label was added to the strip (any tab, also a placeholder): the temporary-split logic looks at the split once the event is over. */
     private val tabsAdded: () -> Unit,
     parent: Disposable,
 ) {
@@ -98,7 +98,7 @@ internal class TabPlacement(
         if (added.isEmpty() || isDragActive()) return
         opened(added.toList())
         if (adapter.ownsSort) {
-            // IDE-2: the sort decides where a new tab goes, so MEM-2's move would only be undone by it
+            // Alphabetical sorting decides where a new tab goes, so the placement move would only be undone by it
             adapter.sortNow()
             return
         }

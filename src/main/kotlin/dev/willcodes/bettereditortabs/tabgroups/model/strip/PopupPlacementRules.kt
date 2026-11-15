@@ -6,7 +6,7 @@ import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * Where the group popup and the hover list open (§6), in screen coordinates. They open directly below the header of a strip on top
+ * Where the group popup and the hover list open, in screen coordinates. They open directly below the header of a strip on top
  * (Chrome style), and on the side facing the editor for the other placements: above the header for Bottom, right of it for Left,
  * left of it for Right. If the popup does not fit there it flips to the opposite side when that has more room, and it is shifted
  * along the strip to stay on screen.

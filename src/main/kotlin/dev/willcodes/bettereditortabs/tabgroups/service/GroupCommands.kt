@@ -12,13 +12,13 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * The §13 commands that act on the "current group" (the group of the context tab, see `actions/TabContext`) or on all groups of a
+ * The commands that act on the "current group" (the group of the context tab, see `actions/TabContext`) or on all groups of a
  * split, for [TabGroupsService], which delegates to it: Toggle Collapse of Current Group, Collapse Other Groups, Expand All Groups,
  * Move Tab to Next / Previous Group, Select Next / Previous Tab in Group. The decisions are in [GroupCommandRules]. Every command has a
  * `can...` query for the actions' `update` (cheap, no side effects). Shares the service's [state]; [headers] does the collapsing and the
  * selecting, [refresh] and [addToGroup] are the service's own. EDT only.
  *
- * Toggle Collapse (decision, amended §13): collapsing moves the selection out of the group (COLL-2), so the context tab is no longer
+ * Toggle Collapse: collapsing moves the selection out of the group, so the context tab is no longer
  * a member and the action could never expand the group again. Therefore an ungrouped context tab targets the group this action
  * collapsed last in that split, if it still exists there and is still collapsed ([lastCollapsed], session memory, dropped with the split).
  */
@@ -48,7 +48,7 @@ internal class GroupCommands(
         return GroupCommandRules.toggleTarget(file?.let { groupIdOf(split, it) }, remembered, rememberedCollapsed)
     }
 
-    /** §13 Toggle Collapse of Current Group; false if there was nothing to toggle. */
+    /** Toggle Collapse of Current Group; false if there was nothing to toggle. */
     fun toggleCurrent(split: SplitHandle, file: VirtualFile?): Boolean {
         val id = toggleTarget(split, file) ?: return false
         val collapsed = headers.toggleCollapsed(split, id) ?: return false
@@ -64,7 +64,7 @@ internal class GroupCommands(
     /** Collapse Other Groups is enabled for a usable tab while some other group is expanded or partly shown. */
     fun canCollapseOthers(split: SplitHandle, file: VirtualFile?): Boolean = collapseOthersTargets(split, file).isNotEmpty()
 
-    /** §13 Collapse Other Groups: one refresh (animated per SET-10). Returns whether anything changed. */
+    /** Collapse Other Groups: one refresh (animated when animations are on). Returns whether anything changed. */
     fun collapseOthers(split: SplitHandle, file: VirtualFile?): Boolean {
         val targets = collapseOthersTargets(split, file)
         if (targets.isEmpty()) return false
@@ -75,7 +75,7 @@ internal class GroupCommands(
 
     fun canExpandAll(split: SplitHandle): Boolean = GroupCommandRules.expandAll(states(split)).isNotEmpty()
 
-    /** §13 Expand All Groups: every collapsed or partly shown group of [split] expands fully, in one refresh. */
+    /** Expand All Groups: every collapsed or partly shown group of [split] expands fully, in one refresh. */
     fun expandAll(split: SplitHandle): Boolean {
         val targets = GroupCommandRules.expandAll(states(split))
         if (targets.isEmpty()) return false
@@ -105,7 +105,7 @@ internal class GroupCommands(
         return if (next) GroupCommandRules.nextGroup(strip, own, tabIndex) else GroupCommandRules.previousGroup(strip, own, tabIndex)
     }
 
-    /** §13 Move Tab to Next / Previous Group: like picking that group in CTX-2 ([addToGroup]: end of the group, collapsed target expands, MEM-7). */
+    /** Move Tab to Next / Previous Group: like picking that group from the tab's context menu ([addToGroup]: end of the group, collapsed target expands, a preview tab becomes permanent). */
     fun moveToAdjacent(split: SplitHandle, file: VirtualFile, next: Boolean): Boolean {
         val target = adjacentGroup(split, file, next) ?: return false
         return addToGroup(split, file, target)
@@ -123,8 +123,8 @@ internal class GroupCommands(
     fun canSelectInGroup(split: SplitHandle, file: VirtualFile): Boolean = (openMembers(split, file)?.second?.size ?: 0) >= 2
 
     /**
-     * §13 Select Next / Previous Tab in Group: selects and focuses the next or previous open member, cycling at the ends. A member
-     * hidden by a collapsed group is shown partly (COLL-8), as when picking it in the tab list ([HeaderInteractions.openFromTabList]).
+     * Select Next / Previous Tab in Group: selects and focuses the next or previous open member, cycling at the ends. A member
+     * hidden by a collapsed group is shown partly, as when picking it in the tab list ([HeaderInteractions.openFromTabList]).
      */
     fun selectInGroup(split: SplitHandle, file: VirtualFile, next: Boolean): Boolean {
         val (instance, members) = openMembers(split, file) ?: return false

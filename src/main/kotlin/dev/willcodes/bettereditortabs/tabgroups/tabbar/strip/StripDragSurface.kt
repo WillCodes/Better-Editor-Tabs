@@ -14,7 +14,7 @@ import javax.swing.SwingUtilities
  *
  * - the drag preview: previewed membership, the drop slot ([DragGap]) and the space for a tab or group dragged in from another split
  *   ([DragPreview], [ForeignGap]);
- * - the transit (DRAG-5): the dragged tab that is out of this strip while its drag is over another split ([TabTransit]), and a dragged
+ * - the transit: the dragged tab that is out of this strip while its drag is over another split ([TabTransit]), and a dragged
  *   group in the same situation ([setGroupTransit]);
  * - the platform's own tab drag: whether it runs in or into this strip, which the pills must ignore ([isPlatformTabDragActive]).
  *
@@ -54,7 +54,7 @@ internal class StripDragSurface(
      */
     fun setDragPreview(file: VirtualFile, groupId: String?) = setDragPreview(file, groupId, emptyMap())
 
-    /** [setDragPreview] with the drag's decision for the parked groups (DRAG-8: group id -> the dragged tab stands in front of its pill). */
+    /** [setDragPreview] with the drag's decision for the parked groups (group id -> the dragged tab stands in front of its pill). */
     fun setDragPreview(file: VirtualFile, groupId: String?, parkedSides: Map<String, Boolean>) {
         if (!alive()) return
         preview.setMembership(file, groupId)
@@ -130,13 +130,13 @@ internal class StripDragSurface(
         if (preview.layoutGap(tabs.isHorizontalTabs, { geometry.units() }, foreign)) headers.raise(preview.gap)
     }
 
-    // ---- the dragged tab leaves the strip (DRAG-5) --------------------------------------------------------------------------------
+    // ---- the dragged tab leaves the strip --------------------------------------------------------------------------------
 
     /**
      * The tab of [file] leaves this strip while its drag is over another split's strip, as it does in the platform's own drag out (see
      * [TabTransit]): the editor area selects the tab it would select if this one was closed, then the tab is hidden. The strip must be
      * in the order the drag began with (the caller puts it back first) and have no drag preview. The pill of a group whose only tab it
-     * is stays where it was (DRAG-8). False (nothing changed) if the tab cannot leave. Close it with [endTransit].
+     * is stays where it was. False (nothing changed) if the tab cannot leave. Close it with [endTransit].
      */
     fun beginTransit(file: VirtualFile): Boolean {
         if (!alive()) return false

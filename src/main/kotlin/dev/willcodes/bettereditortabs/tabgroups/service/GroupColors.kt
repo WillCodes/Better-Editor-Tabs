@@ -5,7 +5,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
 import java.awt.Color
 
 /**
- * The §3.3 palette as theme-aware colours: one [JBColor] per [GroupColor], created once. The tab bar hands the same instances back
+ * The palette as theme-aware colours: one [JBColor] per [GroupColor], created once. The tab bar hands the same instances back
  * in `groupMovedIn`, so [colorOf] can map a decoration's colour to its [GroupColor] again.
  */
 object GroupColors {

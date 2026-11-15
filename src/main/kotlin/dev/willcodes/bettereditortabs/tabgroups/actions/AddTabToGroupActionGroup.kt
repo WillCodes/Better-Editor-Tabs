@@ -13,14 +13,15 @@ import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
 import dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService
 
 /**
- * CTX-2: the Add Tab to Group submenu: every group of the project in creation order (colour swatch and name, "Unnamed group (Blue)" for
+ * The Add Tab to Group submenu: every group of the project in creation order (colour swatch and name, "Unnamed group (Blue)" for
  * unnamed ones), a separator, then New Group. The items are bound to the tab that is right-clicked when the menu opens, so they do not
- * depend on the context menu still being up when one is picked. The whole submenu is disabled for pinned tabs (CTX-4).
+ * depend on the context menu still being up when one is picked. The whole submenu is disabled for pinned tabs.
  */
 class AddTabToGroupActionGroup : ActionGroup(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (hideOutsideNewUi(e)) return
         val context = TabContext.of(e)
         e.presentation.isEnabled = context != null && !context.pinned
     }

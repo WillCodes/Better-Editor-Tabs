@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 /**
- * One element of a strip's order as the plugin keeps it (RULE-6): a tab, or the pill of an *empty* group instance (a group with an
+ * One element of a strip's order as the plugin keeps it: a tab, or the pill of an *empty* group instance (a group with an
  * enabled auto-group rule whose tabs are all gone, shown as its pill alone, like a collapsed group's). A plain file order cannot say where
  * an empty pill stands, because it has no file; a sequence of items can. Pure, no platform types, unit tested.
  */
@@ -13,7 +13,7 @@ sealed class StripItem<out T> {
 /** The files of [this] sequence, in order (the empty pills dropped). */
 fun <T> List<StripItem<T>>.files(): List<T> = mapNotNull { (it as? StripItem.Tab<T>)?.key }
 
-/** RULE-6: where the pills of empty group instances stand, derived from a sequence of strip items. */
+/** Where the pills of empty group instances stand, derived from a sequence of strip items. */
 object EmptyPillSpots {
     /**
      * For every [StripItem.EmptyPill] of [sequence], in sequence order, the key of the last tab in front of it (null: no tab in front,
@@ -32,7 +32,7 @@ object EmptyPillSpots {
     }
 
     /**
-     * Fix round 2, bug 1: an empty pill never stands inside another group's span. The span of a group is the stretch of [sequence] from
+     * An empty pill never stands inside another group's span. The span of a group is the stretch of [sequence] from
      * its first to its last member tab ([groupOf] says which group a tab belongs to, null = ungrouped). An [StripItem.EmptyPill] strictly
      * inside such a stretch is moved to right behind the span's last tab (several pills keep their order), which is where it stays when a
      * group grows at its end (`[G a b][E] c` with `c` joining G is `[G a b c][E]`). The sequence is returned unchanged (the same list) if

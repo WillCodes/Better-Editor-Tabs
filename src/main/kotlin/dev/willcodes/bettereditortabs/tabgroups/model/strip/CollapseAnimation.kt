@@ -2,7 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 import kotlin.math.roundToInt
 
-/** Length of a full collapse or expand animation (COLL-7), in milliseconds. */
+/** Length of a full collapse or expand animation, in milliseconds. */
 const val COLLAPSE_ANIMATION_MS = 150L
 
 /** Cubic ease-out: fast at first, slowing towards the end. [t] is clamped to 0..1. */
@@ -13,7 +13,7 @@ fun easeOut(t: Double): Double {
 }
 
 /**
- * One collapse / expand animation of a group (COLL-7), as pure data. The *extent* is how much of the group's tabs is shown:
+ * One collapse / expand animation of a group, as pure data. The *extent* is how much of the group's tabs is shown:
  * 1.0 = fully shown, 0.0 = gone. A collapse runs 1 to 0, an expand 0 to 1. Times are nanoseconds on any monotonic clock.
  */
 data class CollapseTween(val from: Double, val to: Double, val startNanos: Long, val durationNanos: Long) {

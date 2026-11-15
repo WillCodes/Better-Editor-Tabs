@@ -20,13 +20,13 @@ import javax.swing.SwingUtilities
 private val LOG = logger<StripSort>()
 
 /**
- * IDE-2 with groups, for one strip: while "Sort tabs alphabetically" is on and the strip has at least one group, the plugin sorts the
+ * The alphabetical sort with groups, for one strip: while "Sort tabs alphabetically" is on and the strip has at least one group, the plugin sorts the
  * strip (pinned tabs, then the groups by name with unnamed ones last, each group's tabs sorted, then the ungrouped tabs; the rule is
  * [SortedOrder]) and the platform's own sorting is off for it. A strip without groups is left to the platform exactly as before: its
  * alphabetical *view* (`JBEditorTabs.isAlphabeticalMode` follows the setting).
  *
  * Why not the platform's sort: it is only a view (`JBTabsImpl.getVisibleInfos` returns a sorted copy), it knows no groups, so members
- * would land anywhere and a group could never be contiguous (INV-2). So when the strip starts to be ours the view sorting is switched
+ * would land anywhere and a group could never be contiguous. So when the strip starts to be ours the view sorting is switched
  * off (`setAlphabeticalMode(false)`, which makes `JBEditorTabs` ignore the setting for good, `isAlphabeticalModeChanged`), the manual
  * order is remembered, and the strip is re-ordered physically ([applyOrder], the one correct way around collapsed groups). When it stops
  * being ours (sorting off, the last group gone, the strip disposed) the manual order is put back ([SortedOrder.restoreManual]) and
@@ -57,9 +57,9 @@ internal class StripSort(
     private val dragRunning: () -> Boolean,
     /** `StripEvents.stripSorted`. */
     private val report: (List<GroupDecoration>) -> Unit,
-    /** RULE-6: the groups shown as their pill alone, with the tab each pill stands behind (null: in front of every tab). */
+    /** The groups shown as their pill alone, with the tab each pill stands behind (null: in front of every tab). */
     private val emptyAnchors: () -> Map<String, VirtualFile?> = { emptyMap() },
-    /** RULE-6: puts empty groups' pills behind the given tabs (the adapter's `placeEmptyPills`). */
+    /** Puts empty groups' pills behind the given tabs (the adapter's `placeEmptyPills`). */
     private val placeEmpty: (Map<String, VirtualFile?>) -> Unit = {},
 ) {
     /** The plugin sorts this strip (see the class comment). */
@@ -139,7 +139,7 @@ internal class StripSort(
         }
     }
 
-    /** The manual order while the sort is ours (stored by the host, PERS-1, so that it survives a restart); null otherwise. */
+    /** The manual order while the sort is ours (stored by the host, so that it survives a restart); null otherwise. */
     fun manualOrder(): List<VirtualFile>? = if (isOwning) manual else null
 
     /**
@@ -183,7 +183,7 @@ internal class StripSort(
         manual = seeded ?: logicalOrder()
         seeded = null
         isOwning = true
-        LOG.info("IDE-2: the plugin sorts this strip now (${manual.size} tabs)")
+        LOG.info("Alphabetical sorting: the plugin sorts this strip now (${manual.size} tabs)")
     }
 
     /** Sorting was switched off while the project was closed: the stored manual order is put back once, with the groups in it. */
@@ -216,7 +216,7 @@ internal class StripSort(
     }
 
     /**
-     * RULE-6: the pill of an empty group (a rule keeps its instance without tabs) stands among the groups by name, like the groups
+     * The pill of an empty group (a rule keeps its instance without tabs) stands among the groups by name, like the groups
      * with tabs: behind the last tab of the group that sorts before it.
      */
     private fun placeEmptyGroups(items: List<SortedOrder.Tab<VirtualFile>>, groups: List<GroupDecoration>, wanted: List<VirtualFile>) {
@@ -238,7 +238,7 @@ internal class StripSort(
         manual = emptyList()
         val shown = if (groups.isEmpty()) groups else derive(groups, logicalOrder()) // before the platform's view sorting is back
         giveBack()
-        LOG.info("IDE-2: the plugin no longer sorts this strip")
+        LOG.info("Alphabetical sorting: the plugin no longer sorts this strip")
         if (shown != groups) report(shown)
     }
 

@@ -14,9 +14,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternal
 import java.awt.Rectangle
 
 /**
- * The operations of [TabBar] that move a group between splits or open its files, without a drag by the user: Split Right / Down
- * (SPLIT-2, INT-6), Move to another split (SPLIT-5, LIFE-3a), opening files in a given order (LIFE-4, LIFE-5) and placing an empty
- * instance's pill (PERS-3, RULE-6). They build [MoveUnit]s and run the drag code's group moves, or [GroupReopen]. EDT only.
+ * The operations of [TabBar] that move a group between splits or open its files, without a drag by the user: Split Right / Down,
+ * Move to another split, opening files in a given order and placing an empty
+ * instance's pill. They build [MoveUnit]s and run the drag code's group moves, or [GroupReopen]. EDT only.
  */
 internal class GroupTransfers(
     private val project: Project,
@@ -72,7 +72,7 @@ internal class GroupTransfers(
         if (tabBar.host == null || from == to) return false
         val source = registry.barFor(from) ?: return false
         val target = registry.barFor(to) ?: return false
-        // an empty instance (RULE-6, SPLIT-6: no tab, its pill alone) moves too, to the end of the target's strip
+        // an empty instance (no tab, its pill alone) moves too, to the end of the target's strip
         val unit = source.dnd.buildUnits().firstOrNull { it.groupId == groupId && (it.keys.isNotEmpty() || it.isEmptyPill) } ?: return false
         val targetUnits = target.dnd.buildUnits()
         source.dnd.moveGroupToSplit(unit, target.dnd, targetUnits, targetUnits.size, selectedBefore = null, focus = false)

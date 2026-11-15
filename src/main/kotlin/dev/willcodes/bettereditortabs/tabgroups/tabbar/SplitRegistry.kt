@@ -14,10 +14,10 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.swing.SwingUtilities
 
 /**
- * The per-split state of [TabBar]: one [SplitBar] per editor split (SPLIT-2), created when a split appears and disposed with it, the
- * focus history that orders the splits ([TabBar.recentSplits]), and the per-bar dispatch of file events (MEM-1 close, MEM-3 pin).
+ * The per-split state of [TabBar]: one [SplitBar] per editor split, created when a split appears and disposed with it, the
+ * focus history that orders the splits ([TabBar.recentSplits]), and the per-bar dispatch of file events (close, pin).
  * The bars are children of [parent] in the disposal chain (`Project` -> [TabBar] -> `SplitBar`); [onBarCreated] is the hook for what a
- * new bar needs besides its own set-up (the rule preview, POP-4). EDT only, like the facade.
+ * new bar needs besides its own set-up (the rule preview). EDT only, like the facade.
  */
 internal class SplitRegistry(
     private val project: Project,
@@ -48,7 +48,7 @@ internal class SplitRegistry(
     /** The editor windows of the project (every split, temporary ones included). */
     fun windows(): List<EditorWindow> = FileEditorManagerEx.getInstanceEx(project).windows.toList()
 
-    /** The split bar of [window] while a host is attached (null otherwise): the overflow list (COLL-6) reads its groups and reports picks. */
+    /** The split bar of [window] while a host is attached (null otherwise): the overflow list reads its groups and reports picks. */
     fun splitBarOf(window: EditorWindow): SplitBar? = if (host() == null) null else bars[window]
 
     fun barFor(split: SplitHandle): SplitBar? {
@@ -96,10 +96,10 @@ internal class SplitRegistry(
         for ((w, bar) in bars.entries.toList()) {
             if (w !in current || w.isDisposed) {
                 bars.remove(w)
-                temporary.windowGone(w, bar) // SPLIT-6: a temporary split that went without its placeholder being closed
+                temporary.windowGone(w, bar) // a temporary split that went without its placeholder being closed
                 Disposer.dispose(bar)
                 // An unsplit adds the tabs of the merged-away split to the surviving one in the same event, and that split's report of them
-                // (SPLIT-2) is queued: the host must still know the disposed split's groups when it gets it, so it hears of the disposal after.
+                // is queued: the host must still know the disposed split's groups when it gets it, so it hears of the disposal after.
                 if (bars.values.any { it.hasPendingReport }) {
                     SwingUtilities.invokeLater { if (host() === h) h.splitDisposed(SplitHandle(w)) }
                 }
@@ -127,7 +127,7 @@ internal class SplitRegistry(
         val h = host() ?: return
         for (bar in bars.values.toList()) {
             if (TabClose.openTabs(bar.split.window, listOf(file)).isNotEmpty()) bar.adapter.pinChanged() // no group shifts (see pinChanged)
-            bar.adapter.recheckSort() // IDE-2: pinned tabs sort first
+            bar.adapter.recheckSort() // pinned tabs sort first
         }
         for (bar in bars.values.toList()) {
             if (bar.groupIdOf(file) == null) continue

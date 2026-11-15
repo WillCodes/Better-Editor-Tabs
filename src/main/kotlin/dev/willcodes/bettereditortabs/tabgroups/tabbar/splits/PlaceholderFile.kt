@@ -9,7 +9,7 @@ import com.intellij.testFramework.LightVirtualFile
 import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
 
 /**
- * The placeholder tab of a temporary split (SPLIT-6): an in-memory file that keeps a split alive while it holds only empty groups. An
+ * The placeholder tab of a temporary split: an in-memory file that keeps a split alive while it holds only empty groups. An
  * `EditorWindow` closes (or is merged away) when its last tab closes, and `EditorWindow.split` / `FileEditorManagerImpl.openFileInNewWindow`
  * need a file, so an empty group header dropped on an editor edge, or a split whose last real tab leaves while an empty group stands in
  * it, would otherwise be impossible or lose the group. The placeholder is opened in that split and hidden at once ([TemporarySplits]).
@@ -52,5 +52,5 @@ internal class PlaceholderFile(
     override fun isIncludedInDocumentHistory(project: Project): Boolean = false
 }
 
-/** True if [file] is the placeholder of a temporary split (SPLIT-6): never a tab of the user's. */
+/** True if [file] is the placeholder of a temporary split: never a tab of the user's. */
 internal fun isPlaceholder(file: VirtualFile?): Boolean = file is PlaceholderFile

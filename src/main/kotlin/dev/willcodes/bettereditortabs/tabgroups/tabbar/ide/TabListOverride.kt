@@ -20,7 +20,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternal
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 
 /**
- * Wraps the built-in `TabList` action, the "more" button of a tab strip (COLL-6).
+ * Wraps the built-in `TabList` action, the "more" button of a tab strip.
  *
  * The built-in `com.intellij.ide.actions.TabListAction` is internal and final; like [ReopenClosedTabAction] this class is registered
  * with `overrides="true"` under the same id and implements the public marker [OverridingAction], and the replaced action is reached

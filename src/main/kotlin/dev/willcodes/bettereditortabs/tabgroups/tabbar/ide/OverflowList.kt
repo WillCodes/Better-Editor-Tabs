@@ -67,15 +67,15 @@ internal class OverflowEntry(
 )
 
 /**
- * The overflow ("more") list of an editor split's strip with groups (COLL-6), shown by [TabListOverride] instead of the platform's
+ * The overflow ("more") list of an editor split's strip with groups, shown by [TabListOverride] instead of the platform's
  * `JBTabsImpl.showMorePopup`, whose list never contains the tabs of collapsed groups (they are hidden `TabInfo`s, so not in
  * `getVisibleInfos()`).
  *
  * What it lists and in which order is [OverflowEntries]'s business (pure, tested): in the strip's logical order, every tab the layout
  * cuts off (the platform's own rule, `TabLayout.isTabHidden` on the visible infos) plus all tabs of collapsed groups; each run of a
  * group's tabs starts with a heading, the group's name (or "Unnamed group") in italics. A group's heading and tabs are drawn on the
- * group's tint (the group colour mixed into the popup background at the tint opacity, SET-1), so the background tells the groups
- * apart; there are no separator lines (user request, Stage 8 fix round 1).
+ * group's tint (the group colour mixed into the popup background at the tint opacity), so the background tells the groups
+ * apart; there are no separator lines.
  *
  * It mirrors the platform's list (`JBTabsImpl.showListPopup`, read in the 262 sources): a `ListPopupStep` popup anchored below
  * `lastLayoutPass.moreRect`; a row is icon + coloured title + a hover action icon on the right (a pinned tab shows the pin and its
@@ -84,7 +84,7 @@ internal class OverflowEntry(
  * the tab theme's underline colour and height at the row's leading edge) and the icons of the other tabs are faded
  * (`EditorTabs.unselectedAlpha`), as in the platform's list. Differences, deliberate: the renderer is our own (the platform's is a
  * private class), the action icon is always on the right. Choosing a visible tab selects it with focus (`JBTabsImpl.select`); choosing a tab of a collapsed group goes to
- * [SplitBar.collapsedTabChosen] (the group expands, COLL-4 / INT-5), the tab is not selected here.
+ * [SplitBar.collapsedTabChosen] (the group expands), the tab is not selected here.
  *
  * Uses (all public members; javap-checked in 262 and 263): `JBTabsImpl.lastLayoutPass`, `LayoutPassInfo.moreRect`,
  * `JBTabsImpl.tabsPosition`, `TabLayout.isTabHidden` (layout from [PlatformInternals.tabLayout]), `JBTabsImpl.select` / `removeTab`,
@@ -127,7 +127,7 @@ internal object OverflowList {
         return result
     }
 
-    /** The title of a group heading: its name, or the generic title for an unnamed group (HDR-4). */
+    /** The title of a group heading: its name, or the generic title for an unnamed group. */
     fun headingText(heading: OverflowRow.Heading): String =
         if (heading.isUnnamed) BetterEditorTabsBundle.message("overflow.group.unnamed") else heading.name
 
@@ -327,8 +327,8 @@ internal object OverflowList {
                 info.coloredText.appendToComponent(text)
                 action.icon = actionIcon(info, index == hovered)
                 // The components are reused for every row: without this their cached preferred sizes stay those of the first row
-                // measured, so the list is as wide as that row and a longer row overflows it, its close button outside the popup
-                // (user report, Stage 8 fix round 2). The platform's renderer does the same (`component.invalidate()`).
+                // measured, so the list is as wide as that row and a longer row overflows it, its close button outside the popup.
+                // The platform's renderer does the same (`component.invalidate()`).
                 for (c in listOf(text, icon, action, header, row, root)) c.invalidate()
                 return root
             }
@@ -364,7 +364,7 @@ internal object OverflowList {
             }
         }
 
-        /** The tint opacity of the strip (SET-1), as the strip's own tabs use it. */
+        /** The tint opacity of the strip, as the strip's own tabs use it. */
         private fun tintOpacity(): Double = bar.adapter.currentStyle().opacity.coerceIn(0.0, 1.0)
     }
 

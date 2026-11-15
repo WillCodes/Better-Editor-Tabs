@@ -1,8 +1,8 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * COL-1: the colour for a new group. [fixed] (the COL-2 / SET-3 override) wins when set. Otherwise the first palette colour that is not
- * in [inUse], going round the table order from [start] (SET-3a, the starting colour; the first colour by default); if all nine are in
+ * The colour for a new group. [fixed] (the colour the user chose, an override) wins when set. Otherwise the first palette colour that is not
+ * in [inUse], going round the table order from [start] (the starting colour; the first colour by default); if all nine are in
  * use, the least-used one, earliest in that order on a tie.
  *
  * [inUse] has one entry per group, not per instance: a group linked across splits counts once.
@@ -15,7 +15,7 @@ fun nextColor(inUse: Collection<GroupColor>, fixed: GroupColor? = null, start: G
     return order.minByOrNull { counts.getValue(it) }!!
 }
 
-/** The palette in table order, rotated so that it begins at [start] and wraps round (SET-3a). */
+/** The palette in table order, rotated so that it begins at [start] and wraps round. */
 fun colorOrder(start: GroupColor): List<GroupColor> {
     val all = GroupColor.values().toList()
     return all.drop(start.ordinal) + all.take(start.ordinal)

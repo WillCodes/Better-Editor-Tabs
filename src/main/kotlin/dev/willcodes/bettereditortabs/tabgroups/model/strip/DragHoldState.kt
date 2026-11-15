@@ -2,7 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 import java.awt.Point
 
-/** Tunables of hold-to-join (DRAG-3). */
+/** Tunables of hold-to-join. */
 object DragHoldDefaults {
     /** How long the pointer must stay in a group's trailing slot before releasing adds the tab to the group. */
     const val HOLD_MILLIS = 400

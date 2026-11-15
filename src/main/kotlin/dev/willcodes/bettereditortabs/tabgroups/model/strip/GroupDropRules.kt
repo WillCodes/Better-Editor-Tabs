@@ -13,7 +13,7 @@ enum class EditorSide {
     val newSplitFirst: Boolean get() = this == TOP || this == LEFT
 }
 
-/** What a dragged group becomes on release (INT-6, SPLIT-5), see [GroupDropRules.resolve]. */
+/** What a dragged group becomes on release, see [GroupDropRules.resolve]. */
 enum class GroupLanding {
     /** A tab strip (this split's own, or another split's). */
     STRIP,
@@ -32,7 +32,7 @@ enum class GroupLanding {
 }
 
 /**
- * Pure choice of what a group drag will do on release (INT-6, user request 2026-11-13), unit tested. The platform does the same for
+ * Pure choice of what a group drag will do on release unit tested. The platform does the same for
  * a dragged tab: a strip takes it as a tab slot, the edge of an editor area offers a new split (`TabsUtil.getDropSideFor`), the middle
  * adds it to that split, and where no editor accepts it, it makes a window (`DockManagerImpl`: no container under the pointer).
  *

@@ -7,7 +7,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.groups
 class PlacedInstance<F>(val groupId: String, val members: List<F>, val headerIndex: Int)
 
 /**
- * Where the tabs that a rule pulls into a group go in a split's logical tab order (RULE-2, RULE-3, POP-2). Pure.
+ * Where the tabs that a rule pulls into a group go in a split's logical tab order. Pure.
  *
  * - The group has an instance in the split: the files go right after its last member (an empty instance: at its header, so its pill
  *   ends up in front of them).
@@ -15,7 +15,7 @@ class PlacedInstance<F>(val groupId: String, val members: List<F>, val headerInd
  *   instance that is last in the strip, so no other group is split and the new one stands last.
  * - The split has no groups at all: the files gather where the first of them stands.
  *
- * Pinned tabs need no handling: they are always in front of every group (INV-3) and an unpinned file is behind them, so no place
+ * Pinned tabs need no handling: they are always in front of every group and an unpinned file is behind them, so no place
  * computed here is in front of a pinned tab.
  */
 object RulePlacement {

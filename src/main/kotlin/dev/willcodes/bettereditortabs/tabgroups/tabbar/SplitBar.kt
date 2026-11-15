@@ -14,7 +14,7 @@ import java.awt.event.MouseEvent
 
 /**
  * Everything the tab bar keeps for one split while a host is attached: the strip adapter, the drag layer (tab and group drag and drop)
- * and MEM-2 placement, plus the groups last applied to the split and an immutable index of them for lookups from any thread.
+ * and new-tab placement, plus the groups last applied to the split and an immutable index of them for lookups from any thread.
  * Created by [TabBar] when a split appears, disposed with it.
  *
  * Bridges the sub-packages to the host: strip events and drag results come in through [StripEvents] and [SplitGroups] and leave through
@@ -24,7 +24,7 @@ internal class SplitBar(
     val split: SplitHandle,
     private val tabBar: TabBar,
     parent: Disposable,
-    /** The split appeared after the host attached: its first files count as opened in it (SPLIT-2, see [TabPlacement]). */
+    /** The split appeared after the host attached: its first files count as opened in it (see [TabPlacement]). */
     reportInitial: Boolean = false,
 ) : Disposable, StripEvents, SplitGroups {
     val adapter = TabBarAdapter(split.window, this) { tabBar.style }
@@ -45,7 +45,7 @@ internal class SplitBar(
 
     private val placement: TabPlacement
 
-    /** RULE-2: reports preview tabs that become normal tabs ([TabBarHost.tabMadePermanent]). */
+    /** Reports preview tabs that become normal tabs ([TabBarHost.tabMadePermanent]). */
     val promotion: PreviewPromotion
 
     init {
@@ -60,8 +60,8 @@ internal class SplitBar(
     }
 
     /**
-     * Applies [newGroups] to the strip and refreshes the index; [animate]: collapse flips are animated (COLL-7). [expanded]: a group
-     * that was dragged as its collapsed header and comes back expanded (INT-6): it is measured as flipping from collapsed, so it plays
+     * Applies [newGroups] to the strip and refreshes the index; [animate]: collapse flips are animated. [expanded]: a group
+     * that was dragged as its collapsed header and comes back expanded: it is measured as flipping from collapsed, so it plays
      * the expand animation if [animate] allows it, whether it was in this split before (the drop in its own strip) or not (a move in).
      */
     fun apply(newGroups: List<GroupDecoration>, animate: Boolean, expanded: String? = null) {
@@ -112,7 +112,7 @@ internal class SplitBar(
         tabBar.host?.tabSelected(split, file)
     }
 
-    // IDE-2: like a drag result, the host takes the new order and the strip is refreshed. A sort never changes a collapsed flag, so
+    // Alphabetical sorting: like a drag result, the host takes the new order and the strip is refreshed. A sort never changes a collapsed flag, so
     // nothing flips; the refresh is an animating one only so that it leaves a running animation alone (the expand of a group dropped
     // in sorted mode), where a non-animating refresh would snap it to its end.
     override fun stripSorted(groups: List<GroupDecoration>) {
@@ -120,7 +120,7 @@ internal class SplitBar(
         tabBar.refresh(split, animate = true)
     }
 
-    /** COLL-6: a tab of collapsed group [groupId] was picked in the overflow list. */
+    /** A tab of collapsed group [groupId] was picked in the overflow list. */
     fun collapsedTabChosen(groupId: String, file: VirtualFile) {
         tabBar.host?.collapsedTabChosen(split, groupId, file)
     }
@@ -128,7 +128,7 @@ internal class SplitBar(
     // ---- SplitGroups -----------------------------------------------------------------------------------------------------
 
     /**
-     * The groups last applied, without any the host no longer lists (bug 10: a group the host has deleted must never be moved with
+     * The groups last applied, without any the host no longer lists (a group the host has deleted must never be moved with
      * another group or reported back to it, whatever the strip still shows of it until the host's next refresh).
      */
     override fun groups(): List<GroupDecoration> {
@@ -136,7 +136,7 @@ internal class SplitBar(
         return if (groups.all { it.id in live }) groups else groups.filter { it.id in live }
     }
 
-    // Drag results land as they are, never animated (COLL-7): a drag may have expanded collapsed groups for a moment (live re-order,
+    // Drag results land as they are, never animated: a drag may have expanded collapsed groups for a moment (live re-order,
     // a group arriving from another split), and the refresh that collapses them again is not a user toggle.
     // The one exception is the group that was dragged as its collapsed header and comes back expanded: it plays the expand animation.
     override fun commit(groups: List<GroupDecoration>, expanding: String?) {

@@ -11,13 +11,13 @@ import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * Where the group popup (§6) and the hover list (INT-5) open relative to their header: directly below it, aligned to the pill's
+ * Where the group popup and the hover list open relative to their header: directly below it, aligned to the pill's
  * leading edge, for a strip on top (Chrome style), and on the side facing the editor for the other tab placements (above for Bottom,
  * right for Left, left for Right), flipped or shifted to stay on screen ([PopupPlacementRules]). The returned point is the popup's
  * top-left corner.
  *
  * The popup's size is its content's preferred size, which is what `AbstractPopup.showImpl` sizes the window to (plus the border's
- * insets, a few pixels). Note for Stage 11: a popup opened *above* the header (Bottom placement) grows downwards when it is re-packed
+ * insets, a few pixels). Note: a popup opened *above* the header (Bottom placement) grows downwards when it is re-packed
  * (the Advanced section), over the header; it must be placed again after `pack`.
  */
 internal object PopupPlacement {

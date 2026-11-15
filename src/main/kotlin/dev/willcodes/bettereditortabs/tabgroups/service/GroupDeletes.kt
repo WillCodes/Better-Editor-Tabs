@@ -12,9 +12,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * Delete Group (LIFE-3, LIFE-3a, LIFE-3b, LIFE-3c) for [TabGroupsService], which delegates to it: which question to ask ([requestDelete]),
+ * Delete Group for [TabGroupsService], which delegates to it: which question to ask ([requestDelete]),
  * the Move / Close / Cancel choice for a group that also lives in other splits, and Move itself ([moveToLinked]). The deletion proper
- * (closing the tabs, recording the group for Reopen Closed Tab, LIFE-5) is [GroupComeback.deleteGroup]. Shares the service's [state];
+ * (closing the tabs, recording the group for Reopen Closed Tab) is [GroupComeback.deleteGroup]. Shares the service's [state];
  * [refresh] is the service's own. EDT only.
  */
 internal class GroupDeletes(
@@ -26,7 +26,7 @@ internal class GroupDeletes(
     private val tabBar get() = project.service<TabBar>()
     private val settings get() = TabGroupsSettings.getInstance()
 
-    /** LIFE-3: see [TabGroupsService.requestDelete]. */
+    /** See [TabGroupsService.requestDelete]. */
     fun requestDelete(split: SplitHandle, groupId: String, trigger: DeleteTrigger) {
         val group = state.group(groupId) ?: return
         val instance = state.instance(split, groupId) ?: return
@@ -52,7 +52,7 @@ internal class GroupDeletes(
         deleteInstance(split, groupId)
     }
 
-    /** LIFE-3a: the remembered answer ("Don't ask again"), or the dialog's; a "Don't ask again" ticked with Move or Close is remembered. */
+    /** The remembered answer ("Don't ask again"), or the dialog's; a "Don't ask again" ticked with Move or Close is remembered. */
     private fun linkedDeleteAnswer(groupName: String, tabCount: Int): LinkedDeleteAnswer {
         settings.linkedDeleteChoice?.let { return it }
         val choice = TabGroupsUi.getInstance(project).askLinkedDelete(groupName, tabCount)
@@ -67,7 +67,7 @@ internal class GroupDeletes(
     }
 
     /**
-     * LIFE-3a "Move": the tabs of [split]'s instance go to the instance in the most recently focused other split. Re-reads the state
+     * "Move": the tabs of [split]'s instance go to the instance in the most recently focused other split. Re-reads the state
      * (the dialog was modal). The files that are open in the target already are just closed here (a normal close); the rest moves as a
      * group move (no Reopen Closed Tab history, merged at the end of the target's instance, which keeps its collapsed flag). Nothing
      * is done if no other split has the group any more.
@@ -87,9 +87,9 @@ internal class GroupDeletes(
 
     /**
      * Removes the instance, then closes its open tabs without Reopen Closed Tab entries and records the group, so that Reopen Closed
-     * Tab brings it back (LIFE-5, [GroupComeback.deleteGroup]). The state is re-read there because the confirmation is modal and may
+     * Tab brings it back ([GroupComeback.deleteGroup]). The state is re-read there because the confirmation is modal and may
      * have let things change. The instance goes first and the split is refreshed, so no tab is still hidden while it closes and the
-     * tab bar no longer lists the files (MEM-1 [TabGroupsService.tabClosed] is not reported for them).
+     * tab bar no longer lists the files ([TabGroupsService.tabClosed] is not reported for them).
      */
     private fun deleteInstance(split: SplitHandle, groupId: String) = comeback.deleteGroup(split, groupId)
 }

@@ -1,12 +1,12 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
-/** Pure rules for where a newly opened tab goes relative to groups (MEM-2). No platform types, unit tested. */
+/** Pure rules for where a newly opened tab goes relative to groups. No platform types, unit tested. */
 object TabPlacementRules {
     /** One group instance as the placement rule sees it. */
     data class Span<T>(val groupId: String, val members: Set<T>, val collapsed: Boolean)
 
     /**
-     * MEM-2: [order] is the tab order right after [newTab] was opened (hidden tabs of collapsed groups included, wherever the
+     * [order] is the tab order right after [newTab] was opened (hidden tabs of collapsed groups included, wherever the
      * platform keeps them). If the platform put the new tab strictly inside an expanded group's span, it must go immediately after
      * the group's last tab instead. Returns the corrected order, or null if the tab can stay where it is.
      *

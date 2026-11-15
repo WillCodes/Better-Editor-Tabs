@@ -10,7 +10,7 @@ import java.awt.Rectangle
 class StripView<K>(val key: K, val rect: Rectangle?, val reach: Rectangle?, val horizontal: Boolean)
 
 /**
- * Pure choice of the strip a tab drag is over (DRAG-0, DRAG-5), unit tested. The drag starts in the [home] strip and may continue in
+ * Pure choice of the strip a tab drag is over, unit tested. The drag starts in the [home] strip and may continue in
  * any other split's strip; the pointer is over none of them while it is on an editor, a tool window, a split edge or outside the window.
  *
  * Precedence, the same as for a group drag (`HeaderDragHelper.updateTarget`):

@@ -28,7 +28,7 @@ import javax.swing.UIManager
  * it is removed again at once with `resetDropOver` (nothing lays out in between). The earlier version painted the *dragged tab's own
  * label*, which is the selected tab: that is what made the picture look selected (outline, fill, close button).
  *
- * The live tint of a drag (DRAG-7) is the `tabColor` of that new `TabInfo`, which the tab painter turns into a tint of the muted tab.
+ * The live tint of a drag is the `tabColor` of that new `TabInfo`, which the tab painter turns into a tint of the muted tab.
  *
  * The platform's image is transparent except for the icon and the name. What the user sees behind them is the dialog that shows it,
  * so the picture is returned as it is (no background) and shown in the same kind of dialog ([GhostWindow]). [windowBackground] (the
@@ -43,13 +43,13 @@ internal object DragImages {
         platformImage(tabs, dragged.text, dragged.icon, dragged.tabColor as? GroupTintColor)
 
     /**
-     * The picture of a tab that is dragged over a strip it does not belong to (DRAG-5, DRAG-7): made by [tabs], the strip it is over, from
+     * The picture of a tab that is dragged over a strip it does not belong to: made by [tabs], the strip it is over, from
      * the tab's [text] and [icon] alone, tinted with [tint] (that strip's tint colour of the group it would join, null: untinted).
      */
     fun tab(tabs: JBEditorTabs, text: String, icon: Icon?, tint: Color?): BufferedImage? = platformImage(tabs, text, icon, tint)
 
     /**
-     * The picture of a dragged group (INT-6): a bordered chip with the group's pill and the number of tabs moved ([tabCount], from the
+     * The picture of a dragged group: a bordered chip with the group's pill and the number of tabs moved ([tabCount], from the
      * model's `GroupDecoration.members`: a collapsed group's tabs are hidden in the strip). Shown without the dialog's own frame
      * (see [GroupChipImage], [GhostWindow]).
      */
@@ -68,7 +68,7 @@ internal object DragImages {
     }
 
     /**
-     * DRAG-7, the tinted picture: the tab painter fills the tint in the tab's shape, which in Islands is a rectangle with rounded
+     * The tinted picture: the tab painter fills the tint in the tab's shape, which in Islands is a rectangle with rounded
      * corners inset from the picture's edges. The picture is shown in a window of its own ([GhostWindow]), so the window's background
      * would show as a ring around the tint (the platform never tints its picture). The tint fill is found by comparison with the
      * untinted picture ([plain]: the most frequent colour among the pixels that differ) and painted into every pixel that has less of

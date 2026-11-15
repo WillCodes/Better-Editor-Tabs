@@ -19,13 +19,13 @@ private val LOG = logger<TabBarDnd>()
 /**
  * Runs [block], a change that touches this split and [target] (a move of tabs between them), as the strips' own change: closing in the
  * source, opening and re-hiding in the target make the platform move both splits' selections, also onto tabs that are hidden for a
- * moment, and none of that is navigation (COLL-4). [freezes] ([freezeStrips]) are released once the events the move left in the queue
+ * moment, and none of that is navigation. [freezes] ([freezeStrips]) are released once the events the move left in the queue
  * have run. Shared by [moveGroupToSplit] and [moveTabToSplit].
  */
 internal fun TabBarDnd.runMove(target: TabBarDnd, freezes: List<StripFreeze>, block: () -> Unit) {
     try {
         adapter.ownChange { target.adapter.ownChange(block) }
-        // SPLIT-2: what the move opened in the target is not a user's "open in another split" (membership came from the drop)
+        // What the move opened in the target is not a user's "open in another split" (membership came from the drop)
         target.acknowledgeOpened()
     }
     finally {
@@ -42,7 +42,7 @@ internal fun TabBarDnd.runMove(target: TabBarDnd, freezes: List<StripFreeze>, bl
  *
  * [close]: close the tab here (a move); false leaves it open (a copy). [keepHistory]: the close stays in the source split's Reopen
  * Closed Tab history (a tab drag: the platform's drag does that too, `EditorWindow.closeFile`); false removes the entry the close
- * made ([TabClose.closeForMove], a group move, INT-6). A file that is open in [target] already is not opened again.
+ * made ([TabClose.closeForMove], a group move). A file that is open in [target] already is not opened again.
  * [disposeSource]: close the split too if this was its last tab. The file is opened in the target in the background (neither
  * selected nor focused): the caller selects what it wants.
  */
@@ -63,9 +63,9 @@ internal fun TabBarDnd.transferFile(file: VirtualFile, target: TabBarDnd, close:
 }
 
 /**
- * Drops the tab of [file] (pinned: [pinned]) from this split into [target] at [landing] (DRAG-5): the slot and group a [TabDragSession]
+ * Drops the tab of [file] (pinned: [pinned]) from this split into [target] at [landing]: the slot and group a [TabDragSession]
  * on the target's strip chose, which count the target's cells without the file. A pinned tab stays pinned; it never joins a group
- * (DRAG-4: the landing says so already). [copy] is the platform's copy modifier (Ctrl): the tab stays open here.
+ * (the landing says so already). [copy] is the platform's copy modifier (Ctrl): the tab stays open here.
  *
  * What the platform does for a tab dropped on another split and is mirrored here (`EditorTabbedContainerDragOutDelegate.dragOutFinished`,
  * `DockableEditorTabbedContainer.add`):
@@ -75,9 +75,9 @@ internal fun TabBarDnd.transferFile(file: VirtualFile, target: TabBarDnd, close:
  * - a file that is already open in the target is not opened twice: that tab moves to the landing, the source tab closes.
  *
  * Order of work, as for a group ([moveGroupToSplit]): the source model lets go of the file first (so no group refers to a tab that is
- * about to close; an emptied group is removed by the model, MEM-5), collapsed groups of the target are expanded for a moment (index
+ * about to close; an emptied group is removed by the model), collapsed groups of the target are expanded for a moment (index
  * spaces of the platform mix hidden and visible tabs), the file moves, the target is re-ordered in one go and the target model gets
- * the new membership (MEM-2 then sees the arrival as a member where it belongs and leaves it alone). Both splits' own selection churn
+ * the new membership (the placement of newly opened files then sees the arrival as a member where it belongs and leaves it alone). Both splits' own selection churn
  * is not navigation, and both are shown as a picture until the events have run ([freezes], see [freezeStrips]). Nothing here animates a collapse
  * (`SplitGroups.commit` refreshes with `animate = false`).
  *
@@ -121,7 +121,7 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
     val open = StripReader.allFiles(target.tabs)
     val order = flat.filter { it in open }.distinct() + open.filter { it !in flat }
     target.adapter.applyOrder(order)
-    target.adapter.placeEmptyPills(EmptyPillSpots.derive(sequence)) // RULE-6: the pills of empty groups keep their place around the arrival
+    target.adapter.placeEmptyPills(EmptyPillSpots.derive(sequence)) // the pills of empty groups keep their place around the arrival
     val copiedFrom = if (copy && !pinned) sourceGroups.firstOrNull { file in it.members } else null
     if (copiedFrom != null) target.model.commit(joinOwnGroup(target, targetGroups, copiedFrom, file, order))
     else target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order, null)))
@@ -131,7 +131,7 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
 }
 
 /**
- * SPLIT-2 for a copy: a grouped tab copied into [target] (Ctrl) joins its own group [copiedFrom] there, wherever it was dropped
+ * The linked-file rule for a copy: a grouped tab copied into [target] (Ctrl) joins its own group [copiedFrom] there, wherever it was dropped
  * ([CopyJoin]: behind the group's last tab, or a new instance at the drop place, never inside another group). The target's tabs are
  * re-ordered to match; the group is shown expanded so the arrival is visible. Returns the target's new groups, in strip order.
  */

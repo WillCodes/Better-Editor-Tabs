@@ -28,7 +28,7 @@ internal class GroupPopupActions(
     val stashGroup: () -> Unit,
     val delete: () -> Unit,
     val repack: () -> Unit,
-    /** Split Right / Split Down (user request 2026-11-14): a new split with a linked copy of the group. */
+    /** Split Right / Split Down: a new split with a linked copy of the group. */
     val splitRight: () -> Unit = {},
     val splitDown: () -> Unit = {},
     /** False for a group without an open tab in this split (a split needs a tab): the split rows are disabled. */
@@ -36,9 +36,9 @@ internal class GroupPopupActions(
 )
 
 /**
- * The content of the group popup (§6), top to bottom: the name field and the colour swatches, the actions (Ungroup, Stash Group,
+ * The content of the group popup, top to bottom: the name field and the colour swatches, the actions (Ungroup, Stash Group,
  * Delete Group), the Advanced section; native popup separators between the blocks. Name and colour changes are applied to
- * [service] at once (POP-1: nothing to commit). The auto-group rule (RULE-1) is the exception: it is edited in [rules] and committed
+ * [service] at once (nothing to commit). The auto-group rule is the exception: it is edited in [rules] and committed
  * by the owner when the popup closes, from [editedRule].
  *
  * Layout: the swatch row defines the width, the field stretches to it (the rule fields too: they have the swatch row's width, not a
@@ -46,7 +46,7 @@ internal class GroupPopupActions(
  * a list popup). Up / Down walk through field, swatches, the enabled rows and the enabled rule controls ([PopupFocusRing]); Tab does
  * the same through Swing's focus traversal.
  *
- * POP-3: Advanced opens as the user left it in this IDE session, or (before any toggle) expanded for a group with a rule.
+ * Advanced opens as the user left it in this IDE session, or (before any toggle) expanded for a group with a rule.
  * [resolveDirectory] finds the directory a path names (tests replace it; see [RuleEditor]).
  */
 internal class GroupPopupContent(
@@ -68,14 +68,14 @@ internal class GroupPopupContent(
     /** True while a modal child window (the folder chooser) is open: closing the popup then would take the chooser's owner away. */
     val childWindowOpen: Boolean get() = rules.chooserOpen
 
-    /** POP-1, POP-2: the rule to commit when the popup closes; see [RuleEditor.edited]. */
+    /** The rule to commit when the popup closes; see [RuleEditor.edited]. */
     fun editedRule(): AutoGroupRule? = rules.edited()
 
     private val previewGroupId = group.id
     private val previewService = service
 
     /**
-     * POP-4: shows which open tabs (and Project view files) the rule being edited matches, while Advanced is expanded; clears the
+     * Shows which open tabs (and Project view files) the rule being edited matches, while Advanced is expanded; clears the
      * preview otherwise. Called when the popup opens, on every rule edit and when Advanced is toggled; the owner clears it on close.
      */
     fun previewNow() {

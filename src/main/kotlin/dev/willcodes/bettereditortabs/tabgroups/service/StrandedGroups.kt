@@ -8,12 +8,12 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 
 /**
- * SPLIT-6: the empty groups of a temporary split that the user closes ([dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost.temporarySplitClosing]).
+ * The empty groups of a temporary split that the user closes ([dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBarHost.temporarySplitClosing]).
  * A collaborator of [TabGroupsService]; EDT only.
  *
  * Each empty group moves into the split used last that has tabs ([target]: the most recently focused split other than the closing
  * one, with at least one tab and not itself temporary), at the end of its strip (an instance the strip never showed goes to the end);
- * when there is no such split the group's instance is deleted (the group goes with its last instance, MEM-6). One warning
+ * when there is no such split the group's instance is deleted (the group goes with its last instance). One warning
  * ([TabGroupsUi.warnTemporarySplitClosed]) names what was moved and what was deleted; it comes after the event, never inside the
  * platform's close. Works on the state only, never on the closing split's strip: the split is on its way out and may be gone already.
  * Nothing happens while the project closes ([SavedGroups.isFrozen]).
@@ -40,7 +40,7 @@ internal class StrandedGroups(
             val instance = state.instance(split, id) ?: continue
             val name = groupDisplayName(group.name, group.color)
             if (to != null) {
-                // into the target first, so the identity survives the removal of the source instance (MEM-6)
+                // into the target first, so the identity survives the removal of the source instance
                 state.acceptInstance(to, id, group.name, group.color, emptyList(), instance.collapsed, null, keepEmpty = !group.hasEnabledRule)
                 state.removeInstance(split, id)
                 moved += name

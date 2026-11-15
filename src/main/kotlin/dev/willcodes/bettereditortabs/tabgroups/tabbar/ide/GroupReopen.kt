@@ -17,7 +17,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 private val LOG = logger<GroupReopen>()
 
 /**
- * What bringing a group back needs from the platform (LIFE-2, LIFE-4, LIFE-5).
+ * What bringing a group back needs from the platform.
  *
  * Internal APIs wrapped, and why:
  * - `EditorWindow.closeFile` through [TabClose.closeForMove]: closes the tabs of a group without leaving Reopen Closed Tab entries
@@ -70,8 +70,8 @@ internal object GroupReopen {
      * logical order, files not open are ignored; open tabs it omits follow). Pinned tabs are the caller's business (they are in
      * [order] first). Collapsed groups are shown for the moment, without animation: the platform's index spaces mix hidden and visible
      * tabs, as in a group move; the caller refreshes the split afterwards, which hides them again (no flip, so nothing animates). It
-     * runs as the strip's own change (the selection churn is not COLL-4) and the opened files are acknowledged (SPLIT-2 and MEM-2
-     * do not act on them: the caller gave them their membership). Returns the files of [toOpen] that have a tab now.
+     * runs as the strip's own change (the selection churn is not a user selection of a hidden tab) and the opened files are acknowledged (the linked-file rule and the
+     * new-tab placement do not act on them: the caller gave them their membership). Returns the files of [toOpen] that have a tab now.
      */
     fun openInOrder(bar: SplitBar, toOpen: List<VirtualFile>, order: List<VirtualFile>): List<VirtualFile> {
         val window = bar.split.window

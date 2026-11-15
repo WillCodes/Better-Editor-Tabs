@@ -24,18 +24,18 @@ import java.awt.Rectangle
 private val LOG = logger<GroupDrag>()
 
 /**
- * One drag of a whole group (INT-6, SPLIT-5), from the first move to the drop or Esc; the gesture (press, dead zone, release, Esc) is
+ * One drag of a whole group, from the first move to the drop or Esc; the gesture (press, dead zone, release, Esc) is
  * [HeaderDragHelper]'s.
  *
- * **The group is always its collapsed header while it is dragged (INT-6, user request 2026-11-13).** An expanded group is collapsed in
- * its strip when the drag begins (instantly: COLL-7, a drag never animates), so its tabs are out of the strip as for a collapsed group
+ * **The group is always its collapsed header while it is dragged.** An expanded group is collapsed in
+ * its strip when the drag begins (instantly: a drag never animates), so its tabs are out of the strip as for a collapsed group
  * and the placeholder in the strip, and the gap in another split's strip, are the size of a pill. The model is not touched (the host
- * still says expanded: [origGroups]); the strip shows [dragGroups]. COLL-2 applies to the collapse: if the selected tab is in the
+ * still says expanded: [origGroups]); the strip shows [dragGroups]. The collapse moves the selection: if the selected tab is in the
  * group, the selection moves to the nearest tab outside it, and **is put back** when the drag ends (Esc, a drop in place, a drop
  * elsewhere in this strip, and a move to another split, where the moved selected tab is selected there as before), so a group drag
  * never changes which tab is the current one. (IntelliJ's own drag of a tab selects another tab while the tab is in transit too.) The
- * strip's own change counting ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter.ownChange]) keeps COLL-4 from
- * reporting any of it. When the drag ends the group comes back expanded with the expand animation (COLL-7, [expanding]), and only it
+ * strip's own change counting ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter.ownChange]) keeps navigation tracking from
+ * reporting any of it. When the drag ends the group comes back expanded with the expand animation ([expanding]), and only it
  * animates.
  *
  * Looks like a tab drag: one picture of the group (a chip with its pill and tab count, [GroupChipImage]) floats centred on the pointer,
@@ -51,13 +51,13 @@ private val LOG = logger<GroupDrag>()
  *   pointer ([moveGroupToNewWindow]);
  * - the divider between splits: no target.
  * With Ctrl held at the release (the platform's copy modifier for a tab) every target outside this split's strip gets a copy: the
- * files open there as a linked instance of the group (SPLIT-2) and the group stays in this split as it was.
+ * files open there as a linked instance of the group and the group stays in this split as it was.
  * After a move or copy the split that received the group is the current one ([focusArrival]).
- * **An empty group** (RULE-6: an instance with no tab, shown as its pill alone) is dragged like a collapsed group, with no tabs to take
+ * **An empty group** (an instance with no tab, shown as its pill alone) is dragged like a collapsed group, with no tabs to take
  * along. Within its own strip it moves like any pill; over another split's strip (a pill-sized gap opens at the boundary) or the middle of
  * another split's editor area (appended) it moves there: the host hears [SplitGroups.commit] for this split and [SplitGroups.acceptGroup]
  * for the other, with an empty member list, and a pill appears at the drop place. A copy (Ctrl) is a move for it. The edge of an editor
- * area and the outside of every editor make a temporary split or window for it (SPLIT-6, round 3): a new split or window needs a file
+ * area and the outside of every editor make a temporary split or window for it: a new split or window needs a file
  * to open with (`EditorWindow.split` returns null for a window without a tab, and its file argument opens in the new split;
  * `openFileInNewWindow` takes a file), and a hidden placeholder tab is that file ([GroupSplitMove]). Its place in the strip is not in the file order, so the live order here is a sequence of strip
  * items ([StripItem]) and the pill is moved with [dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter.placeEmptyPills].
@@ -121,7 +121,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** The group was expanded when the drag began: it is collapsed for the drag and comes back expanded and animated. */
     private var wasExpanded = false
 
-    /** COLL-8: the group showed a peek and its count when the drag began: it is collapsed fully for the drag and arrives collapsed (no peek). */
+    /** The group showed a peek and its count when the drag began: it is collapsed fully for the drag and arrives collapsed (no peek). */
     private var wasPartial = false
 
     /** The selected file when the drag began (put back when it ends). */
@@ -133,7 +133,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     private var origSeq: List<StripItem<VirtualFile>> = emptyList()
     private var shownSeq: List<StripItem<VirtualFile>> = emptyList()
 
-    /** The dragged group is an empty instance (RULE-6): it has no tabs to take along, and no copy is made of it. */
+    /** The dragged group is an empty instance: it has no tabs to take along, and no copy is made of it. */
     private var emptyGroup = false
 
     /** The live-moving placeholder is shown in this split's strip (the pointer is over it). */
@@ -163,10 +163,10 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
 
     /** Starts the drag. False (nothing changed) if the group cannot be dragged (no picture, not in the strip). */
     fun begin(): Boolean {
-        dnd.adapter.finishCollapseAnimations() // a drag starts from a settled strip (COLL-7)
+        dnd.adapter.finishCollapseAnimations() // a drag starts from a settled strip
         origGroups = dnd.model.groups()
         val deco = origGroups.firstOrNull { it.id == group } ?: return false
-        // The floating picture is a chip with the group's pill and its tab count (INT-6; expanded or collapsed); it is made while the
+        // The floating picture is a chip with the group's pill and its tab count (expanded or collapsed); it is made while the
         // group still shows its tabs. The count comes from the model: a collapsed group's tabs are hidden.
         val strip = dnd.adapter.stripUnits()
         val pill = strip.filterIsInstance<StripUnit.Pill>().firstOrNull { it.groupId == group }
@@ -205,7 +205,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         emptyGroup = startUnits[from].isEmptyPill
         val unit = startUnits[from]
         // the pill's whole length, not the part on screen: a pill cut at the end of a scrolled strip opens a full-size gap elsewhere
-        // (user report 2026-11-13); in a side strip the pill is a whole row, which is never cut along the strip
+        // in a side strip the pill is a whole row, which is never cut along the strip
         val natural = pill?.header?.pillLength()
         val length = if (dnd.horizontal) natural ?: unit.lead.width else unit.lead.height
         size = DraggedGroupSize(dnd.horizontal, length, natural ?: length)
@@ -253,7 +253,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         }
         // the strip shows the result already for a drop in this split; for anything else it goes back first
         if (!ownTarget) restoreOwn()
-        // COLL-8: a group dragged as its header arrives collapsed, without a peek
+        // a group dragged as its header arrives collapsed, without a peek
         val groups = origGroups.map { if (it.id == group) it.copy(peek = null) else it }
         val selected = selectedBefore
         val expand = expanding
@@ -276,7 +276,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                     if (copying) backInSource()
                 }
                 is Target.IntoSplit -> {
-                    // INT-6: the middle of another split's area is a drop on the split, not at a slot: merged, or appended at the end
+                    // the middle of another split's area is a drop on the split, not at a slot: merged, or appended at the end
                     val units = t.dnd.buildUnits()
                     dnd.moveGroupToSplit(unit, t.dnd, units, units.size, freezes, selected, expand, copying)
                     if (copying) backInSource()
@@ -296,8 +296,8 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     }
 
     /**
-     * A copy (Ctrl held at the release, the platform's copy modifier for a tab): the target got a linked instance of the group
-     * (SPLIT-2), and the group comes back in this split as it was, expanded again if it was, without taking the focus from the target.
+     * A copy (Ctrl held at the release, the platform's copy modifier for a tab): the target got a linked instance of the group,
+     * and the group comes back in this split as it was, expanded again if it was, without taking the focus from the target.
      */
     private fun backInSource() {
         if (wasExpanded) dnd.adapter.expandDropped(origGroups, group)
@@ -322,7 +322,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** Puts the group back expanded in this strip with the expand animation, and the selection back (nothing was committed). */
     private fun backExpanded() {
         if (wasExpanded) dnd.adapter.expandDropped(origGroups, group)
-        else if (wasPartial) dnd.adapter.setGroups(origGroups) // COLL-8: its peek and count come back
+        else if (wasPartial) dnd.adapter.setGroups(origGroups) // its peek and count come back
         dnd.adapter.reselect(selectedBefore)
     }
 
@@ -364,7 +364,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                 setTransit(true)
                 if (foreign.isElsewhere(other)) foreign.close()
                 val groupSize = size
-                // SPLIT-6: an empty group makes a split or a window with a placeholder tab (a temporary split)
+                // an empty group makes a split or a window with a placeholder tab (a temporary split)
                 if (other == null) editorTarget(screen)
                 else if (groupSize == null) null
                 else {
@@ -387,8 +387,8 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     }
 
     /**
-     * The pointer is over no strip: the edge or the middle of an editor area, the divider between splits, or outside every editor
-     * (INT-6). The decision is [GroupDropRules.resolve].
+     * The pointer is over no strip: the edge or the middle of an editor area, the divider between splits, or outside every editor.
+     * The decision is [GroupDropRules.resolve].
      */
     private fun editorTarget(screen: Point): Target? {
         val hit = dnd.editorAreaAt(screen)

@@ -42,7 +42,7 @@ internal object PillSpacePainting {
         if (w <= 0 || h <= 0) return
         // A label cut at the visible end of a scrolling strip has only the visible part as its bounds; the reserved areas belong to its
         // whole (uncut) length, so they and the tab's own part are measured from that and painted cut at [w], as the platform cuts the tab
-        // (user report 2026-11-13, Islands: the tab left of a collapsed pill at the end of the strip lost the end of its background).
+        // (Islands: the tab left of a collapsed pill at the end of the strip lost the end of its background).
         val full = if (tabs.isHorizontalTabs && PlatformInternals.cutsLabelsAtEnd(tabs)) maxOf(w, label.preferredSize.width) else w
         val g2 = g.create() as Graphics2D
         try {
@@ -107,7 +107,7 @@ internal class PillAwareTabsBorder(
     private val spareRow: () -> Rectangle? = { null },
     /**
      * Called at the end of every border pass with the tab component's graphics: whatever must be drawn over the platform's post-children
-     * border layer (the selected tab's indicator, the Islands outline) goes here ([RuleOutline.paintAfterChildren], POP-4, fix round 2).
+     * border layer (the selected tab's indicator, the Islands outline) goes here ([RuleOutline.paintAfterChildren]).
      */
     private val afterPaint: (Graphics) -> Unit = {},
 ) : JBTabsBorder(bar) {

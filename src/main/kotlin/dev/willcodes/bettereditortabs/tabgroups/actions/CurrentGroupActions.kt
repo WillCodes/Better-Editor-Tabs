@@ -4,7 +4,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.DeleteTrigger
 import dev.willcodes.bettereditortabs.tabgroups.ui.popup.GroupPopup
 
-/** §13: Rename Current Group: opens the group popup with the name field focused. Disabled when the context tab is ungrouped. */
+/** Rename Current Group: opens the group popup with the name field focused. Disabled when the context tab is ungrouped. */
 class RenameCurrentGroupAction : GroupAction() {
     override fun isEnabled(scope: GroupActionScope) = scope.groupId != null
 
@@ -14,7 +14,7 @@ class RenameCurrentGroupAction : GroupAction() {
     }
 }
 
-/** §13, LIFE-1: Ungroup Current Group: the group goes, its tabs stay open. */
+/** Ungroup Current Group: the group goes, its tabs stay open. */
 class UngroupCurrentGroupAction : GroupAction() {
     override fun isEnabled(scope: GroupActionScope) = scope.groupId != null
 
@@ -23,7 +23,7 @@ class UngroupCurrentGroupAction : GroupAction() {
     }
 }
 
-/** §13, LIFE-2: Stash Current Group: closes the group and its tabs and saves it to the stash (Restore Tab Group... brings it back). */
+/** Stash Current Group: closes the group and its tabs and saves it to the stash (Restore Tab Group... brings it back). */
 class StashCurrentGroupAction : GroupAction() {
     override fun isEnabled(scope: GroupActionScope) = scope.groupId != null
 
@@ -32,7 +32,7 @@ class StashCurrentGroupAction : GroupAction() {
     }
 }
 
-/** §13, LIFE-3: Delete Current Group: asks first as the menu does (SET-4, LIFE-3a). */
+/** Delete Current Group: asks first as the menu does. */
 class DeleteCurrentGroupAction : GroupAction() {
     override fun isEnabled(scope: GroupActionScope) = scope.groupId != null
 

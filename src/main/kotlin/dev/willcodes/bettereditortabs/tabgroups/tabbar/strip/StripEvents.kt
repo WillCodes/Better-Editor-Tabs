@@ -13,23 +13,23 @@ internal interface StripEvents {
     fun headerRightClicked(header: GroupHeader, event: MouseEvent) {}
     fun headerMiddleClicked(header: GroupHeader, event: MouseEvent) {}
 
-    /** CTX-5: a right click on the free part of the strip (no tab, no pill); [point] is in [component]'s coordinates. */
+    /** A right click on the free part of the strip (no tab, no pill); [point] is in [component]'s coordinates. */
     fun stripRightClicked(component: javax.swing.JComponent, point: java.awt.Point) {}
 
     /**
      * The pointer entered ([hovering] true) or left the header (false). A press on the header also ends the hover (false), so a
-     * click or a drag never leaves a hover popup behind. INT-5.
+     * click or a drag never leaves a hover popup behind.
      */
     fun headerHoverChanged(header: GroupHeader, hovering: Boolean) {}
 
-    /** A tab that is currently hidden by a collapsed group was selected (navigation, Ctrl+E, ...). COLL-4. */
+    /** A tab that is currently hidden by a collapsed group was selected (navigation, Ctrl+E, ...). */
     fun hiddenTabSelected(groupId: String, file: VirtualFile) {}
 
-    /** The user selected [file] (not an own change of the strip). COLL-8, see [TabBarHost.tabSelected]. */
+    /** The user selected [file] (not an own change of the strip). See [TabBarHost.tabSelected]. */
     fun tabSelected(file: VirtualFile) {}
 
     /**
-     * IDE-2: the strip re-sorted itself alphabetically; [groups] are the groups last set with their members (and their order) as the
+     * The strip re-sorted itself alphabetically; [groups] are the groups last set with their members (and their order) as the
      * strip now shows them. Called after the re-order, at the end of `setGroups` at the latest (its work is done), so the owner may refresh
      * the strip right away; that refresh finds the strip sorted and reports nothing.
      */

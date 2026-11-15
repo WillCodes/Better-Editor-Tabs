@@ -5,7 +5,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.ThreadingAssertions
 
 /**
- * POP-4 (rule preview): the outline of the tabs an auto-group rule matches, shown in every split's strip while the group popup edits the
+ * Rule preview: the outline of the tabs an auto-group rule matches, shown in every split's strip while the group popup edits the
  * rule. Remembers what was set (by window) so that a split that appears while the preview shows gets it too ([applyIfSet]). Purely
  * visual. EDT only.
  */

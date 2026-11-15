@@ -67,7 +67,7 @@ object DropSlots {
         // the part of the gap the pointer stands for, and the room the dragged element takes in the live layout
         val probe = liveGap?.let { end(it) - start(it) } ?: 0
         val room = shift ?: probe
-        // Fix round 2b: the layout can show the placeholder in front of an empty pill although the slot says "behind it" (a tab that was
+        // The layout can show the placeholder in front of an empty pill although the slot says "behind it" (a tab that was
         // held out of its own group: the pill is hosted by the tab behind it). The cells are walked from where the placeholder is shown.
         val cur = physicalSlot(cells, liveGap, logical, horizontal)
 
@@ -83,7 +83,7 @@ object DropSlots {
         val pLine = if (rows) pointerRow(bands, pointer.y) else 0
         val gapLine = liveGap?.let { lineOf(it) } ?: pLine
 
-        // Round 9 (user decision): a pill (a group's header: empty, collapsed or expanded) is crossed like a tab is felt to be crossed:
+        // A pill (a group's header: empty, collapsed or expanded) is crossed like a tab is felt to be crossed:
         // as soon as the pointer enters it, or, for a pill wider than the placeholder, as soon as the pointer would land inside the
         // placeholder after the swap. The general rules below cross a cell once the pointer is within the placeholder's length of it,
         // which passes a narrow pill long before the pointer reaches it. One pill per step: the cells behind it are judged again in the
@@ -200,7 +200,7 @@ object DropSlots {
         return slot
     }
 
-    // ---- hold zone (DRAG-3) -----------------------------------------------------------------------------------------------
+    // ---- hold zone -----------------------------------------------------------------------------------------------
 
     /**
      * How close (unscaled px along the main axis, measured from the trailing edge of a group's last tab) the pointer must be for the

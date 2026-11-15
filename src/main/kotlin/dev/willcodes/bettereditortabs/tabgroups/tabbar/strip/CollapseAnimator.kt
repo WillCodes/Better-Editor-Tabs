@@ -13,7 +13,7 @@ import javax.swing.JComponent
 import javax.swing.Timer
 
 /**
- * The collapse / expand animation of one strip (COLL-7): widths in Top / Bottom strips, heights in Left / Right ones ([verticalExtentOf]). The tween itself is pure ([CollapseTween]); this class
+ * The collapse / expand animation of one strip: widths in Top / Bottom strips, heights in Left / Right ones ([verticalExtentOf]). The tween itself is pure ([CollapseTween]); this class
  * owns what is platform: the running animations, the frame timer and the label sizes.
  *
  * How it animates: every platform tab layout sizes a label from `label.preferredSize` (`TabLabel.getPreferredSize` ends in
@@ -34,7 +34,7 @@ internal class CollapseAnimator(
     private val onCollapseFinished: () -> Unit,
 ) {
     /**
-     * [members] are the labels that animate; [target] the files the group shows when the animation is over (COLL-8: a partial group
+     * [members] are the labels that animate; [target] the files the group shows when the animation is over (a partial group
      * shows its peek, so the files that shrink or grow are not always all of the group's tabs).
      */
     private class Anim(var tween: CollapseTween, var members: List<VirtualFile>, var target: Set<VirtualFile>)
@@ -66,10 +66,10 @@ internal class CollapseAnimator(
     /** The direction of the animation of [groupId] (true = collapsing), or null if it does not animate. */
     fun direction(groupId: String): Boolean? = animations[groupId]?.tween?.collapsing
 
-    /** The files that group [groupId] shows when its running animation ends, or null if it does not animate (COLL-8). */
+    /** The files that group [groupId] shows when its running animation ends, or null if it does not animate. */
     fun targetOf(groupId: String): Set<VirtualFile>? = animations[groupId]?.target
 
-    /** The files of [groupId] that are on screen while its running collapse shrinks them: the shrinking ones and what stays (COLL-8). */
+    /** The files of [groupId] that are on screen while its running collapse shrinks them: the shrinking ones and what stays. */
     fun shownDuringCollapse(groupId: String): Set<VirtualFile> =
         animations[groupId]?.let { it.target + it.members } ?: emptySet()
 
@@ -90,7 +90,7 @@ internal class CollapseAnimator(
     fun begin(groupId: String, members: List<VirtualFile>, collapsing: Boolean) = begin(groupId, members, collapsing, emptySet())
 
     /**
-     * [begin] where the group shows [target] when the animation is over (COLL-8: a partial expand grows only the peek, a collapse of a
+     * [begin] where the group shows [target] when the animation is over (a partial expand grows only the peek, a collapse of a
      * partial group shrinks only the peek). [members] are the labels that animate.
      */
     fun begin(groupId: String, members: List<VirtualFile>, collapsing: Boolean, target: Set<VirtualFile>) {

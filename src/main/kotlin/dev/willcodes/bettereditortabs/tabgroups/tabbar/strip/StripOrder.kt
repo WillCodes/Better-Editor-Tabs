@@ -8,7 +8,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabOrderRules
 
 /**
  * Ordering operations of the strip around collapsed groups: re-ordering the visible tabs, re-pinning hidden ones, applying a full
- * order, and keeping a group where it is when a tab is pinned or unpinned (IDE-1, IDE-2 hand-off to the sort, MEM-3 pin order fix).
+ * order, and keeping a group where it is when a tab is pinned or unpinned (including the hand-off to the alphabetical sort and the pin order fix).
  */
 internal class StripOrder(
     private val tabs: JBEditorTabs,

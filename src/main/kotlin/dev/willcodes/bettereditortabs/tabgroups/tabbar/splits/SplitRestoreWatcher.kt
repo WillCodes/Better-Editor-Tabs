@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.util.messages.Topic
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -33,6 +34,8 @@ fun interface SplitsRestoredListener {
  */
 class SplitRestoreWatcher : ProjectActivity {
     override suspend fun execute(project: Project) {
+        // With the Classic UI nothing is restored, so the stored groups stay as they are for a later start in the New UI.
+        if (!TabBar.isSupported) return
         val start = System.nanoTime()
         var previous: List<String>? = null
         var stable = 0

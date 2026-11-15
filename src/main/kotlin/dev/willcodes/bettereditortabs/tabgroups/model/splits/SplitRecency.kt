@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.splits
 
 /**
- * Pure bookkeeping of "most recently focused split" (SPLIT-2, LIFE-3a). Generic over the split type so it is testable without the
+ * Pure bookkeeping of "most recently focused split". Generic over the split type so it is testable without the
  * platform; the tab bar feeds it the focus changes it observes.
  */
 object SplitRecency {

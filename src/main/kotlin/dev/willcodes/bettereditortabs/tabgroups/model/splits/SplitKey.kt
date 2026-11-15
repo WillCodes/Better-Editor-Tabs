@@ -2,7 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.splits
 
 /**
  * A restart-stable address of one editor split. Pure data, no IDE types, so it can be persisted
- * (PERS-1) and unit-tested.
+ * and unit-tested.
  *
  * - [container] is `"main"` for the main editor area, or `"float:<id>"` for a detached editor window,
  *   where `<id>` is the platform's persisted dock-window id (or `?` when it could not be read).
@@ -41,12 +41,12 @@ data class SplitKey(val container: String, val path: String) {
 data class SplitSnapshot(val key: SplitKey, val files: Set<String>)
 
 /**
- * Re-attaches persisted split instances to the splits that exist after a restart (PERS-3), or after the
+ * Re-attaches persisted split instances to the splits that exist after a restart, or after the
  * user split/unsplit during a session.
  *
  * Pairs are scored by the overlap of their open files (Jaccard index). An identical [SplitKey] and an identical
  * container only break ties and boost the score; a pair with no common file is never matched, because an
- * instance without any reopened member is dropped anyway (PERS-3). Pairs are assigned greedily, best first,
+ * instance without any reopened member is dropped anyway. Pairs are assigned greedily, best first,
  * each split and each persisted entry at most once.
  */
 object SplitMatcher {

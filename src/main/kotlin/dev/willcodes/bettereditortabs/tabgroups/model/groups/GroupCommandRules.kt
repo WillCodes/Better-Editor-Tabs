@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * Where a group's header stands in a split's logical tab order (§13, Move Tab to Next / Previous Group): [first] is the number of tabs
+ * Where a group's header stands in a split's logical tab order (Move Tab to Next / Previous Group): [first] is the number of tabs
  * in front of the header (for a group with open tabs the index of its first member; for an empty group the place its pill keeps), and
  * [count] the number of open members. The group's tabs occupy `first until first + count`.
  */
@@ -10,11 +10,11 @@ data class GroupSpan(val id: String, val first: Int, val count: Int) {
     val last: Int get() = first + count - 1
 }
 
-/** The one-line state of a group instance the bulk commands decide on (§13: Collapse Other Groups, Expand All Groups). */
+/** The one-line state of a group instance the bulk commands decide on (Collapse Other Groups, Expand All Groups). */
 data class InstanceState(val id: String, val collapsed: Boolean, val partlyShown: Boolean, val openTabs: Int)
 
 /**
- * The decidable part of the §13 actions that move or select by group order, and of the bulk collapse / expand commands. Pure; the
+ * The decidable part of the group actions that move or select by group order, and of the bulk collapse / expand commands. Pure; the
  * service gathers the inputs (`GroupCommands` in the service package).
  */
 object GroupCommandRules {

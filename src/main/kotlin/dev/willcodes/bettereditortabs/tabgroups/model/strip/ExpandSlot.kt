@@ -1,7 +1,7 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 /**
- * DRAG-6 (Stage 11.5 fix round 4, user request): where the dragged tab stands when a hold behind a collapsed (or partly shown) group
+ * Where the dragged tab stands when a hold behind a collapsed (or partly shown) group
  * expands it during a drag. The slot follows the pointer: it is worked out against the group's **expanded** layout (the header, then its
  * tabs at their full length), before the expand animation starts, so the placeholder takes its place at once and the tabs grow around it.
  *

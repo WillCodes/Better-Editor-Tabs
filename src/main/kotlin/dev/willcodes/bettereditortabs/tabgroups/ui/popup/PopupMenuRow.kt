@@ -32,7 +32,7 @@ import javax.swing.JComponent
 internal class PopupMenuRow(
     text: String,
     enabled: Boolean,
-    /** A destructive action (Delete Group, user request 2026-11-14): its text is bold and in the error colour. */
+    /** A destructive action (Delete Group): its text is bold and in the error colour. */
     private val danger: Boolean = false,
     private val onActivate: () -> Unit,
 ) : JComponent() {

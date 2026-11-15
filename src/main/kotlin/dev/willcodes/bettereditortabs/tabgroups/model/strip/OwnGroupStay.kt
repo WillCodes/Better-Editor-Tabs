@@ -1,13 +1,13 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.strip
 
 /**
- * DRAG-3, a member re-ordered within its own group (user requests 2026-11-13): the trailing slot of the tab's own group works the other
+ * A member re-ordered within its own group: the trailing slot of the tab's own group works the other
  * way round while the tab has not left the group.
  * - A tab that was a member of the group when the drag began, and has stayed inside it ever since (every landing so far was inside it
  *   or at its trailing slot), is still a member at the group's trailing slot without a hold, so it can be moved to the group's last
  *   position.
  * - Holding it there takes it out, but only with the pointer *beyond* the zone where an outside tab would hold to join
- *   ([holdGroup]; user request 2026-11-13: the two holds must not overlap, or pulling a tab out of a group's end feels like joining).
+ *   ([holdGroup]: the two holds must not overlap, or pulling a tab out of a group's end feels like joining).
  *   It then lands outside, untinted (the completed hold, which normally means "join", is ignored until the hold is reset).
  * - Once the tab has landed anywhere outside the group, or left the slot after a hold-out, it is an ordinary tab for that group:
  *   coming back to the trailing slot needs the hold to join.

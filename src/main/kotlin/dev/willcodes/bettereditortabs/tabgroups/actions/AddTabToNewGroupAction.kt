@@ -9,13 +9,14 @@ import dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService
 import dev.willcodes.bettereditortabs.tabgroups.ui.popup.GroupPopup
 
 /**
- * CTX-1: Add Tab to New Group. Creates a group holding the tab, then opens the group popup with the name field focused. Disabled for
- * pinned tabs (CTX-4) and when there is no current tab.
+ * Add Tab to New Group. Creates a group holding the tab, then opens the group popup with the name field focused. Disabled for
+ * pinned tabs and when there is no current tab.
  */
 open class AddTabToNewGroupAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (hideOutsideNewUi(e)) return
         val context = TabContext.of(e)
         e.presentation.isEnabled = context != null && !context.pinned
     }

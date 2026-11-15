@@ -32,7 +32,7 @@ private val LOG = logger<TabBarDnd>()
  *   the platform's `DragHelper` (which only swaps labels and knows nothing about pills); when the pointer leaves the strip the
  *   drag is handed over to the platform's drag-out ([DragHandOff]).
  * - `IdeGlassPane` preprocessors ([DragObserver], weight 1, ahead of `DragHelper`'s 2) to see and consume the drag events.
- * - `MouseDragHelper` ([HeaderDragHelper]) for dragging a whole group by its header (INT-6).
+ * - `MouseDragHelper` ([HeaderDragHelper]) for dragging a whole group by its header.
  * - `EditorWindow` / `FileEditorManagerEx.openFile` / `FileEditorOpenOptions` to move files between splits (see [moveGroupToSplit], [moveTabToSplit]).
  *
  * This class is the hub of the drag layer: it holds the pieces of one split and the geometry helpers they share.
@@ -52,13 +52,13 @@ internal class TabBarDnd(
     val controller = TabDragController(this)
 
     /**
-     * DRAG-6 (Stage 11.5 fix round 3, user request): the collapsed (or partly shown) groups of this strip that a tab drag expanded by a hold
+     * The collapsed (or partly shown) groups of this strip that a tab drag expanded by a hold
      * behind them. They stay expanded for the rest of the drag and after it, whatever the drop ([commitExpandedByDrag]).
      */
     val expandedByDrag = LinkedHashSet<String>()
 
     /**
-     * DRAG-6: the groups a tab drag expanded here ([expandedByDrag]) are expanded for good: the host learns it through the drag result
+     * The groups a tab drag expanded here ([expandedByDrag]) are expanded for good: the host learns it through the drag result
      * path (membership and order unchanged). Called when the drag ends, whatever the outcome; a drop on this strip folds them into its own
      * result first ([TabDragSession.commit]), so this then finds nothing to do.
      */
@@ -73,8 +73,8 @@ internal class TabBarDnd(
     val observer = DragObserver(controller)
 
     /**
-     * Set by `SplitBar`: tells this split's MEM-2 placement that the tabs it has now are not "newly opened" ([runMove] calls it on the
-     * target after a move: the files our own drag code opened there already got their membership from the drop, so SPLIT-2 must not
+     * Set by `SplitBar`: tells this split's linked-file placement that the tabs it has now are not "newly opened" ([runMove] calls it on the
+     * target after a move: the files our own drag code opened there already got their membership from the drop, so that placement must not
      * see them as files opened by the user).
      */
     var acknowledgeOpened: () -> Unit = {}
@@ -163,7 +163,7 @@ internal class TabBarDnd(
         return Point(screen.x - origin.x, screen.y - origin.y)
     }
 
-    /** The header at [tabsPoint], or the header of the group whose count pill (COLL-8) is there. */
+    /** The header at [tabsPoint], or the header of the group whose count pill is there. */
     fun headerAt(tabsPoint: Point): GroupHeader? = adapter.headerAt(tabsPoint)
 
     /** The file of the visible tab label under [tabsPoint], or null. */
@@ -178,7 +178,7 @@ internal class TabBarDnd(
     /** True while a tab drag of ours is running or the platform is dragging a tab of this strip. */
     val isTabDragActive: Boolean get() = controller.isActive || adapter.drag.isPlatformTabDragActive()
 
-    /** [isTabDragActive], or a group drag of ours is running (IDE-2: the alphabetical sort never re-orders the strip then). */
+    /** [isTabDragActive], or a group drag of ours is running (the alphabetical sort never re-orders the strip then). */
     val isDragActive: Boolean get() = isTabDragActive || headerDrag?.isDragging == true
 
     /**
@@ -199,14 +199,14 @@ internal class TabBarDnd(
                 is StripUnit.Count -> {}
                 is StripUnit.Pill -> {
                     val group = groups[u.groupId]
-                    // COLL-8: the peek's tab and the count of a partly shown group are part of its unit
+                    // the peek's tab and the count of a partly shown group are part of its unit
                     val shown = memberTabs[u.groupId].orEmpty()
                     val counts = countsOf[u.groupId].orEmpty()
                     val rect = Rectangle(u.rect)
                     for (t in shown) if (!t.rect.isEmpty) rect.add(t.rect)
                     for (c in counts) if (!c.rect.isEmpty) rect.add(c.rect)
                     // a collapsed group's members are hidden tabs: they come from the model (the ones that are open: an empty group's
-                    // pill, RULE-6, is a collapsed unit with no key at all)
+                    // pill is a collapsed unit with no key at all)
                     val keys = if (u.collapsed) group?.members.orEmpty().filter { it in open } else shown.map { it.file }
                     val rects = (listOf(u.rect) + shown.map { it.rect } + counts.map { it.rect }).filter { !it.isEmpty }
                     val runs = GapRuns.merge(rects, horizontal).ifEmpty { listOf(rect) }

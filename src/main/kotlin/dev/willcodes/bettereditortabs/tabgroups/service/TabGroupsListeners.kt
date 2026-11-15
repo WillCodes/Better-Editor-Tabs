@@ -14,7 +14,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitInfo
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.SplitsRestoredListener
 
-/** PERS-3: the editor layout of the project has settled after startup; the groups are restored (project listener in `plugin.xml`). */
+/** The editor layout of the project has settled after startup; the groups are restored (project listener in `plugin.xml`). */
 class TabGroupsRestoreListener : SplitsRestoredListener {
     override fun splitsRestored(project: Project, splits: List<SplitInfo>) {
         project.service<TabGroupsService>().restore(splits)
@@ -22,7 +22,7 @@ class TabGroupsRestoreListener : SplitsRestoredListener {
 }
 
 /**
- * PERS-1: saves the groups before the project is closed. `ProjectCloseListener.projectClosingBeforeSave` runs on the EDT before the
+ * Saves the groups before the project is closed. `ProjectCloseListener.projectClosingBeforeSave` runs on the EDT before the
  * settings are saved and before the editors close (`ProjectManagerImpl.closeProject`); see [TabGroupsService.prepareForClose]. An
  * application listener because the topic is application level and delivers the events of every project.
  */
@@ -33,10 +33,10 @@ class TabGroupsCloseListener : ProjectCloseListener {
 }
 
 /**
- * MEM-4: files that are renamed or moved keep their group (their `VirtualFile` stays the same and the platform keeps the tab open),
+ * Files that are renamed or moved keep their group (their `VirtualFile` stays the same and the platform keeps the tab open),
  * but the stored form names files by URL. Tells every open project's service, on the EDT. The platform closes the tabs of deleted
- * files before the deletion (`FileEditorManagerImpl.MyVirtualFileListener.beforeFileDeletion`), which removes them from their group
- * (MEM-1); afterwards the service drops any member whose file is invalid anyway ([TabGroupsService.dropInvalidMembers]), as that
+ * files before the deletion (`FileEditorManagerImpl.MyVirtualFileListener.beforeFileDeletion`), which removes them from their group;
+ * afterwards the service drops any member whose file is invalid anyway ([TabGroupsService.dropInvalidMembers]), as that
  * listener is not installed in a headless IDE. Application listener in `plugin.xml`; reaches only services that already exist.
  */
 class TabGroupsVfsListener : BulkFileListener {
@@ -67,7 +67,7 @@ class TabGroupsVfsListener : BulkFileListener {
 }
 
 /**
- * §14: the settings changed; every open project's service re-applies the cached look ([TabGroupsService.settingsChanged]). Application
+ * The settings changed; every open project's service re-applies the cached look ([TabGroupsService.settingsChanged]). Application
  * listener in `plugin.xml`; reaches only services that already exist.
  */
 class TabGroupsSettingsApplier : TabGroupsSettingsListener {

@@ -4,13 +4,13 @@ import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * Pure drag-and-drop decisions (no platform types, unit tested): which group a dropped tab joins (DRAG-1..DRAG-6) and where a
- * dragged group may be dropped (INT-6).
+ * Pure drag-and-drop decisions (no platform types, unit tested): which group a dropped tab joins and where a
+ * dragged group may be dropped.
  *
  * Coordinates are along the tab strip's main axis (x for Top/Bottom, y for Left/Right) and in one coordinate space.
  */
 object DropRules {
-    // ---- tab drops (DRAG-1..DRAG-7) ------------------------------------------------------------------------------------
+    // ---- tab drops ------------------------------------------------------------------------------------
     //
     // The strip is a sequence of cells: ungrouped tabs, group member tabs and group pills. A collapsed group is a single pill cell
     // (its hidden members are not cells). The dragged tab is not part of the sequence; the question is which of the gaps ("slots",
@@ -18,14 +18,14 @@ object DropRules {
 
     /**
      * Decides membership and final position for a tab dropped into [requestedSlot]:
-     * - between a group's pill and its first tab, or between two of its tabs: joins at once (DRAG-1, DRAG-2);
+     * - between a group's pill and its first tab, or between two of its tabs: joins at once;
      * - right behind its last tab (trailing slot), or right behind the pill of an empty group (a [PillCell.empty] is that group's whole
-     *   body: its trailing slot): outside, unless [joiningGroup] is that group (hold-to-join, DRAG-3); the slot in front of the pill is outside;
-     * - before a pill: outside (DRAG-6, the collapsed group is one unit); right behind a collapsed pill (a partly shown group's unit
-     *   included, COLL-8) is the group's trailing slot like behind an empty group's pill: outside, unless [joiningGroup] is that
+     *   body: its trailing slot): outside, unless [joiningGroup] is that group (hold-to-join); the slot in front of the pill is outside;
+     * - before a pill: outside (the collapsed group is one unit); right behind a collapsed pill (a partly shown group's unit
+     *   included) is the group's trailing slot like behind an empty group's pill: outside, unless [joiningGroup] is that
      *   group (the hold completed there, which makes the drag expand the group, so that the slots inside it apply);
-     * - a pinned tab never joins (DRAG-4) and, if it was dropped inside a group, goes in front of the pill; with
-     *   [keepPinnedFirst] pinned tabs stay in the leading pinned zone and other tabs stay out of it (INV-3).
+     * - a pinned tab never joins and, if it was dropped inside a group, goes in front of the pill; with
+     *   [keepPinnedFirst] pinned tabs stay in the leading pinned zone and other tabs stay out of it.
      */
     fun <T> landing(
         cells: List<StripCell<T>>,
@@ -47,15 +47,15 @@ object DropRules {
             else -> null
         }
         // a pill with no tab behind it: the dragged tab was the group's only tab. Right behind that pill is the group's trailing slot
-        // (fix round 2, bug 9): the tab is a member there while it counts as one ([joiningGroup], see OwnGroupStay), so that dropping it
-        // back changes nothing, and holding it there takes it out (DRAG-3, DRAG-8); without that it is outside, like any trailing slot
+        // the tab is a member there while it counts as one ([joiningGroup], see OwnGroupStay), so that dropping it
+        // back changes nothing, and holding it there takes it out; without that it is outside, like any trailing slot
         val lonePill: String? = if (prev is PillCell && !prev.collapsed && !prev.empty && !(next is TabCell && next.groupId == prev.groupId)) prev.groupId else null
         val trailing: String? = when {
             lonePill != null && inside == null -> lonePill
             prev is TabCell && prev.groupId != null && inside == null -> prev.groupId
-            // an empty group (its pill alone) has a trailing edge right behind its pill: held there, the tab joins (DRAG-3)
+            // an empty group (its pill alone) has a trailing edge right behind its pill: held there, the tab joins
             prev is PillCell && prev.empty && inside == null -> prev.groupId
-            // COLL-8: so has a collapsed group (full or partly shown): held there, the tab joins it and the group expands for the drag
+            // So has a collapsed group (full or partly shown): held there, the tab joins it and the group expands for the drag
             prev is PillCell && prev.collapsed && inside == null -> prev.groupId
             else -> null
         }
@@ -80,7 +80,7 @@ object DropRules {
         sequenceOrder(cells, landing, dragged, hiddenMembers).files()
 
     /**
-     * [flatOrder] with the pills of empty groups kept in it (RULE-6): a collapsed pill whose [hiddenMembers] are none is an
+     * [flatOrder] with the pills of empty groups kept in it: a collapsed pill whose [hiddenMembers] are none is an
      * [StripItem.EmptyPill] at its place, so the caller can tell where it stands relative to the dropped tab ([EmptyPillSpots.derive]).
      */
     fun <T> sequenceOrder(cells: List<StripCell<T>>, landing: Landing, dragged: T, hiddenMembers: (String) -> List<T>): List<StripItem<T>> {
@@ -99,7 +99,7 @@ object DropRules {
         return out
     }
 
-    // ---- group moves (INT-6) -----------------------------------------------------------------------------------------
+    // ---- group moves -----------------------------------------------------------------------------------------
 
     /**
      * The boundary (index [minBoundary]..units.size, "before unit i") nearest to [pointer]. Boundaries lie only between units,
@@ -133,6 +133,6 @@ object DropRules {
         return if (horizontal) Point(r.x, r.y + r.height / 2) else Point(r.x + r.width / 2, r.y)
     }
 
-    /** Number of leading pinned units: group drops are not allowed before them (INV-3, pinned tabs stay at the start). */
+    /** Number of leading pinned units: group drops are not allowed before them (pinned tabs stay at the start). */
     fun <T> leadingPinned(units: List<MoveUnit<T>>): Int = units.takeWhile { it.pinned }.size
 }

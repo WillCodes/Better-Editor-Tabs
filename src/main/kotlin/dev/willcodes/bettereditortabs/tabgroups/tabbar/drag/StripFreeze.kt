@@ -12,7 +12,7 @@ import javax.swing.SwingUtilities
 /**
  * A still picture of a tab strip, shown over it while a multi-step change runs that the user must only see the end of.
  *
- * Why: moving a group to another split (INT-6, [moveGroupToSplit]) closes and opens editors one by one, and the platform's
+ * Why: moving a group to another split ([moveGroupToSplit]) closes and opens editors one by one, and the platform's
  * `closeFile` / `openFile` let the event queue run in between (their `fileClosed` / `fileOpened` events are dispatched during the move),
  * so Swing paints the strips half-way: the target with its drop gap still open and the moved tabs arriving, the source with tabs
  * missing. That showed as a brief glitch next to the drop place, looking like a collapse animation. The picture hides those frames.

@@ -14,7 +14,7 @@ import dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsService
 import java.awt.Color
 
 /**
- * POP-4: while the group popup edits an auto-group rule ([TabGroupsService.rulePreview]), the Project view marks the files the rule
+ * While the group popup edits an auto-group rule ([TabGroupsService.rulePreview]), the Project view marks the files the rule
  * matches (every matching file of the project, open or not, grouped or not) with a light tint of the group's colour as the node
  * background. Runs off the EDT under a read action: reads the immutable preview value only and asks [RuleFiles] about one file.
  */
@@ -32,7 +32,7 @@ class RulePreviewDecorator : ProjectViewNodeDecorator {
         file.isValid && !file.isDirectory && RuleMatching.matches(rule, RuleFiles.of(project, file))
 
     internal companion object {
-        /** The group colour mixed into the tree background, like the tab tint (LINE-3). */
+        /** The group colour mixed into the tree background, like the tab tint. */
         fun tint(color: Color): Color = ColorUtil.mix(UIUtil.getTreeBackground(), color, TINT)
 
         const val TINT = 0.3

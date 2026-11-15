@@ -47,7 +47,7 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
     /** The outline of a group instance a dropped group would merge into, one rectangle per row it is on; screen coordinates. */
     private var outline: List<Rectangle> = emptyList()
 
-    /** The platform's drop-area highlight of an editor split (a group dropped at its edge or into it, INT-6), screen coordinates. */
+    /** The platform's drop-area highlight of an editor split (a group dropped at its edge or into it), screen coordinates. */
     private var dropArea: Rectangle? = null
 
     init {

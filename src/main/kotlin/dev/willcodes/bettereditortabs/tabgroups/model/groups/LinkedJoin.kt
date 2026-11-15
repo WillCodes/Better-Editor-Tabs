@@ -1,12 +1,12 @@
 package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
- * SPLIT-2 as pure rules: a file of group G in one split that is opened in another split joins G's instance there.
+ * The linked-file rule as pure rules: a file of group G in one split that is opened in another split joins G's instance there.
  */
 object LinkedJoin {
     /**
-     * Whether a file that was just opened in a split may join a group there: not a pinned tab (INV-3), not a preview tab (INV-4), and
-     * not already a member of a group of that split ([groupedHere]; INV-1).
+     * Whether a file that was just opened in a split may join a group there: not a pinned tab, not a preview tab, and
+     * not already a member of a group of that split ([groupedHere]).
      */
     fun eligible(pinned: Boolean, preview: Boolean, groupedHere: Boolean): Boolean = !pinned && !preview && !groupedHere
 
@@ -29,7 +29,7 @@ object LinkedJoin {
     /**
      * The order in which several files that were opened together join their groups (each joins at the end of its group): the groups in
      * the order they first appear in [picks], and within a group the order the files have in the instance they came from. So the
-     * tabs an unsplit brings over line up at the end of the group as they stood in the merged-away split (user request 2026-11-13),
+     * tabs an unsplit brings over line up at the end of the group as they stood in the merged-away split,
      * whatever order the platform opened them in.
      */
     fun <F> joinOrder(picks: List<Pick<F>>): List<Pick<F>> {

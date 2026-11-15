@@ -12,9 +12,9 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * Joining groups (CTX-2, SPLIT-2, SPLIT-5, INT-6, RULE-2) for [TabGroupsService], which delegates to it: a tab becomes the last member
+ * Joining groups for [TabGroupsService], which delegates to it: a tab becomes the last member
  * of a group's instance ([joinInstance]), a file opened in a split joins the group it belongs to in another split ([joinLinked]), and
- * the entry for new tabs, which runs SPLIT-2 first and then the auto-group rules ([joinLinkedThenRules]). Also the ordering of an
+ * the entry for new tabs, which runs the linked-file rule first and then the auto-group rules ([joinLinkedThenRules]). Also the ordering of an
  * instance that arrives from another split ([groupMovedIn]). Shares the service's [state]; [refresh], [arrange] and [leaveGroup] are the
  * service's own. EDT only.
  */
@@ -32,8 +32,8 @@ internal class LinkedJoins(
 
     /**
      * [file] becomes the last member of [groupId]'s instance in [split] (created, at the tab's position, if the split has none) and its
-     * tab moves behind the instance's last tab (INV-2). A collapsed instance is expanded first (CTX-2: the user sees where the tab
-     * went). [leave]: the file leaves its current group first (CTX-2); false for a file that has none (SPLIT-2).
+     * tab moves behind the instance's last tab. A collapsed instance is expanded first, so the user sees where the tab
+     * went. [leave]: the file leaves its current group first; false for a file that has none (the linked-file rule).
      */
     fun joinInstance(split: SplitHandle, file: VirtualFile, groupId: String, leave: Boolean) {
         var target = state.instance(split, groupId)
@@ -50,9 +50,9 @@ internal class LinkedJoins(
     }
 
     /**
-     * SPLIT-2: [files] were opened in [split] and are not members of a group there. A file that belongs to a group in another split
+     * The linked-file rule: [files] were opened in [split] and are not members of a group there. A file that belongs to a group in another split
      * joins that group's instance here (created if the split has none); with different groups in different splits the one of the
-     * most recently focused split wins ([LinkedJoin.pickGroup]). Pinned tabs (INV-3) and preview tabs (INV-4) stay out.
+     * most recently focused split wins ([LinkedJoin.pickGroup]). Pinned tabs and preview tabs stay out.
      */
     private fun joinLinked(split: SplitHandle, files: List<VirtualFile>) {
         if (!isHost()) return
@@ -77,7 +77,7 @@ internal class LinkedJoins(
     }
 
     /**
-     * SPLIT-2 first (a file that belongs to a group in another split joins it: the linked join wins), then RULE-2 for what is still
+     * The linked-file rule first (a file that belongs to a group in another split joins it: the linked join wins), then the auto-group rules for what is still
      * ungrouped. The one entry for new and held-back tabs ([LateSplitRestore]) and for promoted preview tabs.
      */
     fun joinLinkedThenRules(split: SplitHandle, files: List<VirtualFile>) {
@@ -86,7 +86,7 @@ internal class LinkedJoins(
     }
 
     /**
-     * INT-6, SPLIT-5: see [TabGroupsService.groupMovedIn]. The arrival is appended to the state's list, but [TabBarHost.groupsIn] must
+     * See [TabGroupsService.groupMovedIn]. The arrival is appended to the state's list, but [TabBarHost.groupsIn] must
      * list a split's groups in strip order (collapsed neighbours share a host tab and are drawn in list order), so the instances are put
      * in the order of their first members in the split's tab order: the tab bar has re-ordered the target's strip with everything
      * visible before it reports the arrival.

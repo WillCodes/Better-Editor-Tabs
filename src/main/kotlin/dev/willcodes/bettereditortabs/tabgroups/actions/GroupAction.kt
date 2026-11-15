@@ -11,8 +11,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 
 /**
- * What a §13 action works on, read from the event: the [split] it ran in, the [context] tab (null when no tab is usable, e.g. every tab
- * is hidden) and the [service]. [groupId] is the "current group" of §13: the group of the context tab (null if it is ungrouped).
+ * What a group action works on, read from the event: the [split] it ran in, the [context] tab (null when no tab is usable, e.g. every tab
+ * is hidden) and the [service]. [groupId] is the "current group": the group of the context tab (null if it is ungrouped).
  */
 internal class GroupActionScope(val project: Project, val service: TabGroupsService, val split: SplitHandle, val context: TabContext?) {
     val groupId: String? get() = context?.let { service.groupOf(split, it.file)?.id }
@@ -30,7 +30,17 @@ internal class GroupActionScope(val project: Project, val service: TabGroupsServ
 }
 
 /**
- * Base of the §13 actions: no default shortcut (plugin.xml), `DumbAware`, updated on the EDT (the group state lives there), enabled by
+ * Hides the plugin's actions with the Classic UI, where the plugin stays inactive. Returns true when [e] was hidden, so the caller
+ * skips the rest of its update.
+ */
+internal fun hideOutsideNewUi(e: AnActionEvent): Boolean {
+    if (TabBar.isSupported) return false
+    e.presentation.isEnabledAndVisible = false
+    return true
+}
+
+/**
+ * Base of the group actions: no default shortcut (plugin.xml), `DumbAware`, updated on the EDT (the group state lives there), enabled by
  * [isEnabled] (cheap, no side effects), which is checked again in [actionPerformed].
  */
 abstract class GroupAction : AnAction(), DumbAware {
@@ -41,6 +51,7 @@ abstract class GroupAction : AnAction(), DumbAware {
     internal abstract fun perform(scope: GroupActionScope, e: AnActionEvent)
 
     override fun update(e: AnActionEvent) {
+        if (hideOutsideNewUi(e)) return
         val scope = GroupActionScope.of(e)
         e.presentation.isEnabled = scope != null && isEnabled(scope)
     }

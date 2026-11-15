@@ -20,7 +20,7 @@ import javax.swing.SwingUtilities
 private val LOG = logger<TabBarDnd>()
 
 /*
- * A group dropped on the edge of an editor area, or outside every editor window (INT-6, SPLIT-5, SCOPE-6): the group's whole instance
+ * A group dropped on the edge of an editor area, or outside every editor window: the group's whole instance
  * moves into a split that does not exist yet. The move itself is moveGroupToSplit's (moveNow: the source model lets go, the files
  * go over with transferFile and no Reopen Closed Tab history, the target is ordered once and given the group as one instance, the
  * expand animation plays if it was expanded, the previously selected tab is selected there if it was one of the group's); this file
@@ -31,7 +31,7 @@ private val LOG = logger<TabBarDnd>()
  * keeps the source tab), and the files that follow, with the first one's source tab, are moved by moveNow as for any other split. The
  * split is created before anything leaves the source, so a source that the move empties disposes itself last (a split goes away with
  * its last tab, as in the platform). The new split's drag layer exists once TabBar.sync has run; the move goes through runMove so
- * that SPLIT-2's placement does not take the arrival for a file the user opened there.
+ * that the linked-file placement does not take the arrival for a file the user opened there.
  */
 
 /**
@@ -51,7 +51,7 @@ internal fun TabBarDnd.moveGroupToNewSplit(
 ): Boolean {
     if (side == EditorSide.CENTER) return false
     val project = adapter.window.manager.project
-    // SPLIT-6: an empty group has no file to open the split with: a placeholder tab is that file, and the split holds only that
+    // An empty group has no file to open the split with: a placeholder tab is that file, and the split holds only that
     // (a temporary split). `EditorWindow.split` returns null for a window without tab, so an anchor that has none gets a placeholder first.
     val first: VirtualFile = unit.keys.firstOrNull()
         ?: (if (unit.isEmptyPill) PlaceholderFile(fresh = true) else return false)
@@ -79,7 +79,7 @@ internal fun TabBarDnd.moveGroupToNewSplit(
         runMove(target, freezes) { moveNow(unit, target, emptyList(), 0, selectedBefore, expanding, copy) }
     }
     finally {
-        project.service<TabBar>().temporary.created(created) // SPLIT-6: complete now (or failed): it may end like any temporary split
+        project.service<TabBar>().temporary.created(created) // complete now (or failed): it may end like any temporary split
     }
     LOG.info("group ${unit.groupId} ${if (copy) "copied" else "moved"} to a new split: side=$side, ${unit.keys.size} files")
     return true
@@ -100,7 +100,7 @@ internal fun TabBarDnd.moveGroupToNewWindow(
     expanding: String?,
     copy: Boolean = false,
 ): Boolean {
-    // SPLIT-6: an empty group opens the window with a placeholder tab (a temporary split)
+    // an empty group opens the window with a placeholder tab (a temporary split)
     val first: VirtualFile = unit.keys.firstOrNull() ?: (if (unit.isEmptyPill) PlaceholderFile(fresh = true) else return false)
     val project = adapter.window.manager.project
     val manager = FileEditorManagerEx.getInstanceEx(project) as? FileEditorManagerImpl

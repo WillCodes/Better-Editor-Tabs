@@ -4,7 +4,7 @@ import java.awt.Dimension
 import java.awt.Rectangle
 
 /**
- * Layout of the floating picture of a group drag (INT-6): a bordered chip holding the group's pill and, after a small gap, the number
+ * Layout of the floating picture of a group drag: a bordered chip holding the group's pill and, after a small gap, the number
  * of tabs being moved. Pure arithmetic in layout pixels: the pill and the count are centred vertically in the chip, the chip is at
  * least [minHeight] tall (about a tab's picture) and wide enough for the border, the paddings, both pieces and the gap.
  */

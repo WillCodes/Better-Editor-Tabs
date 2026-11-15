@@ -23,7 +23,7 @@ import java.awt.Rectangle
  * are narrowed in the buttons' row and hidden below the end of the strip ([PillRows.fit]); the hidden ones are added to the pass's
  * dropped tabs, so "Show Hidden Tabs" lists them.
  *
- * Collapse animation (COLL-7): the label of a group that collapses or expands is drawn at the animated part of its height
+ * Collapse animation: the label of a group that collapses or expands is drawn at the animated part of its height
  * ([CollapseAnimator.verticalExtentOf]) and the labels behind it move up by the rest, frame by frame (every frame is a new layout pass).
  *
  * The "more" button ([SideMoreButton]): a strip that fits without the pill rows but not with them has no platform "more" button (the
@@ -48,7 +48,7 @@ internal class VerticalRows(
     private var lastPass: Any? = null
     private val moreButton = SideMoreButton(tabs)
 
-    /** The laid-out height of every label the last pass drew shorter (COLL-7); pill rows keep the full row height. */
+    /** The laid-out height of every label the last pass drew shorter; pill rows keep the full row height. */
     private val naturalHeights = java.util.IdentityHashMap<TabLabel, Int>()
 
     /** The height of [label]'s row: its laid-out height, also while the animation draws it shorter. */
@@ -73,7 +73,7 @@ internal class VerticalRows(
             lead += l.sumOf { if (it.header != null || it.count != null) label.height else it.length }
             trail += t.sumOf { if (it.header != null || it.count != null) label.height else it.length }
         }
-        // COLL-7: a label of a group that collapses / expands is drawn at its animated height; the labels behind it move up by the rest.
+        // A label of a group that collapses / expands is drawn at its animated height; the labels behind it move up by the rest.
         val drawn = IntArray(labels.size) { i ->
             val h = labels[i].height
             (labels[i].info.`object` as? VirtualFile)?.let(extentOf)?.let { animatedLength(h, it) } ?: h

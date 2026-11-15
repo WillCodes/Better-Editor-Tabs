@@ -17,7 +17,7 @@ internal interface SplitGroups {
     fun commit(groups: List<GroupDecoration>, expanding: String? = null)
 
     /**
-     * A whole group instance from another split was dropped here (INT-6, SPLIT-5). Already merged with an existing instance if any.
+     * A whole group instance from another split was dropped here. Already merged with an existing instance if any.
      * [expanding]: as for [commit].
      */
     fun acceptGroup(group: GroupDecoration, expanding: String? = null)

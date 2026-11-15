@@ -30,7 +30,7 @@ internal object StripReader {
     fun infoOf(tabs: JBEditorTabs, file: VirtualFile): TabInfo? = tabs.tabs.firstOrNull { it.`object` == file }
 
     /**
-     * Files of all tabs of the strip, hidden ones included, in the platform's order. The placeholder of a temporary split (SPLIT-6) is
+     * Files of all tabs of the strip, hidden ones included, in the platform's order. The placeholder of a temporary split is
      * not a file of the user's and is left out, here and in [openFiles].
      */
     fun allFiles(tabs: JBEditorTabs): List<VirtualFile> = tabs.tabs.mapNotNull { (it.`object` as? VirtualFile)?.takeUnless(::isPlaceholder) }
@@ -38,6 +38,6 @@ internal object StripReader {
     /** [allFiles] as a set: the files that have a tab in the strip. */
     fun openFiles(tabs: JBEditorTabs): Set<VirtualFile> = allFiles(tabs).toHashSet()
 
-    /** True if the strip holds the placeholder of a temporary split (SPLIT-6). */
+    /** True if the strip holds the placeholder of a temporary split. */
     fun holdsPlaceholder(tabs: JBEditorTabs): Boolean = tabs.tabs.any { isPlaceholder(it.`object` as? VirtualFile) }
 }

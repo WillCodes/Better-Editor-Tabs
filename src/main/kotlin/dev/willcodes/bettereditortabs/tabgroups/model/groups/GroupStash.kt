@@ -3,12 +3,12 @@ package dev.willcodes.bettereditortabs.tabgroups.model.groups
 import dev.willcodes.bettereditortabs.tabgroups.model.persist.rewriteUrl
 
 /**
- * One stashed group (LIFE-2, PERS-4): what Stash Group saved. [groupId] lets a restore re-link the group with the identity that still
- * exists in other splits (SPLIT-3); [name] and [color] are the group's at the time; [files] are the member files as VFS URLs, in tab
+ * One stashed group: what Stash Group saved. [groupId] lets a restore re-link the group with the identity that still
+ * exists in other splits; [name] and [color] are the group's at the time; [files] are the member files as VFS URLs, in tab
  * order; [stashedAt] is epoch milliseconds. [id] identifies the entry.
  *
- * [rule] is the group's auto-group rule at the time (RULE-1; a restore brings it back, LIFE-2); null if it had none. A snapshot with no
- * [files] is an empty group with an enabled rule (RULE-6): restoring it makes an empty instance again.
+ * [rule] is the group's auto-group rule at the time (a restore brings it back); null if it had none. A snapshot with no
+ * [files] is an empty group with an enabled rule: restoring it makes an empty instance again.
  */
 data class StashEntry(
     val id: String,
@@ -21,8 +21,8 @@ data class StashEntry(
 )
 
 /**
- * The project's stash (LIFE-2, LIFE-4, PERS-4): snapshots of groups that were closed with Stash Group, newest first. Kept apart from
- * [GroupsState], so a stashed group is not a group of the project (CTX-2's submenu and COL-1's colour count ignore it).
+ * The project's stash: snapshots of groups that were closed with Stash Group, newest first. Kept apart from
+ * [GroupsState], so a stashed group is not a group of the project (the Add to Group submenu and the colour assignment ignore it).
  *
  * Threading: mutated on the EDT only; [entries] is an immutable list in a volatile field, so any thread may read it.
  */
@@ -54,7 +54,7 @@ class GroupStash(initial: List<StashEntry> = emptyList()) {
         entries = list.toList()
     }
 
-    /** MEM-4: a file or directory moved from [oldUrl] to [newUrl]. Returns whether any entry changed. */
+    /** A file or directory moved from [oldUrl] to [newUrl]. Returns whether any entry changed. */
     fun rewriteUrls(oldUrl: String, newUrl: String): Boolean {
         var changed = false
         entries = entries.map { e ->

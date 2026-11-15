@@ -2,7 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.groups
 
 /**
  * A grouped tab copied into another split (Ctrl held when it is dropped there) joins its own group in that split, wherever it was
- * dropped (SPLIT-2: "dragging a copy"; user decision 2026-11-13). Pure, unit tested.
+ * dropped ("dragging a copy"). Pure, unit tested.
  */
 object CopyJoin {
     /** [order]: the target split's tab order after the drop; [members]: every instance's members (group id to files), in [order]. */
@@ -12,9 +12,9 @@ object CopyJoin {
      * [file] was dropped into [order] (the target split's complete tab order, nothing hidden) and must end up in group [group].
      * [instances] are the target's instances before the drop (group id, members); [file] leaves whichever of them it was dropped into.
      * - The split has an instance of [group]: [file] becomes its last member and its tab goes right behind the instance's last tab
-     *   (as CTX-2 does).
+     *   (as adding a tab through the context menu does).
      * - It has none: a new instance with [file] alone is made where it was dropped, except that a drop between two tabs of another
-     *   group puts it right behind that group (INV-2, the group stays contiguous).
+     *   group puts it right behind that group (the group stays contiguous).
      */
     fun <T> place(order: List<T>, file: T, instances: List<Pair<String, List<T>>>, group: String): Result<T> {
         val others = instances.map { (id, m) -> id to m.filter { it != file } }

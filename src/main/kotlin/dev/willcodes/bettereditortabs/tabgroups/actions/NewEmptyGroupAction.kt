@@ -13,13 +13,14 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import dev.willcodes.bettereditortabs.tabgroups.ui.popup.GroupPopup
 
 /**
- * CTX-5: New Tab Group (Find Action; the tab strip's own context menu offers *New Group*). Creates an empty, unnamed group with the next
+ * New Tab Group (Find Action; the tab strip's own context menu offers *New Group*). Creates an empty, unnamed group with the next
  * colour at the end of the current split's strip and opens its group popup with the name field focused. Enabled when there is a split.
  */
 class NewEmptyGroupAction : AnAction(), DumbAware {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (hideOutsideNewUi(e)) return
         val project = e.project
         e.presentation.isEnabled = project != null && project.service<TabBar>().splitFor(e) != null
     }

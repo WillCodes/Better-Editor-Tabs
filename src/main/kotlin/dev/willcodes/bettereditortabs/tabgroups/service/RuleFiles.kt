@@ -9,7 +9,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.RuleFile
 
 /**
- * What the auto-group rules (RULE-1) need to know about a file, read with public API only: the module through
+ * What the auto-group rules need to know about a file, read with public API only: the module through
  * `ModuleUtilCore.findModuleForFile` (a read action, which the EDT does not hold implicitly since 2026.1; `ReadAction.computeBlocking`, as `compute` is deprecated), the path relative to the
  * project's base path (`Project.getBasePath`) with forward slashes, null for a file outside the project, and the file's own path.
  */

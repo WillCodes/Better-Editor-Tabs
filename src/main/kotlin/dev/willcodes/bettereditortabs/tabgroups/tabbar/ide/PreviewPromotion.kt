@@ -16,7 +16,7 @@ import java.util.WeakHashMap
 import javax.swing.SwingUtilities
 
 /**
- * RULE-2 for one split: reports the moment a preview tab becomes a normal tab ([promoted], `TabBarHost.tabMadePermanent`), exactly
+ * For one split: reports the moment a preview tab becomes a normal tab ([promoted], `TabBarHost.tabMadePermanent`), exactly
  * once per promotion, whichever way the platform did it.
  *
  * The platform has no event for it. What it does when `EditorComposite.isPreview` goes false (a double click on the tab,

@@ -4,7 +4,7 @@ import java.awt.Point
 import java.awt.Rectangle
 
 /**
- * Pure geometry of the group-drag ghost (INT-6), unit tested. Everything is in the tab bar component's coordinates unless stated.
+ * Pure geometry of the group-drag ghost, unit tested. Everything is in the tab bar component's coordinates unless stated.
  *
  * The ghost is a picture of exactly the pill plus the group's showing tab labels (just the pill when collapsed).
  */

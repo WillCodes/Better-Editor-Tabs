@@ -189,7 +189,7 @@ internal class TabTint(
     private fun isIslands(): Boolean = PlatformInternals.isIslandsPainter(tabs.tabPainter)
 
     /**
-     * What to hand to the platform so that the member tab ends up with the style's opacity (SET-1, read at paint time) of the group colour over the strip background.
+     * What to hand to the platform so that the member tab ends up with the style's opacity (read at paint time) of the group colour over the strip background.
      *
      * Classic New UI (`JBEditorTabPainter` / `JBDefaultTabPainter.getCustomBackground`): the tab colour is painted as is
      * (unselected: blended with `inactiveColoredFileBackground`; selected: replaces the selected background), so the group

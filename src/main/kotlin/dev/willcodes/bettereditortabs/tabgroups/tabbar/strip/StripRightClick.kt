@@ -9,7 +9,7 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
- * CTX-5 (user request 2026-11-14): a right click on the free part of a split's tab strip, where there is no tab label and no pill, is
+ * A right click on the free part of a split's tab strip, where there is no tab label and no pill, is
  * reported through [onFreeClick] with the tab component and the point (tab component coordinates), so the host can open a context menu
  * (New Group).
  *
@@ -63,7 +63,7 @@ internal class StripRightClick(
 }
 
 /**
- * CTX-5: the free part of a tab strip, where [StripRightClick] reports a right click: the strip's rows (its units, the platform's header
+ * The free part of a tab strip, where [StripRightClick] reports a right click: the strip's rows (its units, the platform's header
  * rectangle, or the row of a strip that shows only pills, [hasLoosePills]), minus every tab label, every pill and count pill ([headers]) and the
  * platform's buttons (more, entry point, title). A strip that shows nothing (placement None, no tab and no pill) has no free part.
  */

@@ -14,7 +14,7 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
 import java.awt.Color
 
 /**
- * The auto-group rules (RULE-1..RULE-6, POP-2) for [TabGroupsService], which delegates to it: setting a group's rule ([applyRule]),
+ * The auto-group rules for [TabGroupsService], which delegates to it: setting a group's rule ([applyRule]),
  * the "move matching tabs?" offer ([ruleMatches], [moveRuleMatches]) and pulling newly permanent tabs into the group whose rule
  * matches first ([applyRules]). Matching and placement are pure ([RuleMatching], [RulePlacement]); what a rule knows about a file
  * comes from [RuleFiles]. Shares the service's [state]; [refresh] and [arrange] are the service's own, [isHost] tells whether the
@@ -35,7 +35,7 @@ internal class AutoGroupRules(
         val group = state.group(groupId) ?: return
         val splits = state.splits().filter { state.instance(it, groupId) != null }
         group.rule = rule
-        // POP-2/MEM-5 amended: a popup close keeps an empty instance whose rule went off; groupPopupClosed asks about it.
+        // A popup close keeps an empty instance whose rule went off; groupPopupClosed asks about it.
         if (rule?.enabled != true && !offerMatching) state.pruneEmpty(groupId)
         for (split in splits) refresh(split)
         saved.capture()
@@ -52,7 +52,7 @@ internal class AutoGroupRules(
         return matchesOf(rule)
     }
 
-    /** POP-4, POP-2: per live split, the open tabs (logical order) that [rule] would move: ungrouped, unpinned, not preview. Empty for an inactive rule. */
+    /** Per live split, the open tabs (logical order) that [rule] would move: ungrouped, unpinned, not preview. Empty for an inactive rule. */
     fun matchesOf(rule: AutoGroupRule): Map<SplitHandle, List<VirtualFile>> {
         if (!rule.isActive) return emptyMap()
         val result = LinkedHashMap<SplitHandle, List<VirtualFile>>()
@@ -72,9 +72,9 @@ internal class AutoGroupRules(
     }
 
     /**
-     * RULE-2, RULE-3: [files] became permanent tabs of [split]; each one that is visible, unpinned, not a preview tab and ungrouped
+     * [files] became permanent tabs of [split]; each one that is visible, unpinned, not a preview tab and ungrouped
      * goes into the group whose rule matches first: the split's groups in strip order, then the project's other groups in creation
-     * order ([RuleMatching.firstMatch]). RULE-4/RULE-5: the service calls this only for opened tabs and promoted preview tabs, never
+     * order ([RuleMatching.firstMatch]). The service calls this only for opened tabs and promoted preview tabs, never
      * for restored tabs, drags, ungrouping or unpinning.
      */
     fun applyRules(split: SplitHandle, files: List<VirtualFile>) {
@@ -89,7 +89,7 @@ internal class AutoGroupRules(
         }
     }
 
-    /** True for a tab the rules may move: open, unpinned, not a preview tab and in no group of [split] (RULE-2, POP-2). */
+    /** True for a tab the rules may move: open, unpinned, not a preview tab and in no group of [split]. */
     private fun isRuleCandidate(split: SplitHandle, file: VirtualFile): Boolean =
         state.groupOf(split, file) == null && tabBar.openTabs(split, listOf(file)).isNotEmpty() &&
             !tabBar.isPinned(split, file) && !tabBar.isPreview(split, file)
@@ -102,8 +102,8 @@ internal class AutoGroupRules(
 
     /**
      * Makes [files] (open, ungrouped tabs of [split]) the last members of [groupId]'s instance there, moving their tabs behind it
-     * ([RulePlacement]): an existing instance gets them at its end (a collapsed one expands first, as CTX-2), a group without one gets
-     * a new instance after the split's existing groups (RULE-3). The tabs are moved with [TabBar.openInOrder] (open files only move;
+     * ([RulePlacement]): an existing instance gets them at its end (a collapsed one expands first, so the user sees where the tabs went), a group without one gets
+     * a new instance after the split's existing groups. The tabs are moved with [TabBar.openInOrder] (open files only move;
      * it takes the whole logical order). The selected tab stays selected.
      */
     private fun pullIn(split: SplitHandle, groupId: String, files: List<VirtualFile>) {
@@ -130,7 +130,7 @@ internal class AutoGroupRules(
     private fun headerIndexOf(split: SplitHandle, groupId: String, members: List<VirtualFile>, order: List<VirtualFile>): Int =
         tabBar.headerIndex(split, groupId) ?: members.firstNotNullOfOrNull { m -> order.indexOf(m).takeIf { it >= 0 } } ?: order.size
 
-    // ---- POP-4: the rule preview ----------------------------------------------------------------------------------------------
+    // ---- the rule preview ----------------------------------------------------------------------------------------------
 
     /** The preview being shown (read off the EDT by the Project view highlight, so an immutable value in a volatile field). */
     @Volatile
@@ -167,5 +167,5 @@ internal class AutoGroupRules(
     }
 }
 
-/** POP-4: the rule being previewed by the group popup and the colour of its group, for the Project view highlight ([TabGroupsService.rulePreview]). */
+/** The rule being previewed by the group popup and the colour of its group, for the Project view highlight ([TabGroupsService.rulePreview]). */
 class RulePreview(val rule: AutoGroupRule, val color: Color)

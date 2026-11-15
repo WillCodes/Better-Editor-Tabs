@@ -18,14 +18,14 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /**
- * The "+N" count of a partly shown group (COLL-8): N is how many of the group's tabs are still hidden. A small rounded pill like the
- * count of a group drag's picture (INT-6, [PillPainter.paintCount]): the group colour mixed into the strip background, with the text in
+ * The "+N" count of a partly shown group: N is how many of the group's tabs are still hidden. A small rounded pill like the
+ * count of a group drag's picture ([PillPainter.paintCount]): the group colour mixed into the strip background, with the text in
  * the colour of better contrast.
  *
  * Hosted like a header ([GroupHeader]): a direct child of the tab component, its space reserved in the trailing side of the peek's label
- * in Top / Bottom strips (`PillLayout`, HDR-6) or a row of its own right below the peek in Left / Right strips (`VerticalRows`, `StripGeometry`); this component
+ * in Top / Bottom strips (`PillLayout`) or a row of its own right below the peek in Left / Right strips (`VerticalRows`, `StripGeometry`); this component
  * only paints and reports clicks. A click, a middle click and a right click are the header's (the same [StripEvents] calls with the
- * group's [GroupHeader], [headerOf]); there is no hover list (INT-5).
+ * group's [GroupHeader], [headerOf]); there is no hover list.
  */
 internal class CountPill(val groupId: String, private val style: () -> StripStyle = { StripStyle.DEFAULT }) : JComponent() {
     /** N of "+N". */
@@ -132,7 +132,7 @@ internal class CountPill(val groupId: String, private val style: () -> StripStyl
     }
 }
 
-/** A click on the count is a click on the header (COLL-8): left, middle and right, reported on release within the click slop (INT-1). */
+/** A click on the count is a click on the header: left, middle and right, reported on release within the click slop. */
 internal class CountMouseHandler(private val pill: CountPill) : MouseAdapter() {
     private var pressPoint: java.awt.Point? = null
     private var pressButton = 0
@@ -169,7 +169,7 @@ internal class CountMouseHandler(private val pill: CountPill) : MouseAdapter() {
 
 /**
  * The count pills of one split ([CountPill]): creates and removes them as the groups change, places them over the slots the strip
- * geometry computed and keeps them above the labels. A group has one while it shows a peek and has hidden tabs (COLL-8).
+ * geometry computed and keeps them above the labels. A group has one while it shows a peek and has hidden tabs.
  */
 internal class CountPills(
     private val tabs: JBEditorTabs,

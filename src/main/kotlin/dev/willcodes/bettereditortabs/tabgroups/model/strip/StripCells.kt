@@ -3,7 +3,7 @@ package dev.willcodes.bettereditortabs.tabgroups.model.strip
 import java.awt.Rectangle
 
 /**
- * The strip as the drop rules see it (DRAG-1..DRAG-7, INT-6): a sequence of cells, ungrouped tabs, group member tabs and group pills.
+ * The strip as the drop rules see it: a sequence of cells, ungrouped tabs, group member tabs and group pills.
  * A collapsed group is a single pill cell (its hidden members are not cells). The dragged tab is not part of the sequence; the
  * question is which of the gaps ("slots", 0..cells.size) it is dropped into and which group it belongs to there.
  */
@@ -15,9 +15,9 @@ sealed class StripCell<T> {
 data class TabCell<T>(val key: T, val groupId: String?, val pinned: Boolean, override val rect: Rectangle) : StripCell<T>()
 
 /**
- * [empty]: the pill of an empty group instance (RULE-6: no tab at all, whatever its collapsed flag says). It is one unit like any collapsed
+ * [empty]: the pill of an empty group instance (no tab at all, whatever its collapsed flag says). It is one unit like any collapsed
  * pill (a tab is never dropped into it at once), but the slot right behind it is a trailing edge: a tab held there joins the group
- * ([DropRules.landing], DRAG-3); the slot in front of it is outside.
+ * ([DropRules.landing]); the slot in front of it is outside.
  */
 data class PillCell<T>(val groupId: String, val collapsed: Boolean, override val rect: Rectangle, val empty: Boolean) : StripCell<T>() {
     /** A pill of a group with tabs (or an expanded one): not [empty]. */
@@ -52,7 +52,7 @@ data class MoveUnit<T>(
      */
     val runs: List<Rectangle> = listOf(bounds),
 ) {
-    /** The pill of an empty group instance (RULE-6): a collapsed group unit with no tab. It is dragged within its own strip only. */
+    /** The pill of an empty group instance: a collapsed group unit with no tab. It is dragged within its own strip only. */
     val isEmptyPill: Boolean get() = groupId != null && collapsed && keys.isEmpty()
 
     /** The unit as strip items: its tabs, or the one empty pill. */
