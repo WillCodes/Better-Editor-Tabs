@@ -34,6 +34,36 @@ object SortedOrder {
         return result
     }
 
+    /**
+     * RULE-6 with IDE-2: where the pills of the empty groups [emptyIds] (groups with an enabled rule and no tab) stand in the sorted
+     * strip [sorted] (the result of [order] for [tabs] and [groups]): among the groups, by name like the others. The result maps each
+     * empty group to its anchor, the last tab in front of its pill (the last tab of the group before it that has tabs, else the last
+     * pinned tab, else null: first), in group order, so that several pills behind one tab keep their order ([EmptyPillSpots]).
+     */
+    fun <K> emptySpots(
+        tabs: List<Tab<K>>, groups: List<Group>, sorted: List<K>, emptyIds: Set<String>, nameOrder: Comparator<String>,
+    ): LinkedHashMap<String, K?> {
+        val result = LinkedHashMap<String, K?>()
+        if (emptyIds.isEmpty()) return result
+        val known = groups.mapTo(HashSet()) { it.id }
+        val lastOf = HashMap<String, K>()
+        val position = HashMap<K, Int>()
+        for ((i, k) in sorted.withIndex()) position.putIfAbsent(k, i)
+        for (t in tabs) {
+            val g = t.group ?: continue
+            if (t.pinned || g !in known) continue
+            val at = position[t.key] ?: continue
+            if (lastOf[g]?.let { position.getValue(it) < at } != false) lastOf[g] = t.key
+        }
+        var anchor: K? = tabs.filter { it.pinned }.mapNotNull { t -> position[t.key]?.let { t.key to it } }.maxByOrNull { it.second }?.first
+        for (g in groups.sortedWith(groupOrder(nameOrder))) {
+            val last = lastOf[g.id]
+            if (last != null) anchor = last
+            else if (g.id in emptyIds) result[g.id] = anchor
+        }
+        return result
+    }
+
     private fun groupOrder(nameOrder: Comparator<String>): Comparator<Group> = Comparator { a, b ->
         val an = a.name.isEmpty()
         val bn = b.name.isEmpty()

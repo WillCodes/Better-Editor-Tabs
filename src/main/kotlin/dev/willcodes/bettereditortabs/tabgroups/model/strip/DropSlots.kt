@@ -58,7 +58,7 @@ object DropSlots {
         val n = cells.size
         val low = lo.coerceIn(0, n)
         val high = hi.coerceIn(low, n)
-        val cur = current.coerceIn(low, high)
+        val logical = current.coerceIn(low, high)
         val liveGap = gap?.takeIf { !it.isEmpty }
 
         fun start(r: Rectangle) = if (horizontal) r.x else r.y
@@ -67,6 +67,9 @@ object DropSlots {
         // the part of the gap the pointer stands for, and the room the dragged element takes in the live layout
         val probe = liveGap?.let { end(it) - start(it) } ?: 0
         val room = shift ?: probe
+        // Fix round 2b: the layout can show the placeholder in front of an empty pill although the slot says "behind it" (a tab that was
+        // held out of its own group: the pill is hosted by the tab behind it). The cells are walked from where the placeholder is shown.
+        val cur = physicalSlot(cells, liveGap, logical, horizontal)
 
         val ordered = ArrayList<Rectangle>(n + 1)
         for (i in 0..n) {
@@ -80,7 +83,20 @@ object DropSlots {
         val pLine = if (rows) pointerRow(bands, pointer.y) else 0
         val gapLine = liveGap?.let { lineOf(it) } ?: pLine
 
-        if (liveGap != null && at >= start(liveGap) && at < end(liveGap) && (!rows || gapLine == pLine)) return cur
+        // Round 9 (user decision): a pill (a group's header: empty, collapsed or expanded) is crossed like a tab is felt to be crossed:
+        // as soon as the pointer enters it, or, for a pill wider than the placeholder, as soon as the pointer would land inside the
+        // placeholder after the swap. The general rules below cross a cell once the pointer is within the placeholder's length of it,
+        // which passes a narrow pill long before the pointer reaches it. One pill per step: the cells behind it are judged again in the
+        // layout that follows, where the pointer is inside the placeholder (so nothing flips back). Single line only.
+        fun pillAt(i: Int): Rectangle? = (cells[i] as? PillCell)?.takeIf { !rows && !it.rect.isEmpty }?.rect
+
+        if (liveGap != null && at >= start(liveGap) && at < end(liveGap) && (!rows || gapLine == pLine)) {
+            if (cur == logical) return cur
+            // the placeholder is shown in front of the pill that the slot says it is behind: the pointer on the pill's trailing half
+            // (where it stands without the placeholder) keeps the slot behind it, in front of that it means the slot in front
+            val pill = cells[logical - 1].rect
+            return if (at >= (start(pill) + end(pill)) / 2 - room) logical else cur
+        }
 
         /** Is cell [u], behind the gap, passed by the pointer? Rectangles are live: cells behind the gap are shifted by its room. */
         fun passedForward(u: Rectangle): Boolean {
@@ -123,16 +139,33 @@ object DropSlots {
             }
             // the last visible cell, with hidden tabs behind it, is cut by the end of the strip: the gap would land out of view
             if (cutAtTheEnd(cells, s)) break
-            if (!passedForward(u)) break
+            val pill = pillAt(s)
+            val crossed = if (pill != null) at >= maxOf(start(pill), end(pill) - (if (liveGap != null) room else 0)) else passedForward(u)
+            if (!crossed) break
             s++
+            if (pill != null) break
         }
         if (s != cur) return s
         while (s > low) {
             val u = cells[s - 1].rect
-            if (u.isEmpty || cutAtTheStart(cells, s - 1) || !passedBackward(u)) break
+            if (u.isEmpty || cutAtTheStart(cells, s - 1)) break
+            val pill = pillAt(s - 1)
+            val crossed = if (pill != null) at < minOf(end(pill), start(pill) + probe) else passedBackward(u)
+            if (!crossed) break
             s--
+            if (pill != null) break
         }
-        return s
+        return if (s == cur) logical else s
+    }
+
+    /**
+     * The slot the placeholder [liveGap] is really shown in when it is in front of the pill (an empty group's, or the lone pill of
+     * a tab held out of its own group) that the slot [logical] puts it behind: one less, else [logical]. Single line only (the pill is behind the placeholder along the strip).
+     */
+    private fun <T> physicalSlot(cells: List<StripCell<T>>, liveGap: Rectangle?, logical: Int, horizontal: Boolean): Int {
+        val pill = cells.getOrNull(logical - 1) as? PillCell ?: return logical
+        if (liveGap == null || pill.rect.isEmpty || DropSlots.isMultiRow(cells, liveGap, horizontal)) return logical
+        return if (mainStart(liveGap, horizontal) < mainStart(pill.rect, horizontal)) logical - 1 else logical
     }
 
     /**

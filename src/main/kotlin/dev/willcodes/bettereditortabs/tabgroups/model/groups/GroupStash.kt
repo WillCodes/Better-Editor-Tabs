@@ -7,7 +7,8 @@ import dev.willcodes.bettereditortabs.tabgroups.model.persist.rewriteUrl
  * exists in other splits (SPLIT-3); [name] and [color] are the group's at the time; [files] are the member files as VFS URLs, in tab
  * order; [stashedAt] is epoch milliseconds. [id] identifies the entry.
  *
- * Stage 11 adds the group's auto-group rule to this snapshot.
+ * [rule] is the group's auto-group rule at the time (RULE-1; a restore brings it back, LIFE-2); null if it had none. A snapshot with no
+ * [files] is an empty group with an enabled rule (RULE-6): restoring it makes an empty instance again.
  */
 data class StashEntry(
     val id: String,
@@ -16,6 +17,7 @@ data class StashEntry(
     val color: GroupColor,
     val files: List<String>,
     val stashedAt: Long,
+    val rule: AutoGroupRule? = null,
 )
 
 /**
@@ -57,7 +59,8 @@ class GroupStash(initial: List<StashEntry> = emptyList()) {
         var changed = false
         entries = entries.map { e ->
             val files = e.files.map { rewriteUrl(it, oldUrl, newUrl) }
-            if (files == e.files) e else e.copy(files = files).also { changed = true }
+            val rule = e.rule?.withUrlMoved(oldUrl, newUrl)
+            if (files == e.files && rule === e.rule) e else e.copy(files = files, rule = rule).also { changed = true }
         }
         return changed
     }

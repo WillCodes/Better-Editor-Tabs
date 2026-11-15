@@ -4,6 +4,7 @@ import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.impl.JBEditorTabs
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 
 /**
  * Read-only view of one split's editor tab strip, shared by the strip collaborators and by [dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar]
@@ -28,6 +29,15 @@ internal object StripReader {
     /** The tab of [file], hidden ones included. */
     fun infoOf(tabs: JBEditorTabs, file: VirtualFile): TabInfo? = tabs.tabs.firstOrNull { it.`object` == file }
 
-    /** Files of all tabs of the strip, hidden ones included, in the platform's order. */
-    fun allFiles(tabs: JBEditorTabs): List<VirtualFile> = tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
+    /**
+     * Files of all tabs of the strip, hidden ones included, in the platform's order. The placeholder of a temporary split (SPLIT-6) is
+     * not a file of the user's and is left out, here and in [openFiles].
+     */
+    fun allFiles(tabs: JBEditorTabs): List<VirtualFile> = tabs.tabs.mapNotNull { (it.`object` as? VirtualFile)?.takeUnless(::isPlaceholder) }
+
+    /** [allFiles] as a set: the files that have a tab in the strip. */
+    fun openFiles(tabs: JBEditorTabs): Set<VirtualFile> = allFiles(tabs).toHashSet()
+
+    /** True if the strip holds the placeholder of a temporary split (SPLIT-6). */
+    fun holdsPlaceholder(tabs: JBEditorTabs): Boolean = tabs.tabs.any { isPlaceholder(it.`object` as? VirtualFile) }
 }

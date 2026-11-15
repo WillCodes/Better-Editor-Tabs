@@ -26,6 +26,18 @@ internal class DragPreview(tabs: JBEditorTabs) {
     /** The tabs in front of each expanded group when the drag began. */
     private val before = HashMap<String, Set<VirtualFile>>()
 
+    /** DRAG-8: for each parked group (its only tab is the dragged one), whether the drop now puts the dragged tab in front of its pill. */
+    private val draggedInFront = HashMap<String, Boolean>()
+
+    /** See [draggedInFront]; set by the drag session with every new landing ([setParkedSides]). Null: not decided (old hosting). */
+    fun draggedInFrontOf(groupId: String): Boolean? = draggedInFront[groupId]
+
+    /** The drag session's decision for the parked groups (group id -> the dragged tab stands in front of its pill). */
+    fun setParkedSides(sides: Map<String, Boolean>) {
+        draggedInFront.clear()
+        draggedInFront.putAll(sides)
+    }
+
     /** The empty slot component and what it covers: the tabs and the pills of its groups. */
     val gap = DragGap(tabs)
     private var gapFiles: Set<VirtualFile> = emptySet()
@@ -38,6 +50,9 @@ internal class DragPreview(tabs: JBEditorTabs) {
     val hasMembershipPreview: Boolean get() = membership.isNotEmpty()
 
     fun isPreviewed(file: VirtualFile): Boolean = membership.containsKey(file)
+
+    /** True while some file is previewed as a member of group [groupId]. */
+    fun joins(groupId: String): Boolean = membership.values.any { it == groupId }
 
     /** Treats [file] as being in group [groupId] (null = no group) until [clear]. Replaces an earlier preview of the same file. */
     fun setMembership(file: VirtualFile, groupId: String?) {
@@ -73,6 +88,7 @@ internal class DragPreview(tabs: JBEditorTabs) {
         membership.clear()
         draggedFile = null
         before.clear()
+        draggedInFront.clear()
         gapFiles = emptySet()
         gapPills = emptySet()
         return had

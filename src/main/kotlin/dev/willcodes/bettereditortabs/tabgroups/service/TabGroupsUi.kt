@@ -49,6 +49,32 @@ interface TabGroupsUi {
      */
     fun warnMissingFiles(groupName: String, missing: List<String>, restored: Int) {}
 
+    /**
+     * POP-2: [count] open tabs match the auto-group rule just set on the group shown as [groupName]; asks *"N open tabs match this rule.
+     * Move them into "‹name›"?"* (Yes / No). Modal. True for Yes. The default answers No, so a test double that does not care moves
+     * nothing.
+     */
+    fun askMoveMatching(groupName: String, count: Int): Boolean = false
+
+    /**
+     * MEM-5, RULE-6 (amended 2026-11-14): the group shown as [groupName] has no tabs left, in the [case] given. [ruled]: it has an enabled
+     * auto-group rule. Without a rule: *"‹name›" is empty. Delete it?* (Delete / Keep); with one: *Keep it so that new matching files
+     * join it?* (Keep / Delete). Each with a "Don't ask again" checkbox whose answer the service remembers apart for ruled and unruled
+     * groups. Modal. The default answers Keep for a ruled group and Delete for an unruled one, so tests keep the old automatic removal.
+     */
+    fun askDeleteEmpty(groupName: String, ruled: Boolean, case: EmptyCase): EmptyGroupChoice =
+        EmptyGroupChoice(if (ruled) EmptyGroupAnswer.KEEP else EmptyGroupAnswer.DELETE)
+
+    /**
+     * SPLIT-6: the temporary split the user closed held empty groups; the groups shown as [moved] (their names, in strip order) went to
+     * the split used last, and those shown as [deleted] had no other split to go to and were deleted. One modal warning for all of them.
+     * Not called when both are empty. The default does nothing, so tests stay headless.
+     */
+    fun warnTemporarySplitClosed(moved: List<String>, deleted: List<String>) {}
+
+    /** CTX-5: the context menu of the free part of [split]'s tab strip (*New Group*), at [point] in [component]. */
+    fun showStripMenu(split: dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle, component: javax.swing.JComponent, point: java.awt.Point) {}
+
     companion object {
         fun getInstance(project: Project): TabGroupsUi = project.service()
     }
@@ -56,6 +82,18 @@ interface TabGroupsUi {
 
 /** The answer to [TabGroupsUi.confirmDelete]. "Don't ask again" only counts together with Delete. */
 enum class DeleteAnswer { DELETE, DELETE_AND_STOP_ASKING, CANCEL }
+
+/**
+ * How a group came to be empty, for the wording of [TabGroupsUi.askDeleteEmpty]: its last tab was closed, dragged out or pinned, or its
+ * popup closed while empty. Every case that would remove a group by itself asks (user rule, 2026-11-14).
+ */
+enum class EmptyCase { CLOSED, DRAGGED_OUT, PINNED, POPUP_CLOSED }
+
+/** The answer to [TabGroupsUi.askDeleteEmpty]. */
+enum class EmptyGroupAnswer { DELETE, KEEP }
+
+/** The reply of [TabGroupsUi.askDeleteEmpty]: the [answer], and whether "Don't ask again" was ticked with it. */
+data class EmptyGroupChoice(val answer: EmptyGroupAnswer, val dontAskAgain: Boolean = false)
 
 /** The answer to [TabGroupsUi.askLinkedDelete]. */
 enum class LinkedDeleteAnswer { MOVE, CLOSE, CANCEL }

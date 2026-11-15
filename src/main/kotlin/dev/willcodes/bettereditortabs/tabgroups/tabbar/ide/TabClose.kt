@@ -43,6 +43,16 @@ internal object TabClose {
         }
     }
 
+    /**
+     * Removes the newest Reopen Closed Tab entry of [window] if it is the one of [file] (a placeholder of a temporary split that was
+     * closed by something other than us: reopening it would bring the in-memory file back). Fail soft like [closeForMove].
+     */
+    fun dropEntryOf(window: EditorWindow, file: VirtualFile) {
+        val list = PlatformInternals.removedTabs(window) ?: return
+        val last = list.lastOrNull() ?: return
+        if (PlatformInternals.removedTabFile(last) == file) list.removeAt(list.lastIndex)
+    }
+
     /** Number of Reopen Closed Tab entries of [window], or null if the platform field can't be read. Used by tests. */
     fun historySize(window: EditorWindow): Int? = PlatformInternals.removedTabs(window)?.size
 }

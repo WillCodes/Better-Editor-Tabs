@@ -10,6 +10,8 @@ import com.intellij.ui.ScreenUtil
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorSide
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.PlaceholderFile
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 import java.awt.Point
 import java.awt.Rectangle
 import javax.swing.JSplitPane
@@ -48,8 +50,15 @@ internal fun TabBarDnd.moveGroupToNewSplit(
     copy: Boolean = false,
 ): Boolean {
     if (side == EditorSide.CENTER) return false
-    val first = unit.keys.firstOrNull() ?: return false
     val project = adapter.window.manager.project
+    // SPLIT-6: an empty group has no file to open the split with: a placeholder tab is that file, and the split holds only that
+    // (a temporary split). `EditorWindow.split` returns null for a window without tab, so an anchor that has none gets a placeholder first.
+    val first: VirtualFile = unit.keys.firstOrNull()
+        ?: (if (unit.isEmptyPill) PlaceholderFile(fresh = true) else return false)
+    if (isPlaceholder(first) && anchor.adapter.window.tabCount < 1) {
+        project.service<TabBar>().temporary.ensure(anchor.adapter.window)
+        project.service<TabBar>().sync()
+    }
     val orientation = if (side.splitsVertically) JSplitPane.VERTICAL_SPLIT else JSplitPane.HORIZONTAL_SPLIT
     val created: EditorWindow? = adapter.ownChange {
         anchor.adapter.ownChange {
@@ -63,9 +72,15 @@ internal fun TabBarDnd.moveGroupToNewSplit(
     val target = peers().firstOrNull { it.adapter.window === created }
     if (target == null) {
         LOG.warn("the new split has no drag layer")
+        project.service<TabBar>().temporary.created(created)
         return false
     }
-    runMove(target, freezes) { moveNow(unit, target, emptyList(), 0, selectedBefore, expanding, copy) }
+    try {
+        runMove(target, freezes) { moveNow(unit, target, emptyList(), 0, selectedBefore, expanding, copy) }
+    }
+    finally {
+        project.service<TabBar>().temporary.created(created) // SPLIT-6: complete now (or failed): it may end like any temporary split
+    }
     LOG.info("group ${unit.groupId} ${if (copy) "copied" else "moved"} to a new split: side=$side, ${unit.keys.size} files")
     return true
 }
@@ -85,7 +100,8 @@ internal fun TabBarDnd.moveGroupToNewWindow(
     expanding: String?,
     copy: Boolean = false,
 ): Boolean {
-    val first = unit.keys.firstOrNull() ?: return false
+    // SPLIT-6: an empty group opens the window with a placeholder tab (a temporary split)
+    val first: VirtualFile = unit.keys.firstOrNull() ?: (if (unit.isEmptyPill) PlaceholderFile(fresh = true) else return false)
     val project = adapter.window.manager.project
     val manager = FileEditorManagerEx.getInstanceEx(project) as? FileEditorManagerImpl
     if (manager == null) {
@@ -101,10 +117,16 @@ internal fun TabBarDnd.moveGroupToNewWindow(
     val target = created?.let { w -> peers().firstOrNull { it.adapter.window === w } }
     if (target == null) {
         LOG.warn("no new window for the group's first file ${first.name}")
+        created?.let { project.service<TabBar>().temporary.created(it) }
         return false
     }
     centreWindow(target, screen)
-    runMove(target, freezes) { moveNow(unit, target, emptyList(), 0, selectedBefore, expanding, copy) }
+    try {
+        runMove(target, freezes) { moveNow(unit, target, emptyList(), 0, selectedBefore, expanding, copy) }
+    }
+    finally {
+        project.service<TabBar>().temporary.created(created)
+    }
     LOG.info("group ${unit.groupId} ${if (copy) "copied" else "moved"} to a new window: ${unit.keys.size} files")
     return true
 }

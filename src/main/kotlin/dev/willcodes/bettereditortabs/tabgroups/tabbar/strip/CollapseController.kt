@@ -4,7 +4,9 @@ import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.impl.JBEditorTabs
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabOrderRules
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 
 /**
@@ -17,6 +19,12 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  *   its editor;
  * - `JBTabsImpl.sortTabs`: the strip order, including the hidden tabs, which keep a stale remembered index inside `JBTabsImpl`;
  * - `EditorWindow.setSelectedComposite`: moves the selection off a tab that is about to be hidden.
+ *
+ * Empty instances (RULE-6, MEM-5): a group with an enabled auto-group rule keeps its instance when its last tab goes. The strip then
+ * shows its pill alone, as a collapsed group's pill with nothing hidden, so it is kept here with the same bookkeeping: an anchor (the tab it
+ * stands behind) and a rank among the pills at one place. Where the anchor comes from: the place the group's tabs had (a snapshot of the
+ * tab in front of every expanded group's first tab, [captureSpots], re-anchored when that tab closes), or the end of the strip for an
+ * instance the strip never showed. [placeEmpty] moves one (drags, sort). The anchors of a group that is neither collapsed nor empty are dropped.
  *
  * Animation (COLL-7): a collapse is animated by [CollapseAnimator] while the tabs are still visible; the selection moves off the group
  * at the start ([selectOutside]) and the tabs are hidden here ([sync] / [hide]) only when the animation is over. An expand shows the
@@ -51,7 +59,19 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     /** A hidden (collapsed) tab the platform has just selected (navigation); set only while the selection event is dispatched. */
     private var pendingHiddenSelection: VirtualFile? = null
 
+    /** The groups shown as their pill alone (RULE-6); each has an anchor in [anchors] and a rank in [collapsedAt]. */
+    private val emptyIds = LinkedHashSet<String>()
+
+    /** Expanded groups with open tabs: the visible tab in front of the first one as of the last quiet layout pass (null: it was first). */
+    private val spots = HashMap<String, VirtualFile?>()
+
     val hiddenFiles: Set<VirtualFile> get() = hidden
+
+    /** The ids of the groups shown as their pill alone (RULE-6), as of the last [sync]. */
+    fun emptyGroups(): Set<String> = emptyIds
+
+    /** The remembered anchor of every empty group (the raw one: it can be a hidden tab of a collapsed group). */
+    fun emptyAnchors(): Map<String, VirtualFile?> = emptyIds.associateWith { anchors[it] }
 
     fun isHidden(file: VirtualFile): Boolean = file in hidden
 
@@ -128,7 +148,38 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         hidden.remove(file)
         hiddenGroupOf.remove(file)
         anchors.replaceAll { _, anchor -> if (anchor == file) before else anchor }
+        spots.replaceAll { _, anchor -> if (anchor == file) before else anchor }
         if (savedSelection == file) savedSelection = null
+    }
+
+    /**
+     * Remembers, for every expanded group with a tab in [visible], the tab in front of its first tab, so that the group's pill stays
+     * there when its last tab goes (RULE-6). Only call it while no drag moves tabs around.
+     */
+    fun captureSpots(groups: List<GroupDecoration>, visible: List<VirtualFile>) {
+        spots.keys.retainAll(groups.mapTo(HashSet()) { it.id })
+        for (g in groups) {
+            if (g.collapsed || g.members.isEmpty()) continue
+            val members = g.members.toHashSet()
+            val first = visible.indexOfFirst { it in members }
+            if (first >= 0) spots[g.id] = if (first > 0) visible[first - 1] else null
+        }
+    }
+
+    /**
+     * RULE-6: puts the pills of empty groups behind the given tabs, in the order of [placed] (a pill later in the map stands behind an
+     * earlier one that shares its tab). Ids that are not empty groups are ignored. Used by the drags and the sort, which know the order
+     * the strip is going to have.
+     */
+    fun placeEmpty(placed: Map<String, VirtualFile?>) {
+        var rank = 0L
+        for ((id, anchor) in placed) {
+            if (id !in emptyIds) continue
+            anchors[id] = anchor
+            // below every collapsed group's rank: a pill that stands right behind a tab precedes the collapsed pills anchored at that tab
+            // (a pill that follows a collapsed group is anchored at that group's last tab and so follows its pill)
+            collapsedAt[id] = EMPTY_RANK_BASE + rank++
+        }
     }
 
     // ---- collapse / expand ---------------------------------------------------------------------------------------------------
@@ -145,6 +196,38 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         val toHide = desired.filter { it !in hidden }
         if (toShow.isNotEmpty()) show(toShow)
         if (toHide.isNotEmpty()) hide(toHide, desired, groupOfFile)
+        syncEmpty(groups)
+    }
+
+    /**
+     * RULE-6: a group that is collapsed (as the strip sees it: an empty instance counts as collapsed) and has no tab at all is shown as
+     * its pill alone and needs an anchor like any collapsed group. A group that just lost its last tab keeps the place its tabs had
+     * ([spots]); one the strip has not shown before goes to the end of the strip (behind the last tab, whatever pills stand there). The
+     * anchors of groups that are neither collapsed nor empty any more are dropped; a group that gets a tab back and is collapsed keeps
+     * its anchor for that ([hide] ran before this).
+     */
+    private fun syncEmpty(groups: List<GroupDecoration>) {
+        val empty = groups.filter { g -> g.collapsed && g.members.none { infoOf(it) != null } }.map { it.id }
+        emptyIds.retainAll(empty.toSet())
+        for (id in empty) {
+            if (id in emptyIds) continue
+            if (id !in anchors) {
+                val visible = visibleFiles()
+                val spot = spots[id]?.takeIf { it in visible }
+                anchors[id] = if (spot != null || (id in spots && spots[id] == null)) spot else logicalOrder(visible).lastOrNull()
+                collapsedAt[id] = ++collapseCounter
+            }
+            emptyIds += id
+        }
+        spots.keys.removeAll(empty.toSet())
+        val collapsing = hiddenGroupOf.values.toSet()
+        // a group the host no longer lists keeps nothing here (bug 10): no anchor, rank, snapshot or empty place that could put its pill
+        // back, or move it along with another group
+        val live = groups.mapTo(HashSet()) { it.id }
+        emptyIds.retainAll(live)
+        spots.keys.retainAll(live)
+        anchors.keys.retainAll { it in live && (it in collapsing || it in emptyIds) }
+        collapsedAt.keys.retainAll { it in live && (it in collapsing || it in emptyIds) }
     }
 
     /**
@@ -242,23 +325,35 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
      */
     fun logicalOrder(visible: List<VirtualFile>): List<VirtualFile> {
         if (hidden.isEmpty()) return visible
+        return sequence(visible).files()
+    }
+
+    /**
+     * [logicalOrder] with the pills of empty groups in it (RULE-6): a [StripItem.EmptyPill] stands behind its anchor tab, among the
+     * collapsed groups' tabs in pill order. Where a number of tabs in front of a header is wanted ([TabBarAdapter.headerIndex]) or the
+     * place of an empty pill, this is the order to read.
+     */
+    fun sequence(visible: List<VirtualFile>): List<StripItem<VirtualFile>> {
+        if (hidden.isEmpty() && emptyIds.isEmpty()) return visible.map { StripItem.Tab(it) }
         val membersOf = hidden.groupBy { hiddenGroupOf[it] }
         val visibleSet = visible.toHashSet()
         val atAnchor = HashMap<VirtualFile?, MutableList<String>>()
         val stray = ArrayList<String>()
-        for (id in membersOf.keys.filterNotNull()) {
+        for (id in membersOf.keys.filterNotNull() + emptyIds) {
             val anchor = anchorOf(id)
             if (anchor == null || anchor in visibleSet) atAnchor.getOrPut(anchor) { ArrayList() } += id else stray += id
         }
-        fun placed(anchor: VirtualFile?): List<VirtualFile> =
-            atAnchor[anchor]?.let { ids -> pillOrder(ids).flatMap { membersOf[it].orEmpty() } }.orEmpty()
-        val result = ArrayList<VirtualFile>(visible.size + hidden.size)
+        fun items(id: String): List<StripItem<VirtualFile>> =
+            membersOf[id]?.map { StripItem.Tab(it) } ?: listOf(StripItem.EmptyPill(id))
+        fun placed(anchor: VirtualFile?): List<StripItem<VirtualFile>> =
+            atAnchor[anchor]?.let { ids -> pillOrder(ids).flatMap(::items) }.orEmpty()
+        val result = ArrayList<StripItem<VirtualFile>>(visible.size + hidden.size)
         result += placed(null)
         for (file in visible) {
-            result += file
+            result += StripItem.Tab(file)
             result += placed(file)
         }
-        for (id in stray) result += membersOf[id].orEmpty()
+        for (id in stray) result += items(id)
         return result
     }
 
@@ -361,5 +456,12 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         hiddenGroupOf.clear()
         anchors.clear()
         collapsedAt.clear()
+        emptyIds.clear()
+        spots.clear()
+    }
+
+    private companion object {
+        /** The rank of the first empty pill that [placeEmpty] places: far below every collapsed group's rank (a counter from 1). */
+        const val EMPTY_RANK_BASE = Long.MIN_VALUE / 2
     }
 }

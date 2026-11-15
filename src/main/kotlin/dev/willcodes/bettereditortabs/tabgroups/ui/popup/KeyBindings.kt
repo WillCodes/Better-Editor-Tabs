@@ -1,7 +1,10 @@
 package dev.willcodes.bettereditortabs.tabgroups.ui.popup
 
 import java.awt.event.ActionEvent
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
 import javax.swing.AbstractAction
+import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.KeyStroke
 
@@ -25,6 +28,26 @@ internal class PopupFocusRing {
         members += component
         component.bindKey("UP") { move(component, -1) }
         component.bindKey("DOWN") { move(component, 1) }
+    }
+
+    /**
+     * Like [register] for a combo box, which uses Up / Down itself: a key listener (it runs before the key bindings) walks the ring
+     * only while the drop-down list is closed and the key has no modifier; with the list open the combo box gets the key untouched.
+     */
+    fun registerCombo(combo: JComboBox<*>) {
+        members += combo
+        combo.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (combo.isPopupVisible || e.modifiersEx != 0) return
+                val delta = when (e.keyCode) {
+                    KeyEvent.VK_UP -> -1
+                    KeyEvent.VK_DOWN -> 1
+                    else -> return
+                }
+                e.consume()
+                move(combo, delta)
+            }
+        })
     }
 
     private fun move(from: JComponent, delta: Int) {

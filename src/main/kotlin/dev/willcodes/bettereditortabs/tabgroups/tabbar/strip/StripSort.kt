@@ -57,6 +57,10 @@ internal class StripSort(
     private val dragRunning: () -> Boolean,
     /** `StripEvents.stripSorted`. */
     private val report: (List<GroupDecoration>) -> Unit,
+    /** RULE-6: the groups shown as their pill alone, with the tab each pill stands behind (null: in front of every tab). */
+    private val emptyAnchors: () -> Map<String, VirtualFile?> = { emptyMap() },
+    /** RULE-6: puts empty groups' pills behind the given tabs (the adapter's `placeEmptyPills`). */
+    private val placeEmpty: (Map<String, VirtualFile?>) -> Unit = {},
 ) {
     /** The plugin sorts this strip (see the class comment). */
     var isOwning = false
@@ -207,7 +211,21 @@ internal class StripSort(
         )
         if (wanted.size != current.size) return // a tab without a file: leave the strip alone
         if (wanted != current) apply(wanted, groups)
+        placeEmptyGroups(items, groups, wanted)
         reportIfChanged(groups)
+    }
+
+    /**
+     * RULE-6: the pill of an empty group (a rule keeps its instance without tabs) stands among the groups by name, like the groups
+     * with tabs: behind the last tab of the group that sorts before it.
+     */
+    private fun placeEmptyGroups(items: List<SortedOrder.Tab<VirtualFile>>, groups: List<GroupDecoration>, wanted: List<VirtualFile>) {
+        val empty = emptyAnchors()
+        if (empty.isEmpty()) return
+        val spots = SortedOrder.emptySpots(
+            items, groups.map { SortedOrder.Group(it.id, it.name, it.creationIndex) }, wanted, empty.keys, String.CASE_INSENSITIVE_ORDER,
+        )
+        if (spots.isNotEmpty() && spots.any { (id, anchor) -> !empty.containsKey(id) || empty[id] != anchor }) placeEmpty(spots)
     }
 
     private fun stop(groups: List<GroupDecoration>) {

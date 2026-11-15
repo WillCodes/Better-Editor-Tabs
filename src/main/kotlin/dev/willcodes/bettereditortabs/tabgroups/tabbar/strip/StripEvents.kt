@@ -13,6 +13,9 @@ internal interface StripEvents {
     fun headerRightClicked(header: GroupHeader, event: MouseEvent) {}
     fun headerMiddleClicked(header: GroupHeader, event: MouseEvent) {}
 
+    /** CTX-5: a right click on the free part of the strip (no tab, no pill); [point] is in [component]'s coordinates. */
+    fun stripRightClicked(component: javax.swing.JComponent, point: java.awt.Point) {}
+
     /**
      * The pointer entered ([hovering] true) or left the header (false). A press on the header also ends the hover (false), so a
      * click or a drag never leaves a hover popup behind. INT-5.

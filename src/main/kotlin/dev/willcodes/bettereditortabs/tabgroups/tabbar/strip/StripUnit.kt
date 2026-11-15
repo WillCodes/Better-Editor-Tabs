@@ -18,5 +18,12 @@ internal sealed class StripUnit {
     data class Tab(val file: VirtualFile, override val rect: Rectangle, val groupId: String?, val pinned: Boolean) : StripUnit()
 
     /** The pill of a group; a collapsed group is exactly one pill ([collapsed] = true) at the place of the group. */
-    data class Pill(val groupId: String, override val rect: Rectangle, val collapsed: Boolean, val header: GroupHeader) : StripUnit()
+    data class Pill(
+        val groupId: String,
+        override val rect: Rectangle,
+        val collapsed: Boolean,
+        val header: GroupHeader,
+        /** An empty instance (RULE-6): the group has no tab here and its pill stands alone ([collapsed] is true then). */
+        val empty: Boolean = false,
+    ) : StripUnit()
 }

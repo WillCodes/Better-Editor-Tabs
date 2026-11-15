@@ -29,7 +29,13 @@ import javax.swing.JComponent
  * Enter and Space (and a click) call [onActivate]. [trailingIcon], when set, is painted right after the text (the disclosure chevron
  * of "Advanced ▸"), so every row's text starts at the same x.
  */
-internal class PopupMenuRow(text: String, enabled: Boolean, private val onActivate: () -> Unit) : JComponent() {
+internal class PopupMenuRow(
+    text: String,
+    enabled: Boolean,
+    /** A destructive action (Delete Group, user request 2026-11-14): its text is bold and in the error colour. */
+    private val danger: Boolean = false,
+    private val onActivate: () -> Unit,
+) : JComponent() {
     var text: String = text
         set(value) {
             field = value
@@ -49,7 +55,7 @@ internal class PopupMenuRow(text: String, enabled: Boolean, private val onActiva
 
     init {
         isOpaque = false
-        font = JBUI.Fonts.label()
+        font = if (danger) JBUI.Fonts.label().asBold() else JBUI.Fonts.label()
         isEnabled = enabled
         isFocusable = enabled
         // getAccessibleContext(), not `accessibleContext`: in a JComponent subclass Kotlin resolves that name to Swing's protected
@@ -115,6 +121,7 @@ internal class PopupMenuRow(text: String, enabled: Boolean, private val onActiva
             }
             g2.color = when {
                 !isEnabled -> UIUtil.getLabelDisabledForeground()
+                danger -> com.intellij.util.ui.NamedColorUtil.getErrorForeground()
                 else -> JBUI.CurrentTheme.List.foreground(highlighted, true)
             }
             val x = textLeft()

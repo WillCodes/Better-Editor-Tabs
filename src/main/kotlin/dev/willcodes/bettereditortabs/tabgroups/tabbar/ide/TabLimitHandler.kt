@@ -7,6 +7,7 @@ import com.intellij.openapi.fileEditor.impl.EditorComposite
 import com.intellij.openapi.project.ProjectManager
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 
 /**
  * IDE-3: grouped tabs, collapsed or not, don't count toward the editor tab limit and are never closed by it.
@@ -22,6 +23,8 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
  */
 class TabLimitHandler : EditorAutoClosingHandler {
     override fun isClosingAllowed(composite: EditorComposite): Boolean {
+        // SPLIT-6: the placeholder of a temporary split is never closed by the limit (and does not count toward it)
+        if (isPlaceholder(composite.file)) return false
         // EditorComposite.fileEditorManager is deprecated (error level) and .project is internal, so find the owner by scanning.
         for (project in ProjectManager.getInstance().openProjects) {
             // Cheap check first: a project without an attached host has no groups, so its windows need no scan.

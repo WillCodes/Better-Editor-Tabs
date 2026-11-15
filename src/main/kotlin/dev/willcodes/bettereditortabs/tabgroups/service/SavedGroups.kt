@@ -41,6 +41,9 @@ internal class SavedGroups(
         private set
 
     private var frozen = false
+
+    /** True once the project is closing ([freeze]): nothing may be asked or changed for the saved state any more. */
+    val isFrozen: Boolean get() = frozen
     private var captureQueued = false
 
     /** Stored splits (and their group identities) that no live split has claimed yet; empty once restored for good or expired. */
@@ -83,7 +86,7 @@ internal class SavedGroups(
         }
         try {
             val tabBar = project.getService(TabBar::class.java)
-            val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder, tabBar::manualOrder)
+            val live = GroupsPersistence.capture(state, SplitIdentity.allSplits(project), tabBar::logicalOrder, tabBar::manualOrder, tabBar::headerIndex)
             bean = GroupsPersistence.toBean(live.copy(stash = GroupsPersistence.stashToStored(stash.entries)).withPending(pending))
         }
         catch (e: Exception) {

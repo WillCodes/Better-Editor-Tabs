@@ -9,25 +9,32 @@ import javax.swing.JPanel
 
 /**
  * The "Advanced" part of the group popup (§6): a disclosure row ("Advanced ▸": the text, then the chevron) and, below it, a [body] that is hidden until
- * the row is expanded. In Stage 3 the row is disabled and the body stays empty. Stage 11 adds the Auto-group checkbox, the rule type
- * combo and the rule fields to [body] and enables the row; the popup must re-pack when the row is toggled, so [onToggled] is called
- * after every change and the owner packs the popup to its new content size.
+ * the row is expanded. The body holds the auto-group rule editor ([RuleEditor], RULE-1); the popup must re-pack when the row is
+ * toggled, so [onToggled] is called after every change and the owner packs the popup to its new content size.
+ *
+ * POP-3 (amended 2026-11-14, user request): [startExpanded] is the state the popup opens in: what the user left last in this IDE session
+ * ([sessionExpanded], once they have toggled it), else expanded for a group that has a rule. Every toggle is remembered.
+ *
+ * The body is laid out once while it is still hidden ([prepareLayout]), so the first expansion does not show a frame of components that
+ * have never been laid out (user report: a glitch on the first expansion only).
  */
-internal class AdvancedSection(enabled: Boolean, private val onToggled: () -> Unit) {
+internal class AdvancedSection(enabled: Boolean, startExpanded: Boolean, private val onToggled: () -> Unit) {
     private val row = PopupMenuRow(BetterEditorTabsBundle.message("popup.advanced"), enabled) { toggle() }
 
-    /** The content below the row, hidden until expanded; Stage 11 fills it. */
+    /** The content below the row, hidden until expanded. */
     val body: JPanel = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         isOpaque = false
+        background = com.intellij.util.ui.JBUI.CurrentTheme.Popup.BACKGROUND
         alignmentX = Component.LEFT_ALIGNMENT
-        isVisible = false
+        isVisible = startExpanded
     }
 
     /** The row followed by the body. */
     val component: JComponent = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         isOpaque = false
+        background = com.intellij.util.ui.JBUI.CurrentTheme.Popup.BACKGROUND
         alignmentX = Component.LEFT_ALIGNMENT
         row.alignmentX = Component.LEFT_ALIGNMENT
         add(row)
@@ -37,15 +44,28 @@ internal class AdvancedSection(enabled: Boolean, private val onToggled: () -> Un
     /** The focusable row, for keyboard navigation. */
     val focusTarget: JComponent get() = row
 
-    var expanded: Boolean = false
+    var expanded: Boolean = startExpanded
         private set
 
     init {
         showChevron()
     }
 
+    /** Lays the body out at its preferred size while hidden (see the class comment); call once its content has been added. */
+    fun prepareLayout() {
+        val size = body.preferredSize
+        body.setSize(size)
+        layoutTree(body)
+    }
+
+    private fun layoutTree(c: java.awt.Container) {
+        c.doLayout()
+        for (child in c.components) if (child is java.awt.Container) layoutTree(child)
+    }
+
     private fun toggle() {
         expanded = !expanded
+        sessionExpanded = expanded
         body.isVisible = expanded
         showChevron()
         onToggled()
@@ -53,5 +73,18 @@ internal class AdvancedSection(enabled: Boolean, private val onToggled: () -> Un
 
     private fun showChevron() {
         row.trailingIcon = if (expanded) AllIcons.General.ChevronDown else AllIcons.General.ChevronRight
+    }
+
+    companion object {
+        /**
+         * POP-3: whether the user left Advanced expanded, null until they have toggled it in this IDE session (a static, so it is shared
+         * by all popups and projects).
+         */
+        @Volatile
+        var sessionExpanded: Boolean? = null
+            internal set
+
+        /** POP-3: the state a popup opens in: the remembered one, else expanded for a group with a rule. */
+        fun startExpanded(hasRule: Boolean): Boolean = sessionExpanded ?: hasRule
     }
 }
