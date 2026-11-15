@@ -44,7 +44,7 @@ internal class EmptyGroups(
 
     /** CTX-5: see [TabGroupsService.createEmptyGroup]; the caller has attached the host. */
     fun create(split: SplitHandle): TabGroup {
-        val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor)
+        val color = nextColor(state.groups.map { it.color }, settings.fixedNewGroupColor, settings.startColor)
         val group = state.createEmptyGroup(split, color)
         refresh(split)
         arrange(split)

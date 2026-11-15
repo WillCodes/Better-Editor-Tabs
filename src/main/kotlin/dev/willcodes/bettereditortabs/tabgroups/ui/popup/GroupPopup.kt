@@ -40,11 +40,12 @@ object GroupPopup {
     }
 
     /**
-     * CTX-1: the popup for the group [groupId] that was just created in [split]. The header is placed by a layout pass, which
+     * CTX-1, §13 Rename Current Group: the popup for the group [groupId] of [split], with the name field focused and its text selected
+     * (a group that was just created, or the current group renamed by the action). The header is placed by a layout pass, which
      * [TabBar.header] runs; if it is still not showing, one more try follows in `invokeLater`, then the best position for [dataContext]
      * (or the middle of the window without one).
      */
-    fun showForNewGroup(project: Project, split: SplitHandle, groupId: String, dataContext: DataContext?) {
+    fun showForGroup(project: Project, split: SplitHandle, groupId: String, dataContext: DataContext?) {
         val tabBar = project.service<TabBar>()
         val header = tabBar.header(split, groupId)
         val popup = create(project, split, groupId) ?: return
