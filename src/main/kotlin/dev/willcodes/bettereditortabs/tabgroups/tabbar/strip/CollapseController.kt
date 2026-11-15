@@ -14,6 +14,11 @@ import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
  * makes that reversible (which tabs are hidden, which tab each collapsed group sat behind, the selection to restore).
  *
  * Owns: `hiddenFiles`, the file-to-group map of hidden tabs, the anchors, the saved selection and the pending hidden selection.
+ *
+ * Partial expand (COLL-8): a collapsed group may show one member, its peek ([GroupDecoration.peek]). The peek is an ordinary visible tab
+ * (not in `hiddenFiles`) that stands right behind the group's anchor, where the group's hidden tabs would be; the group keeps its anchor and
+ * pill rank, so the other members stay hidden exactly as in a full collapse and the logical order ([logicalOrder]) keeps the member order,
+ * the peek among them. A hidden member that is navigated to becomes the peek ([hiddenTabSelected]); the old peek hides again.
  * Internal APIs wrapped, and why:
  * - `TabInfo.isHidden` (via `JBTabsImpl.updateHiding`): the only platform mechanism that removes a tab from the strip without closing
  *   its editor;
@@ -59,6 +64,13 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     /** A hidden (collapsed) tab the platform has just selected (navigation); set only while the selection event is dispatched. */
     private var pendingHiddenSelection: VirtualFile? = null
 
+    /**
+     * COLL-8: the member each partly shown group shows, as of the last [sync] (a visible tab of a collapsed group), and the members of
+     * those groups in the host's order, to put the peek back among them in [sequence] and [show].
+     */
+    private var peeks: Map<String, VirtualFile> = emptyMap()
+    private var peekMembers: Map<String, List<VirtualFile>> = emptyMap()
+
     /** The groups shown as their pill alone (RULE-6); each has an anchor in [anchors] and a rank in [collapsedAt]. */
     private val emptyIds = LinkedHashSet<String>()
 
@@ -74,6 +86,9 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     fun emptyAnchors(): Map<String, VirtualFile?> = emptyIds.associateWith { anchors[it] }
 
     fun isHidden(file: VirtualFile): Boolean = file in hidden
+
+    /** COLL-8: the member that partly shown group [groupId] shows, or null (as of the last [sync]). */
+    fun peekOf(groupId: String): VirtualFile? = peeks[groupId]
 
     fun hasHiddenFiles(): Boolean = hidden.isNotEmpty()
 
@@ -122,8 +137,9 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     // ---- events from the strip ---------------------------------------------------------------------------------------------
 
     /**
-     * The platform selected [file], a hidden tab (COLL-4): [expand] is told the group it belongs to and is expected to expand it
-     * (the group's owner changes the groups and the strip calls [sync] again); `show` then selects [file] for real.
+     * The platform selected [file], a hidden tab (COLL-4, COLL-8): [expand] is told the group it belongs to and is expected to show
+     * the tab (the group's owner makes it the group's peek, or expands the group, and the strip calls [sync] again); `show` then
+     * selects [file] for real.
      */
     fun hiddenTabSelected(file: VirtualFile, expand: (groupId: String) -> Unit) {
         pendingHiddenSelection = file
@@ -147,6 +163,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
     fun tabRemoved(file: VirtualFile, before: VirtualFile?) {
         hidden.remove(file)
         hiddenGroupOf.remove(file)
+        if (peeks.containsValue(file)) peeks = peeks.filterValues { it != file }
         anchors.replaceAll { _, anchor -> if (anchor == file) before else anchor }
         spots.replaceAll { _, anchor -> if (anchor == file) before else anchor }
         if (savedSelection == file) savedSelection = null
@@ -184,17 +201,32 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
 
     // ---- collapse / expand ---------------------------------------------------------------------------------------------------
 
-    /** Makes the hidden tabs match the collapsed groups of [groups]: shows what no longer is collapsed, hides what newly is. */
+    /**
+     * Makes the hidden tabs match the collapsed groups of [groups]: shows what no longer is collapsed, hides what newly is. A collapsed
+     * group with a valid peek (COLL-8) hides every member but the peek.
+     */
     fun sync(groups: List<GroupDecoration>) {
         val desired = LinkedHashSet<VirtualFile>()
         val groupOfFile = HashMap<VirtualFile, String>()
-        for (g in groups) if (g.collapsed) for (f in g.members) if (infoOf(f) != null) {
-            desired += f
-            groupOfFile[f] = g.id
+        val newPeeks = LinkedHashMap<String, VirtualFile>()
+        val newMembers = HashMap<String, List<VirtualFile>>()
+        for (g in groups) if (g.collapsed) {
+            val peek = g.peek?.takeIf { it in g.members && infoOf(it) != null }
+            if (peek != null) {
+                newPeeks[g.id] = peek
+                newMembers[g.id] = g.members
+            }
+            for (f in g.members) if (f != peek && infoOf(f) != null) {
+                desired += f
+                groupOfFile[f] = g.id
+            }
         }
         val toShow = hidden.filter { it !in desired }
         val toHide = desired.filter { it !in hidden }
-        if (toShow.isNotEmpty()) show(toShow)
+        // the peeks of the last pass are what show() puts back among the members; the new ones are what hide() keeps out of the anchor
+        if (toShow.isNotEmpty()) show(toShow, newPeeks.keys)
+        peeks = newPeeks
+        peekMembers = newMembers
         if (toHide.isNotEmpty()) hide(toHide, desired, groupOfFile)
         syncEmpty(groups)
     }
@@ -220,7 +252,7 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             emptyIds += id
         }
         spots.keys.removeAll(empty.toSet())
-        val collapsing = hiddenGroupOf.values.toSet()
+        val collapsing = hiddenGroupOf.values.toSet() + peeks.keys
         // a group the host no longer lists keeps nothing here (bug 10): no anchor, rank, snapshot or empty place that could put its pill
         // back, or move it along with another group
         val live = groups.mapTo(HashSet()) { it.id }
@@ -246,7 +278,8 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         val alreadyCollapsed = anchors.keys.toSet()
         for (id in ids) {
             if (id !in anchors) {
-                val members = files.filter { groupOfFile[it] == id }.toSet()
+                // COLL-8: the group's peek is visible but a member too: the group stood in front of it as well
+                val members = files.filter { groupOfFile[it] == id }.toSet() + listOfNotNull(peeks[id])
                 val visibleBefore = TabOrderRules.anchorBefore(order, members)
                 // Collapsed groups whose pills already stand between that tab and this group: this group stood behind the last of
                 // them, so it remembers that group's last tab (hidden). anchorOf / anchorParent then keep it behind that group, also
@@ -334,8 +367,19 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
      * place of an empty pill, this is the order to read.
      */
     fun sequence(visible: List<VirtualFile>): List<StripItem<VirtualFile>> {
-        if (hidden.isEmpty() && emptyIds.isEmpty()) return visible.map { StripItem.Tab(it) }
-        val membersOf = hidden.groupBy { hiddenGroupOf[it] }
+        if (hidden.isEmpty() && emptyIds.isEmpty() && peeks.isEmpty()) return visible.map { StripItem.Tab(it) }
+        val membersOf = HashMap<String?, List<VirtualFile>>(hidden.groupBy { hiddenGroupOf[it] })
+        // COLL-8: a partly shown group's peek is one of its members, in the host's order; it is not in the strip's order of its own.
+        // Only a group that has hidden tabs (and so a place) is merged: a lone peek stays a visible tab.
+        val merged = HashSet<VirtualFile>()
+        for ((id, peek) in peeks) {
+            val hiddenOnes = membersOf[id] ?: continue
+            if (id !in anchors) continue
+            val order = peekMembers[id].orEmpty()
+            val all = (hiddenOnes + peek).distinct()
+            membersOf[id] = all.sortedBy { order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+            merged += peek
+        }
         val visibleSet = visible.toHashSet()
         val atAnchor = HashMap<VirtualFile?, MutableList<String>>()
         val stray = ArrayList<String>()
@@ -350,7 +394,8 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
         val result = ArrayList<StripItem<VirtualFile>>(visible.size + hidden.size)
         result += placed(null)
         for (file in visible) {
-            result += StripItem.Tab(file)
+            // a merged peek is emitted with its group; whatever stands behind it (a group anchored on it) still follows it
+            if (file !in merged) result += StripItem.Tab(file)
             result += placed(file)
         }
         for (id in stray) result += items(id)
@@ -367,8 +412,11 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
      * - otherwise the selection does not change;
      * - `savedSelection` (the tab that was selected when the last visible tab was collapsed) is only used when the strip was
      *   still empty, i.e. nothing has been opened or selected since the collapse.
+     *
+     * COLL-8: [staying] are the groups that remain collapsed after this pass (they show a peek): they keep their anchor, and the peek
+     * is the only tab they show. A group that expands from a peek puts its old peek back among its members, in the host's order.
      */
-    private fun show(files: List<VirtualFile>) {
+    private fun show(files: List<VirtualFile>, staying: Set<String> = emptySet()) {
         val emptyBefore = tabs.getVisibleInfos().isEmpty()
         val selectedBefore = selectedFile()
         val requested = pendingHiddenSelection?.takeIf { it in files }
@@ -385,6 +433,16 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             hidden.remove(f)
             hiddenGroupOf.remove(f)?.let { shownByGroup.getOrPut(it) { ArrayList() } += f }
         }
+        // COLL-8: a group that expands fully brings its old peek along, so the members stand in their order again
+        val withPeek = LinkedHashMap<String, MutableList<VirtualFile>>()
+        for ((id, members) in shownByGroup) {
+            val peek = peeks[id]?.takeIf { id !in staying && infoOf(it)?.isHidden == false && it !in members }
+            if (peek == null) { withPeek[id] = members; continue }
+            val order = peekMembers[id].orEmpty()
+            withPeek[id] = (members + peek).sortedBy { order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }.toMutableList()
+        }
+        shownByGroup.clear()
+        shownByGroup.putAll(withPeek)
         val placing = shownByGroup.values.flatten().toSet()
         var order = visibleFiles().filter { it !in placing }
         // A group anchored on a tab of another group that comes back in the same pass is placed after that group.
@@ -393,8 +451,10 @@ internal class CollapseController(private val tabs: JBEditorTabs, private val wi
             val (id, members) = pending.entries.firstOrNull { (id, _) -> places[id].let { it == null || it !in placing || it in order } }
                 ?: pending.entries.first()
             pending.remove(id)
-            anchors.remove(id)
-            collapsedAt.remove(id)
+            if (id !in staying) {
+                anchors.remove(id)
+                collapsedAt.remove(id)
+            }
             order = TabOrderRules.placeGroup(order, members, places[id]?.takeIf { it in order })
         }
         applyVisibleOrder(order)

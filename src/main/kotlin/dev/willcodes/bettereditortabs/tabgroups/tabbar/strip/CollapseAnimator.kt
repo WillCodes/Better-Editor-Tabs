@@ -33,7 +33,11 @@ internal class CollapseAnimator(
     private val space: TabLabelSpace,
     private val onCollapseFinished: () -> Unit,
 ) {
-    private class Anim(var tween: CollapseTween, var members: List<VirtualFile>)
+    /**
+     * [members] are the labels that animate; [target] the files the group shows when the animation is over (COLL-8: a partial group
+     * shows its peek, so the files that shrink or grow are not always all of the group's tabs).
+     */
+    private class Anim(var tween: CollapseTween, var members: List<VirtualFile>, var target: Set<VirtualFile>)
 
     /** Injectable for tests; nanoseconds on any monotonic clock. */
     var clock: () -> Long = System::nanoTime
@@ -62,6 +66,19 @@ internal class CollapseAnimator(
     /** The direction of the animation of [groupId] (true = collapsing), or null if it does not animate. */
     fun direction(groupId: String): Boolean? = animations[groupId]?.tween?.collapsing
 
+    /** The files that group [groupId] shows when its running animation ends, or null if it does not animate (COLL-8). */
+    fun targetOf(groupId: String): Set<VirtualFile>? = animations[groupId]?.target
+
+    /** The files of [groupId] that are on screen while its running collapse shrinks them: the shrinking ones and what stays (COLL-8). */
+    fun shownDuringCollapse(groupId: String): Set<VirtualFile> =
+        animations[groupId]?.let { it.target + it.members } ?: emptySet()
+
+    /** Ends the animation of [groupId] at once (no frame, no [onCollapseFinished]); the caller re-applies its groups. */
+    fun end(groupId: String) {
+        animations.remove(groupId)
+        if (animations.isEmpty()) stopTimer()
+    }
+
     /** The id of the group whose collapse is running and that contains [file], or null. */
     fun collapsingGroupOf(file: VirtualFile): String? =
         animations.entries.firstOrNull { it.value.tween.collapsing && file in it.value.members }?.key
@@ -70,16 +87,26 @@ internal class CollapseAnimator(
      * Starts the animation of [groupId] over [members] in the given direction. Running the other way: reverses from the current
      * extent. Running the same way: goes on (the members are updated).
      */
-    fun begin(groupId: String, members: List<VirtualFile>, collapsing: Boolean) {
+    fun begin(groupId: String, members: List<VirtualFile>, collapsing: Boolean) = begin(groupId, members, collapsing, emptySet())
+
+    /**
+     * [begin] where the group shows [target] when the animation is over (COLL-8: a partial expand grows only the peek, a collapse of a
+     * partial group shrinks only the peek). [members] are the labels that animate.
+     */
+    fun begin(groupId: String, members: List<VirtualFile>, collapsing: Boolean, target: Set<VirtualFile>) {
         val now = clock()
         val running = animations[groupId]
         when {
-            running == null -> animations[groupId] = Anim(CollapseTween.start(collapsing, now, fullNanos), members)
+            running == null -> animations[groupId] = Anim(CollapseTween.start(collapsing, now, fullNanos), members, target)
             running.tween.collapsing != collapsing -> {
                 running.tween = running.tween.reversed(now, fullNanos)
                 running.members = members
+                running.target = target
             }
-            else -> running.members = members
+            else -> {
+                running.members = members
+                running.target = target
+            }
         }
         ensureTimer()
     }

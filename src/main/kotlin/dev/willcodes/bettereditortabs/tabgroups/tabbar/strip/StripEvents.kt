@@ -25,6 +25,9 @@ internal interface StripEvents {
     /** A tab that is currently hidden by a collapsed group was selected (navigation, Ctrl+E, ...). COLL-4. */
     fun hiddenTabSelected(groupId: String, file: VirtualFile) {}
 
+    /** The user selected [file] (not an own change of the strip). COLL-8, see [TabBarHost.tabSelected]. */
+    fun tabSelected(file: VirtualFile) {}
+
     /**
      * IDE-2: the strip re-sorted itself alphabetically; [groups] are the groups last set with their members (and their order) as the
      * strip now shows them. Called after the re-order, at the end of `setGroups` at the latest (its work is done), so the owner may refresh

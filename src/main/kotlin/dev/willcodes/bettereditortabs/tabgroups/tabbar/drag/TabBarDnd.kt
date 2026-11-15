@@ -50,6 +50,26 @@ internal class TabBarDnd(
     val overlay = DragOverlay(tabs)
     val reorder = LiveReorder(this)
     val controller = TabDragController(this)
+
+    /**
+     * DRAG-6 (Stage 11.5 fix round 3, user request): the collapsed (or partly shown) groups of this strip that a tab drag expanded by a hold
+     * behind them. They stay expanded for the rest of the drag and after it, whatever the drop ([commitExpandedByDrag]).
+     */
+    val expandedByDrag = LinkedHashSet<String>()
+
+    /**
+     * DRAG-6: the groups a tab drag expanded here ([expandedByDrag]) are expanded for good: the host learns it through the drag result
+     * path (membership and order unchanged). Called when the drag ends, whatever the outcome; a drop on this strip folds them into its own
+     * result first ([TabDragSession.commit]), so this then finds nothing to do.
+     */
+    fun commitExpandedByDrag() {
+        if (expandedByDrag.isEmpty()) return
+        val ids = expandedByDrag.toSet()
+        expandedByDrag.clear()
+        val now = model.groups()
+        if (now.none { it.id in ids && it.collapsed }) return
+        model.commit(now.map { if (it.id in ids) it.copy(collapsed = false, peek = null) else it })
+    }
     val observer = DragObserver(controller)
 
     /**
@@ -143,8 +163,8 @@ internal class TabBarDnd(
         return Point(screen.x - origin.x, screen.y - origin.y)
     }
 
-    fun headerAt(tabsPoint: Point): GroupHeader? =
-        adapter.headerComponents().firstOrNull { !it.bounds.isEmpty && it.bounds.contains(tabsPoint) }
+    /** The header at [tabsPoint], or the header of the group whose count pill (COLL-8) is there. */
+    fun headerAt(tabsPoint: Point): GroupHeader? = adapter.headerAt(tabsPoint)
 
     /** The file of the visible tab label under [tabsPoint], or null. */
     fun tabFileAt(tabsPoint: Point): VirtualFile? {
@@ -170,20 +190,25 @@ internal class TabBarDnd(
         val strip = adapter.stripUnits()
         val groups = model.groups().associateBy { it.id }
         val memberTabs = strip.filterIsInstance<StripUnit.Tab>().filter { it.groupId != null }.groupBy { it.groupId!! }
+        val countsOf = strip.filterIsInstance<StripUnit.Count>().groupBy { it.groupId }
         val open by lazy(LazyThreadSafetyMode.NONE) { StripReader.allFiles(tabs).toHashSet() }
         val units = ArrayList<MoveUnit<VirtualFile>>()
         for (u in strip) {
             when (u) {
                 is StripUnit.Tab -> if (u.groupId == null) units += MoveUnit(null, listOf(u.file), Rectangle(u.rect), u.pinned)
+                is StripUnit.Count -> {}
                 is StripUnit.Pill -> {
                     val group = groups[u.groupId]
+                    // COLL-8: the peek's tab and the count of a partly shown group are part of its unit
                     val shown = memberTabs[u.groupId].orEmpty()
+                    val counts = countsOf[u.groupId].orEmpty()
                     val rect = Rectangle(u.rect)
                     for (t in shown) if (!t.rect.isEmpty) rect.add(t.rect)
+                    for (c in counts) if (!c.rect.isEmpty) rect.add(c.rect)
                     // a collapsed group's members are hidden tabs: they come from the model (the ones that are open: an empty group's
                     // pill, RULE-6, is a collapsed unit with no key at all)
                     val keys = if (u.collapsed) group?.members.orEmpty().filter { it in open } else shown.map { it.file }
-                    val rects = (listOf(u.rect) + shown.map { it.rect }).filter { !it.isEmpty }
+                    val rects = (listOf(u.rect) + shown.map { it.rect } + counts.map { it.rect }).filter { !it.isEmpty }
                     val runs = GapRuns.merge(rects, horizontal).ifEmpty { listOf(rect) }
                     units += MoveUnit(u.groupId, keys, rect, false, runs.first(), Rectangle(u.rect), u.collapsed, runs)
                 }

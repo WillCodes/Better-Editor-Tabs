@@ -22,9 +22,12 @@ internal class LiveReorder(private val dnd: TabBarDnd) {
      * [groups] are the groups as they were when the drag began. [emptyPills]: where the pills of empty groups (RULE-6) stand in the
      * new order, as the tab each stands behind ([dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots.derive]); they
      * have no file, so a file order alone cannot move them. Empty = leave them where they are.
+     *
+     * A group whose collapse is animating (COLL-7, a group left during a tab drag, COLL-8) still shows all its tabs, so it needs no
+     * expanding first, and handing the groups to the strip again would end its animation: it is left alone.
      */
     fun reorder(groups: List<GroupDecoration>, flat: List<VirtualFile>, emptyPills: Map<String, VirtualFile?> = emptyMap()) {
-        val collapsed = groups.any { it.collapsed }
+        val collapsed = groups.any { it.collapsed && !dnd.adapter.collapseAnimator.isCollapsing(it.id) }
         if (collapsed) dnd.adapter.setGroups(groups.map { it.copy(collapsed = false) })
         dnd.adapter.applyOrder(flat)
         if (collapsed) dnd.adapter.setGroups(groups)

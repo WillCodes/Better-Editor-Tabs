@@ -105,7 +105,7 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
 
     // 1. the source lets go of the file
     if (!copy && sourceGroups.any { file in it.members }) {
-        model.commit(sourceGroups.map { g -> if (file in g.members) g.copy(members = g.members - file) else g })
+        model.commit(sourceGroups.map { g -> if (file in g.members) g.copy(members = g.members - file, peek = g.peek?.takeIf { it != file }) else g })
     }
     // 2. nothing may be hidden in the target while a file is added
     if (targetGroups.any { it.collapsed }) target.adapter.setGroups(targetGroups.map { it.copy(collapsed = false) })
@@ -124,7 +124,7 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
     target.adapter.placeEmptyPills(EmptyPillSpots.derive(sequence)) // RULE-6: the pills of empty groups keep their place around the arrival
     val copiedFrom = if (copy && !pinned) sourceGroups.firstOrNull { file in it.members } else null
     if (copiedFrom != null) target.model.commit(joinOwnGroup(target, targetGroups, copiedFrom, file, order))
-    else target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order)))
+    else target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order, null)))
     // 5. like the platform's drop: the arrival is the selected, focused tab of the target
     targetWindow.setSelectedComposite(file, true)
     LOG.info("tab ${file.name} ${if (copy) "copied" else "moved"} to another split: group ${copiedFrom?.id ?: landing.groupId ?: "none"}, slot ${landing.slot}")

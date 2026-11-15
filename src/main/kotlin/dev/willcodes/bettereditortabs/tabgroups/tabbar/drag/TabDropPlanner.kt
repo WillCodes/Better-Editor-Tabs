@@ -8,6 +8,7 @@ import dev.willcodes.bettereditortabs.tabgroups.model.strip.DropSlots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.Landing
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.OwnGroupStay
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.PartialExpand
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
@@ -32,7 +33,9 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
      * What has been applied to the strip so far during the drag. [inFrontOfPill]: the group whose pill is the cell right behind the landing
      * slot (the tab lands in front of that pill), null if none; DRAG-8 uses it to keep an emptied group's pill behind the tab.
      */
-    class Applied(val landing: Landing, val flat: List<VirtualFile>, val inFrontOfPill: String? = null)
+    class Applied(val landing: Landing, val flat: List<VirtualFile>, val inFrontOfPill: String?) {
+        constructor(landing: Landing, flat: List<VirtualFile>) : this(landing, flat, null)
+    }
 
     /** A member re-ordered within its own group stays in it at the trailing slot, and a hold there takes it out ([OwnGroupStay]). */
     private var stay = OwnGroupStay(null)
@@ -40,6 +43,17 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
     /** The drag begins with the tab a member of [group] (null: ungrouped). */
     fun start(group: String?) {
         stay = OwnGroupStay(group)
+    }
+
+    /**
+     * COLL-8: the group [group], collapsed until now, was expanded for this drag because a hold behind it completed: the tab counts as
+     * inside it from here on, the way a member re-ordered in its own group does ([OwnGroupStay]): it is a member at the group's
+     * trailing slot without a further hold, and it leaves by landing in front of the header or by being held beyond the join zone.
+     * The hold that just completed is forgotten (a completed hold at the own group's trailing slot would mean "out").
+     */
+    fun expandedInto(group: String) {
+        stay = OwnGroupStay(group)
+        hold.reset()
     }
 
     /**
@@ -82,12 +96,49 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
          * dragged tab they have no tab, so the slot right behind such a pill is that group's trailing slot, where the held tab joins it
          * again (DRAG-3; user report, round 5: the tab could not come back into its own group).
          */
-        fun cellsOf(strip: List<StripUnit>, dragged: VirtualFile, parked: Set<String>): List<StripCell<VirtualFile>> = strip.mapNotNull { u ->
-            when (u) {
-                is StripUnit.Tab -> if (u.file == dragged) null else TabCell(u.file, u.groupId, u.pinned, Rectangle(u.rect))
-                is StripUnit.Pill -> PillCell(u.groupId, u.collapsed, Rectangle(u.rect), u.empty || u.groupId in parked)
+        fun cellsOf(strip: List<StripUnit>, dragged: VirtualFile, parked: Set<String>): List<StripCell<VirtualFile>> {
+            val out = ArrayList<StripCell<VirtualFile>>(strip.size)
+            // COLL-8: a partly shown group is one collapsed pill whose rectangle covers its header, its peek and its count (DRAG-6: no slot
+            // between them); the peek's tab and the count are no cells
+            var partial: Int = -1
+            var peek: VirtualFile? = null
+            var group: String? = null
+            fun extend(rect: Rectangle) {
+                val cell = out.getOrNull(partial) as? PillCell ?: return
+                out[partial] = PillCell(cell.groupId, cell.collapsed, PartialExpand.unitRect(listOf(cell.rect, rect)), cell.empty)
             }
+            for (u in strip) when (u) {
+                is StripUnit.Tab -> when {
+                    // the dragged peek's placeholder, still right behind its pill: part of the unit, so holding the tab there is no "beyond
+                    // the group's end" (OwnGroupStay) that would take it out of the group
+                    u.file == dragged -> if (u.file == peek && u.groupId == group) extend(u.rect)
+                    u.file == peek && u.groupId == group -> extend(u.rect)
+                    else -> out += TabCell(u.file, u.groupId, u.pinned, Rectangle(u.rect))
+                }
+                is StripUnit.Pill -> {
+                    out += PillCell(u.groupId, u.collapsed, Rectangle(u.rect), u.empty || u.groupId in parked)
+                    partial = if (u.peek != null) out.size - 1 else -1
+                    peek = u.peek
+                    group = u.groupId
+                }
+                is StripUnit.Count -> if (u.groupId == group && partial >= 0) extend(u.rect)
+            }
+            return out
         }
+
+        /**
+         * The slot of [file] in the cells [cellsOf] makes of [strip]: the number of cells in front of its tab. A partly shown group's peek
+         * and count are no cells (COLL-8), so this is not the tab's index among the units.
+         */
+        fun slotOf(strip: List<StripUnit>, file: VirtualFile, parked: Set<String>): Int? {
+            val at = strip.indexOfFirst { it is StripUnit.Tab && it.file == file }
+            if (at < 0) return null
+            return cellsOf(strip.subList(0, at), file, parked).size
+        }
+
+        /** The members that partly shown groups of [strip] show (COLL-8): their tabs are part of their group's pill unit. */
+        private fun peeksOf(strip: List<StripUnit>): Set<VirtualFile> =
+            strip.mapNotNullTo(HashSet()) { (it as? StripUnit.Pill)?.takeIf { p -> p.collapsed }?.peek }
 
         /** The strip order after dropping [dragged] with [landing], collapsed groups' hidden members included ([groups] as they were at the start). */
         fun flatOrder(cells: List<StripCell<VirtualFile>>, landing: Landing, dragged: VirtualFile, groups: List<GroupDecoration>): List<VirtualFile> =
@@ -103,12 +154,15 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
         /** [flatten] with the pills of empty groups kept in it (RULE-6): the strip's order as a sequence of items. */
         fun sequenceOf(strip: List<StripUnit>, groups: List<GroupDecoration>): List<StripItem<VirtualFile>> {
             val out = ArrayList<StripItem<VirtualFile>>()
+            val peeks = peeksOf(strip)
             for (u in strip) when (u) {
-                is StripUnit.Tab -> out += StripItem.Tab(u.file)
+                // a partly shown group's peek comes with the group's members, at the group's place (COLL-8)
+                is StripUnit.Tab -> if (u.file !in peeks) out += StripItem.Tab(u.file)
                 is StripUnit.Pill -> if (u.collapsed) {
                     val members = membersOf(groups, u.groupId)
                     if (members.isEmpty()) out += StripItem.EmptyPill(u.groupId) else members.mapTo(out) { StripItem.Tab(it) }
                 }
+                is StripUnit.Count -> {}
             }
             return out
         }
@@ -147,9 +201,11 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
         /** The flat order of the strip as it was before the drag: tabs in strip order, a collapsed group's hidden members at its pill. */
         fun flatten(strip: List<StripUnit>, groups: List<GroupDecoration>): List<VirtualFile> {
             val out = ArrayList<VirtualFile>()
+            val peeks = peeksOf(strip)
             for (u in strip) when (u) {
-                is StripUnit.Tab -> out += u.file
+                is StripUnit.Tab -> if (u.file !in peeks) out += u.file
                 is StripUnit.Pill -> if (u.collapsed) out += membersOf(groups, u.groupId)
+                is StripUnit.Count -> {}
             }
             return out
         }
@@ -158,11 +214,16 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
         fun groupsAfterDrop(groups: List<GroupDecoration>, dragged: VirtualFile, applied: Applied): List<GroupDecoration> = groups.map { g ->
             val members = g.members.toMutableSet()
             members.remove(dragged)
+            // COLL-8: a peek that was dragged out of its group is no peek any more (the group is collapsed fully); one that stayed is
+            val peek = g.peek?.takeIf { it != dragged || applied.landing.groupId == g.id }
             val joins = g.id == applied.landing.groupId
             // the first member of an empty group (held behind its pill, DRAG-3) shows the group expanded, whatever its flag said
             val wasEmpty = members.none { it in applied.flat }
+            // COLL-8: a tab that joins a collapsed or partly shown group (a hold behind it expanded the group for the drag) leaves it
+            // expanded, with no peek; a member that is dropped back into its own group changes nothing about the group's state
+            val expands = joins && (wasEmpty || dragged !in g.members)
             if (joins) members.add(dragged)
-            g.copy(members = applied.flat.filter { it in members }, collapsed = if (joins && wasEmpty) false else g.collapsed)
+            g.copy(members = applied.flat.filter { it in members }, collapsed = if (expands) false else g.collapsed, peek = if (expands) null else peek)
         }
 
         /**

@@ -64,14 +64,14 @@ internal class StripRightClick(
 
 /**
  * CTX-5: the free part of a tab strip, where [StripRightClick] reports a right click: the strip's rows (its units, the platform's header
- * rectangle, or the row of a strip that shows only pills, [hasLoosePills]), minus every tab label, every pill ([headers]) and the
+ * rectangle, or the row of a strip that shows only pills, [hasLoosePills]), minus every tab label, every pill and count pill ([headers]) and the
  * platform's buttons (more, entry point, title). A strip that shows nothing (placement None, no tab and no pill) has no free part.
  */
 internal class FreeStripArea(
     private val tabs: JBEditorTabs,
     private val geometry: StripGeometry,
     private val hasLoosePills: () -> Boolean,
-    private val headers: () -> List<GroupHeader>,
+    private val headers: () -> List<JComponent>,
     private val units: () -> List<StripUnit>,
 ) {
     /** True if [p] (tab component coordinates) is on the free part of the strip. */

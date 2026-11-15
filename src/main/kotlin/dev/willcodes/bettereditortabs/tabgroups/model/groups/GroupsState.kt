@@ -93,8 +93,20 @@ class GroupsState<S, F>(private val newId: () -> String) {
         instances.sortBy { rank[it.groupId] ?: Int.MAX_VALUE }
     }
 
+    /** COLL-1 / INT-1: collapses or expands the instance fully (a partial expand, COLL-8, ends either way). */
     fun setCollapsed(split: S, groupId: String, collapsed: Boolean) {
         instance(split, groupId)?.collapsed = collapsed
+    }
+
+    /**
+     * COLL-8, partial expand: the collapsed instance of [groupId] in [split] shows [file] beside its header and keeps its other tabs hidden.
+     * False (nothing changed) if there is no such instance, it is expanded, or [file] is not one of its members.
+     */
+    fun showPartially(split: S, groupId: String, file: F): Boolean {
+        val instance = instance(split, groupId) ?: return false
+        if (!instance.collapsed || file !in instance) return false
+        instance.peek = file
+        return true
     }
 
     /**
@@ -123,7 +135,9 @@ class GroupsState<S, F>(private val newId: () -> String) {
             if (members.isNotEmpty()) group.keepWhileEmpty = false
             else if (item.groupId in keepEmpty) group.keepWhileEmpty = true
             if (members.isEmpty() && !keepWhenEmpty(group) && item.groupId !in emptyBefore) continue
-            result.add(GroupInstance(item.groupId, members, item.collapsed))
+            val instance = GroupInstance(item.groupId, members, item.collapsed)
+            item.peek?.takeIf { item.collapsed && it in members }?.let { instance.peek = it } // COLL-8 survives a drag result
+            result.add(instance)
         }
         if (result.isEmpty()) bySplit.remove(split) else bySplit[split] = result
         // MEM-5 / MEM-6 for what this result changed; empty instances it left untouched are not pruned

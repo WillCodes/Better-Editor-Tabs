@@ -20,8 +20,10 @@ import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
  *   it also says it is not persisted, so the history of a project never mentions it.
  * - Back / Forward, Recent Locations, last edit: `IdeDocumentHistoryImpl.createPlaceInfo` returns null for a `SkipFromDocumentHistory`
  *   whose `isIncludedInDocumentHistory` is false, and `removeInvalidFilesFrom` drops it from the stacks.
- * - The platform's `FileEditorManagerImpl.selectionHistory` (the Switcher, Ctrl+Tab) and `openFiles` (the Switcher's / Recent Files'
- *   "open files" part) have no filter: while the placeholder is open it can be listed there. Known limit, see [TemporarySplits].
+ * - The Switcher (Ctrl+Tab) and Recent Files (Ctrl+E): their default implementation (`platform-recentFiles-plugin`) filters every file
+ *   with `RecentFilesExcluderKt.isAllowedInRecentFilesModel`, which asks `IdeDocumentHistoryImpl.OptionallyIncluded` first, so the
+ *   `SkipFromDocumentHistory` below keeps the placeholder out (262 and 263 jars checked). The old fallback Switcher (a registry key, off by
+ *   default) does not filter; see [TemporarySplits].
  * - Persisted layout: `EditorsSplitters.writeExternal` writes every tab, but the file cannot be found at the next start (its URL is a
  *   `mock://` one), so it is not reopened ([TemporarySplits.closeAll] closes the placeholders before the project's layout is saved).
  *

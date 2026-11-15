@@ -10,9 +10,11 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitBar
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.StripFreeze
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
+import java.awt.Rectangle
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.WeakHashMap
@@ -48,12 +50,17 @@ private val LOG = logger<TemporarySplits>()
  * (hidden tabs count: `JBTabsImpl.getTabCount` is `tabs.size`) and the window is in a splitter; `EditorWindow.unsplit` moves the
  * sibling's composites, a placeholder included, into the surviving window; `DockWindow.closeIfEmpty` runs after every file closed in a
  * detached window and closes it when `EditorsSplitters.isEmptyVisible` (no visible tab) holds, so a placeholder opened by keep-alive
- * stays visible until that close is over and is hidden in the next event ([unsettled]); `EditorWindow.split` returns null for a window
- * without tab.
+ * stays visible until that close is over and is hidden in the next event ([unsettled]); a picture of the split ([freezeSplit]) covers
+ * it from just before it opens until it is hidden, so it is never seen; `EditorWindow.split` returns null for a window without tab.
  *
- * Known limits: the Switcher (Ctrl+Tab) and the Recent Files popup list open files (`FileEditorManagerImpl.selectionHistory`,
- * `openFiles`) with no way to filter one; a detached window with only hidden tabs counts as empty for `DockManagerImpl.createDragSession`,
- * which makes it half transparent during the platform's own tab drags. EDT only.
+ * The Switcher (Ctrl+Tab) and Recent Files (Ctrl+E): the default implementation (the `platform-recentFiles-plugin`, 262 and 263) passes
+ * every file it lists through `RecentFilesExcluderKt.isAllowedInRecentFilesModel`, which drops an `IdeDocumentHistoryImpl.OptionallyIncluded`
+ * file whose `isIncludedInDocumentHistory` is false, as the placeholder's is ([PlaceholderFile]). Only the old implementation (registry
+ * `switcher.use.fallback.in.monolith`, off by default) lists `selectionHistory` / `openFiles` unfiltered; picking the placeholder there
+ * selects the hidden tab in its own split, which only makes that temporary split current (the empty-editor overlay stays).
+ *
+ * Known limit: a detached window with only hidden tabs counts as empty for `DockManagerImpl.createDragSession`, which makes it half
+ * transparent during the platform's own tab drags. EDT only.
  */
 internal class TemporarySplits(private val project: Project, private val tabBar: TabBar) {
     /** Windows seen holding a placeholder (so that a disposal that nobody announced can be told from any other). Weak: identity of the window. */
@@ -183,18 +190,37 @@ internal class TemporarySplits(private val project: Project, private val tabBar:
             // MEM-5: the split must still be there to keep it in; a Delete answer then ends the temporary split)
             if (bar.groups.none { g -> g.members == listOf(file) || g.members.none { window.getComposite(it) != null } }) continue
             LOG.info("keep-alive: the split's last tab ${file.name} is closing while it holds an empty group")
+            // the placeholder must stay visible until the close is over (a detached window closes when no tab is visible) and opening
+            // it lets the event queue run: a picture of the split as it is now hides those frames, so the user sees the split go from
+            // its last tab straight to its pills (round 0 of Stage 11.5: no one-frame "(empty groups)" tab)
+            val freeze = freezeSplit(window)
             // marked first: opening the file lets the event queue run (`blockingWaitForCompositeFileOpen`), and a look at this split
             // would find its closing tab still there and take the placeholder for a leftover
             unsettled += window
             if (ensure(window) == null) {
                 unsettled -= window
+                freeze?.release()
                 continue
             }
             ApplicationManager.getApplication().invokeLater({
                 unsettled.remove(window)
-                tabBar.sync()
-            }, ModalityState.any(), project.disposed)
+                try {
+                    if (!project.isDisposed) tabBar.sync()
+                }
+                finally {
+                    freeze?.release()
+                }
+            }, ModalityState.any())
         }
+    }
+
+    /**
+     * A still picture of [window]'s whole tab component (strip and editor area), shown over it until released ([StripFreeze]); null if
+     * it is not showing. Held from just before a keep-alive placeholder opens until it is hidden.
+     */
+    private fun freezeSplit(window: EditorWindow): StripFreeze? {
+        val component = StripReader.tabsOf(window).component
+        return StripFreeze.over(component, Rectangle(0, 0, component.width, component.height))
     }
 
     /** The split of [window] is going away with its placeholder; the host moves or deletes its empty groups, once. */

@@ -1,7 +1,6 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 
 import com.intellij.ui.tabs.impl.JBEditorTabs
-import com.intellij.ui.ColorUtil
 import com.intellij.util.ui.ImageUtil
 import com.intellij.util.ui.JBUI
 import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
@@ -31,8 +30,6 @@ internal object GroupChipImage {
     private const val PAD_RIGHT = 6
     private const val GAP = 4
 
-    /** How much of the group colour the count pill has (the rest is the chip's background). */
-    private const val COUNT_STRENGTH = 0.55
     private const val ARC = 8
     private const val PILL_V_INSET = 4
     private const val FALLBACK_HEIGHT = 28
@@ -50,7 +47,7 @@ internal object GroupChipImage {
 
         // the count is a pill of its own, as tall as a named pill and never narrower than it is tall (a single digit is a rounded square)
         val countHeight = PillPainter.namedHeight(pillMetrics, minHeight - 2 * JBUI.scale(PILL_V_INSET))
-        val countWidth = maxOf(PillPainter.naturalWidth(pillMetrics, countText, false), countHeight)
+        val countWidth = PillPainter.countWidth(pillMetrics, countText, countHeight)
 
         val border = 1
         val layout = GroupChipLayout.layout(
@@ -83,8 +80,7 @@ internal object GroupChipImage {
 
             // the count pill: the group colour, lighter (blended into the chip's background) so it reads as a companion, not a second group
             val t = layout.text
-            val fill = ColorUtil.mix(DragImages.windowBackground(), decoration.color, COUNT_STRENGTH)
-            PillPainter.paintNamed(g, fill, countText, t.x.toDouble(), t.y.toDouble(), t.width.toDouble(), t.height.toDouble())
+            PillPainter.paintCount(g, decoration.color, DragImages.windowBackground(), countText, t.x.toDouble(), t.y.toDouble(), t.width.toDouble(), t.height.toDouble())
         }
         finally {
             g.dispose()

@@ -11,26 +11,16 @@ import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.ThreadingAssertions
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.TabBarDnd
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.GroupReopen
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
-import dev.willcodes.bettereditortabs.tabgroups.model.splits.SplitRecency
-import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorSide
-import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
-import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.freezeOwn
-import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.moveGroupToNewSplit
-import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.moveGroupToSplit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.TemporarySplits
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripUnit
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter
-import java.awt.Rectangle
-import java.util.concurrent.ConcurrentHashMap
-import javax.swing.SwingUtilities
 
 /**
  * The tab bar facade: the one object the rest of the plugin uses to put groups into the editor tab bars and to hear about gestures.
@@ -44,6 +34,9 @@ import javax.swing.SwingUtilities
  *                      (model/persist, PERS-1, PERS-3). Unit tested without the platform.
  *   tabbar/            the ONLY package that touches IDE-internal APIs (EditorWindow, JBTabsImpl, TabLabel, TabInfo, ...).
  *     TabBar           this facade (project service)          TabBarHost    the contract the service layer implements
+ *     SplitRegistry    the per-split SplitBars, the focus history ([recentSplits]) and the per-bar dispatch of file events (sync, close, pin)
+ *     RulePreviews     POP-4: the rule preview outline in every strip, re-applied to a split that appears while it shows
+ *     GroupTransfers   splitGroup, moveGroup, openInOrder, placeEmptyGroup: group moves and orders without a drag (they use the registry's bars)
  *     SplitHandle, GroupDecoration, HeaderRef, StripStyle     the public data types
  *     strip/           one adapter per split: collapse (hidden tabs) and its animation, pills hosted in tab labels, tint, drop slot,
  *                      empty state; StripDragSurface (`adapter.drag`): drag preview, gaps, transit,
@@ -60,7 +53,15 @@ import javax.swing.SwingUtilities
  *                      platform's "more" button when only those rows make the strip overflow. Header refs carry the strip side
  *                      (StripSide.kt), which ui/popup/PopupPlacement uses to open popups on the side facing the editor (§6)
  *     strip/TabTransit a tab whose drag is over another split is out of its source strip, as in the platform's drag-out
- *     strip/CollapseController  also keeps the empty group instances (RULE-6): a group with an enabled rule whose tabs are all gone is shown
+ *     strip/CountPill  COLL-8, partial expand: a collapsed group can show one member beside its header (its peek, `GroupDecoration.peek`, a
+ *                      visible tab right behind the header, tinted like a member) and the "+N" count of the members still hidden: a
+ *                      small pill (`PillPainter.paintCount`, the look of the group drag chip's count) whose space is reserved in the
+ *                      peek label's trailing side (Top / Bottom, HDR-6) or has a row of its own below the peek (Left / Right); a click on it is the
+ *                      header's click. Header, peek and count are one unit for drops (DRAG-6) and `stripUnits()` lists them in strip order.
+ *                      During a tab drag the pointer held for the DRAG-3 hold right behind a collapsed group's unit (behind its pill, or
+                      its count) expands the group (DRAG-6) with the tab at its front, inside it; the group stays expanded, also
+                      when the tab leaves it again or the drag is cancelled (`TabDragSession`, `TabBarDnd.expandedByDrag`, `DropRules.landing`)
+    strip/CollapseController  also keeps the empty group instances (RULE-6): a group with an enabled rule whose tabs are all gone is shown
  *                      as its pill alone, one strip unit like a collapsed pill, at the place its tabs had (see "Empty instances" below)
  *     strip/StripSort  IDE-2: with "Sort tabs alphabetically" on, a strip that has groups is sorted by the plugin (pinned, groups by name,
  *                      ungrouped); the platform's view sorting is off for it, and the manual order comes back when it stops
@@ -183,6 +184,18 @@ import javax.swing.SwingUtilities
  * Right strips animate heights: the platform fixes label heights there, so `strip/VerticalRows` draws animating labels shorter after
  * the layout and moves the labels behind them up.
  *
+ * # Partial expand (COLL-8)
+ *
+ * A collapsed [GroupDecoration] may carry a `peek`: the one member shown. `GroupsApplier.shown` normalises it (an open member of a collapsed
+ * group, else none); `CollapseController` hides every other member and keeps the peek as an ordinary visible tab right behind the group's
+ * anchor, so the group's place, pill rank and the logical order ([logicalOrder] keeps the member order, the peek among them) are those
+ * of a full collapse; the peek hosts its header's pill (leading) and its count pill (trailing, `PillLayout`). Navigating to a hidden member
+ * is reported through [TabBarHost.hiddenTabSelected]; the host answers with a decoration whose peek is that file and the strip un-hides
+ * and selects it (the old peek hides again). Animation: only the tabs that change move (`PartialExpand.change`): the peek grows out of the
+ * pill, the rest grows on a full expand, the peek shrinks on a collapse; a moved peek is instant. Drags: the peek is dragged like a member
+ * (it leaves the group when dropped outside the unit, `TabDragSession`), a header drag carries the whole group and arrives collapsed
+ * without a peek, drag results report the peek only while the group is still partial (`TabDropPlanner.groupsAfterDrop`).
+ *
  * # Threading
  *
  * Everything runs on the EDT (Swing state). The one exception is [groupIdOf], which the tab-limit handler may call off the EDT: it
@@ -197,16 +210,17 @@ import javax.swing.SwingUtilities
  */
 @Service(Service.Level.PROJECT)
 class TabBar(private val project: Project) : Disposable {
-    private val bars = ConcurrentHashMap<EditorWindow, SplitBar>()
-
     /** SPLIT-6: the placeholder tabs that keep splits holding only empty groups alive ([TemporarySplits]). */
     internal val temporary = TemporarySplits(project, this)
 
-    /** Splits in the order they were last seen as the current window, most recent first (see [recentSplits]); dead ones are pruned on the way. */
-    private var focusHistory: List<EditorWindow> = emptyList()
+    /** POP-4: the rule preview outline in the strips. */
+    private val previews: RulePreviews = RulePreviews { registry.bars() }
 
-    /** True while [host]'s setter creates the bars of the splits that exist already (they must not report their files as opened). */
-    private var attaching = false
+    /** The per-split bars, the focus history and the per-bar dispatch of file events. */
+    private val registry: SplitRegistry = SplitRegistry(project, this, this, temporary, { host }) { previews.applyIfSet(it) }
+
+    /** The group moves and orders that open files without a drag. */
+    private val transfers: GroupTransfers = GroupTransfers(project, this, registry)
 
     /**
      * The host the tab bar reports to and pulls groups from; null = the plugin is inert. Setting it attaches (every current split gets
@@ -221,12 +235,12 @@ class TabBar(private val project: Project) : Disposable {
             if (field != null) detach()
             field = value
             if (value != null) {
-                attaching = true
+                registry.attaching = true
                 try {
                     sync()
                 }
                 finally {
-                    attaching = false
+                    registry.attaching = false
                 }
             }
         }
@@ -241,7 +255,7 @@ class TabBar(private val project: Project) : Disposable {
             ThreadingAssertions.assertEventDispatchThread()
             if (field == value) return
             field = value
-            for (bar in bars.values.toList()) bar.adapter.restyle()
+            for (bar in registry.bars()) bar.adapter.restyle()
         }
 
     init {
@@ -252,7 +266,7 @@ class TabBar(private val project: Project) : Disposable {
             UISettingsListener.TOPIC,
             object : UISettingsListener {
                 override fun uiSettingsChanged(uiSettings: UISettings) {
-                    for (bar in bars.values.toList()) bar.adapter.uiSettingsChanged()
+                    for (bar in registry.bars()) bar.adapter.uiSettingsChanged()
                 }
             },
         )
@@ -260,9 +274,9 @@ class TabBar(private val project: Project) : Disposable {
             FileEditorManagerListener.Before.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener.Before {
                 override fun beforeFileClosed(source: FileEditorManager, file: VirtualFile) {
-                    if (bars.isEmpty()) return
+                    if (registry.isEmpty()) return
                     temporary.beforeFileClosed(file) // SPLIT-6: keep-alive, and the user closing a temporary split
-                    for (bar in bars.values.toList()) bar.adapter.beforeFileClosed(file)
+                    for (bar in registry.bars()) bar.adapter.beforeFileClosed(file)
                 }
             },
         )
@@ -280,7 +294,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun refresh(split: SplitHandle, animate: Boolean = true) {
         val h = host ?: return
-        val bar = barFor(split) ?: return
+        val bar = registry.barFor(split) ?: return
         bar.apply(h.groupsIn(split), animate && style.animateCollapse)
         temporary.schedule(split.window) // SPLIT-6: a temporary split whose last group went ends
     }
@@ -292,7 +306,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     internal fun refreshDropped(split: SplitHandle, expanding: String?) {
         val h = host ?: return
-        val bar = barFor(split) ?: return
+        val bar = registry.barFor(split) ?: return
         bar.apply(h.groupsIn(split), expanding != null && style.animateCollapse, expanding)
         temporary.schedule(split.window)
     }
@@ -301,7 +315,7 @@ class TabBar(private val project: Project) : Disposable {
     fun refreshAll() {
         if (host == null) return
         sync()
-        for (bar in bars.values.toList()) refresh(bar.split)
+        for (bar in registry.bars()) refresh(bar.split)
     }
 
     /**
@@ -310,7 +324,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun groupIdOf(split: SplitHandle, file: VirtualFile): String? {
         if (host == null) return null
-        return bars[split.window]?.groupIdOf(file)
+        return registry[split.window]?.groupIdOf(file)
     }
 
     /**
@@ -321,7 +335,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun header(split: SplitHandle, groupId: String): HeaderRef? {
         if (host == null) return null
-        val component = bars[split.window]?.adapter?.showingHeader(groupId) ?: return null
+        val component = registry[split.window]?.adapter?.showingHeader(groupId) ?: return null
         return HeaderRef(split, groupId, component, component.pillBounds(), StripReader.tabsOf(split.window).stripSide())
     }
 
@@ -334,7 +348,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun groupOrder(split: SplitHandle): List<String> {
         if (host == null) return emptyList()
-        val adapter = bars[split.window]?.adapter ?: return emptyList()
+        val adapter = registry[split.window]?.adapter ?: return emptyList()
         return adapter.stripUnits().mapNotNull { (it as? StripUnit.Pill)?.groupId }.distinct()
     }
 
@@ -349,7 +363,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun headerIndex(split: SplitHandle, groupId: String): Int? {
         if (host == null || split.window.isDisposed) return null
-        return bars[split.window]?.adapter?.headerIndex(groupId)
+        return registry[split.window]?.adapter?.headerIndex(groupId)
     }
 
     /**
@@ -359,18 +373,7 @@ class TabBar(private val project: Project) : Disposable {
      * collapsed groups are not outlined. EDT.
      */
     fun setRulePreview(files: Map<SplitHandle, Collection<VirtualFile>>, color: java.awt.Color?) {
-        ThreadingAssertions.assertEventDispatchThread()
-        val on = color != null && files.values.any { it.isNotEmpty() }
-        rulePreview = if (on) files.mapKeys { it.key.window } to color else null
-        for (bar in bars.values.toList()) applyRulePreview(bar)
-    }
-
-    /** What [setRulePreview] last set (by window), so that a split that appears while the preview shows gets it too; null = none. */
-    private var rulePreview: Pair<Map<EditorWindow, Collection<VirtualFile>>, java.awt.Color?>? = null
-
-    private fun applyRulePreview(bar: SplitBar) {
-        val (files, color) = rulePreview ?: (emptyMap<EditorWindow, Collection<VirtualFile>>() to null)
-        bar.adapter.setRuleOutline(files[bar.split.window].orEmpty(), color)
+        previews.set(files, color)
     }
 
     /**
@@ -379,31 +382,14 @@ class TabBar(private val project: Project) : Disposable {
      * as a Ctrl-drop of the header on the editor's right or bottom edge does, INT-6); the source keeps its instance. The new split becomes
      * the current one. False (nothing done) without a host, for an unknown group or one with no open tab (a split needs a tab). EDT.
      */
-    fun splitGroup(split: SplitHandle, groupId: String, down: Boolean): Boolean {
-        ThreadingAssertions.assertEventDispatchThread()
-        if (host == null || split.window.isDisposed) return false
-        val bar = barFor(split) ?: return false
-        val group = bar.groups().firstOrNull { it.id == groupId } ?: return false
-        // the group's open tabs in the order the strip shows them (a collapsed group's hidden tabs included): what a drop of the header carries
-        val members = group.members.toHashSet()
-        val keys = logicalOrder(split).filter { it in members }
-        if (keys.isEmpty()) return false
-        val unit = MoveUnit(groupId, keys, Rectangle(), false, Rectangle(), null, group.collapsed)
-        // the Ctrl-drop of the header on the editor's right / bottom edge, without a drag: a linked copy in a new split, the source unchanged
-        val side = if (down) EditorSide.BOTTOM else EditorSide.RIGHT
-        return bar.dnd.moveGroupToNewSplit(unit, bar.dnd, side, bar.dnd.freezeOwn(), selectedFile(split), null, true)
-    }
+    fun splitGroup(split: SplitHandle, groupId: String, down: Boolean): Boolean = transfers.splitGroup(split, groupId, down)
 
     /**
      * PERS-3 amended (2026-11-14): puts the pill of [groupId]'s *empty* instance in [split] behind the first [index] tabs of [logicalOrder]
      * (0 = in front of every tab; past the end = at the end), as the restore found it stored. Call after the [refresh] that brought the
      * empty instance in. No-op without a host or for a group that is not empty there. EDT.
      */
-    fun placeEmptyGroup(split: SplitHandle, groupId: String, index: Int) {
-        ThreadingAssertions.assertEventDispatchThread()
-        if (host == null || split.window.isDisposed) return
-        barFor(split)?.adapter?.placeEmptyAt(groupId, index)
-    }
+    fun placeEmptyGroup(split: SplitHandle, groupId: String, index: Int) = transfers.placeEmptyGroup(split, groupId, index)
 
     // ---- splits and tabs --------------------------------------------------------------------------------------------------
 
@@ -419,17 +405,7 @@ class TabBar(private val project: Project) : Disposable {
      * the user moves to another split, because every split has its own editor) and again right here. Tracking starts when the host
      * attaches. EDT only.
      */
-    fun recentSplits(): List<SplitHandle> {
-        noteCurrentWindow()
-        val live = splits().map { it.window }.filter { !it.isDisposed }
-        return SplitRecency.order(live, focusHistory).map { SplitHandle(it) }
-    }
-
-    private fun noteCurrentWindow() {
-        val current = FileEditorManagerEx.getInstanceEx(project).currentWindow ?: return
-        if (current.isDisposed) return
-        focusHistory = SplitRecency.touch(focusHistory.filter { !it.isDisposed }, current)
-    }
+    fun recentSplits(): List<SplitHandle> = registry.recentSplits()
 
     /** The split an action was invoked in: the tab bar the event comes from, else the current split. */
     fun splitFor(e: AnActionEvent): SplitHandle? {
@@ -459,7 +435,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun logicalOrder(split: SplitHandle): List<VirtualFile> {
         if (split.window.isDisposed) return emptyList()
-        val adapter = if (host == null) null else bars[split.window]?.adapter
+        val adapter = if (host == null) null else registry[split.window]?.adapter
         return adapter?.logicalOrder() ?: StripReader.allFiles(StripReader.tabsOf(split.window))
     }
 
@@ -476,14 +452,14 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun reorder(split: SplitHandle, visibleOrder: List<VirtualFile>) {
         if (host == null) return
-        bars[split.window]?.adapter?.reorderVisible(visibleOrder)
+        registry[split.window]?.adapter?.reorderVisible(visibleOrder)
     }
 
     /**
      * IDE-2: while the plugin sorts [split] alphabetically, the manual order the strip goes back to when sorting is switched off (or
      * its last group goes); null otherwise. The host stores it (PERS-1) so that it survives a restart. Without a host null.
      */
-    fun manualOrder(split: SplitHandle): List<VirtualFile>? = if (host == null) null else bars[split.window]?.adapter?.manualOrder()
+    fun manualOrder(split: SplitHandle): List<VirtualFile>? = if (host == null) null else registry[split.window]?.adapter?.manualOrder()
 
     /**
      * IDE-2: [files] is [split]'s manual order as stored before a restart. Call it before the split's groups are refreshed: when the
@@ -492,7 +468,7 @@ class TabBar(private val project: Project) : Disposable {
      */
     fun setManualOrder(split: SplitHandle, files: List<VirtualFile>) {
         if (host == null) return
-        barFor(split)?.adapter?.seedManualOrder(files)
+        registry.barFor(split)?.adapter?.seedManualOrder(files)
     }
 
     /** True if [file] has a pinned tab in [split]; false if it is not open there. */
@@ -519,7 +495,7 @@ class TabBar(private val project: Project) : Disposable {
         if (split.window.isDisposed) return
         val composite = split.window.getComposite(file) ?: return
         if (!composite.isPreview) return
-        bars[split.window]?.promotion?.expectPermanent(file) // our own call: not a promotion to report (RULE-2)
+        registry[split.window]?.promotion?.expectPermanent(file) // our own call: not a promotion to report (RULE-2)
         composite.isPreview = false
         FileEditorManagerEx.getInstanceEx(project).updateFileColor(file)
     }
@@ -566,25 +542,8 @@ class TabBar(private val project: Project) : Disposable {
      * window, and the rest follows there. Returns the split used and the files of [toOpen] that have a tab there, or null (nothing
      * done) without a host, for a split that is gone, or when nothing could be opened into a split-less project. EDT only.
      */
-    fun openInOrder(split: SplitHandle?, toOpen: List<VirtualFile>, order: List<VirtualFile>): OpenedBlock? {
-        if (host == null) return null
-        var target = split?.window?.takeIf { !it.isDisposed }
-        var rest = toOpen
-        var first: VirtualFile? = null
-        if (split == null) {
-            first = toOpen.firstOrNull() ?: return null
-            // synchronous (a navigate would open later, after the caller has gone on); a null window lets the platform make one
-            FileEditorManagerEx.getInstanceEx(project).openFile(first, null, PlatformInternals.backgroundOpenOptions())
-            target = FileEditorManagerEx.getInstanceEx(project).currentWindow?.takeIf { !it.isDisposed }
-                ?: FileEditorManagerEx.getInstanceEx(project).windows.firstOrNull { !it.isDisposed }
-            rest = toOpen - first
-            sync()
-        }
-        val bar = target?.let { barFor(SplitHandle(it)) } ?: return null
-        val opened = GroupReopen.openInOrder(bar, rest, order)
-        val files = toOpen.filter { it == first || it in opened }
-        return OpenedBlock(bar.split, files)
-    }
+    fun openInOrder(split: SplitHandle?, toOpen: List<VirtualFile>, order: List<VirtualFile>): OpenedBlock? =
+        transfers.openInOrder(split, toOpen, order)
 
     /**
      * Moves the whole instance of group [groupId] from [from] to [to] the way a group drop on the other split's strip does (SPLIT-5,
@@ -594,16 +553,7 @@ class TabBar(private val project: Project) : Disposable {
      * without tabs closes) and [TabBarHost.groupMovedIn] for [to]; both splits are refreshed afterwards. Returns false if nothing
      * moved (no host, unknown split or group). Used by LIFE-3a's "Move". EDT only.
      */
-    fun moveGroup(from: SplitHandle, groupId: String, to: SplitHandle): Boolean {
-        if (host == null || from == to) return false
-        val source = barFor(from) ?: return false
-        val target = barFor(to) ?: return false
-        // an empty instance (RULE-6, SPLIT-6: no tab, its pill alone) moves too, to the end of the target's strip
-        val unit = source.dnd.buildUnits().firstOrNull { it.groupId == groupId && (it.keys.isNotEmpty() || it.isEmptyPill) } ?: return false
-        val targetUnits = target.dnd.buildUnits()
-        source.dnd.moveGroupToSplit(unit, target.dnd, targetUnits, targetUnits.size, selectedBefore = null, focus = false)
-        return true
-    }
+    fun moveGroup(from: SplitHandle, groupId: String, to: SplitHandle): Boolean = transfers.moveGroup(from, groupId, to)
 
     // ---- temporary splits (SPLIT-6) ---------------------------------------------------------------------------------------
 
@@ -626,102 +576,44 @@ class TabBar(private val project: Project) : Disposable {
     // ---- internal ---------------------------------------------------------------------------------------------------------
 
     /** The strip adapter of [split] (null without a host or for an unknown split). Tests and the sub-packages only. */
-    internal fun adapterOf(split: SplitHandle): TabBarAdapter? = bars[split.window]?.adapter
+    internal fun adapterOf(split: SplitHandle): TabBarAdapter? = registry[split.window]?.adapter
 
     /** The editor windows of the project (every split, temporary ones included). */
-    internal fun windows(): List<EditorWindow> = FileEditorManagerEx.getInstanceEx(project).windows.toList()
+    internal fun windows(): List<EditorWindow> = registry.windows()
 
     /** The split bars that exist now. */
-    internal fun bars(): List<SplitBar> = bars.values.toList()
+    internal fun bars(): List<SplitBar> = registry.bars()
 
     /** The split bar of [window] while a host is attached (null otherwise): the overflow list (COLL-6) reads its groups and reports picks. */
-    internal fun splitBarOf(window: EditorWindow): SplitBar? = if (host == null) null else bars[window]
+    internal fun splitBarOf(window: EditorWindow): SplitBar? = registry.splitBarOf(window)
 
     /** The drag layers of every split, for group drags that end in another split. */
-    internal fun dragLayers(): List<TabBarDnd> = bars.values.map { it.dnd }
+    internal fun dragLayers(): List<TabBarDnd> = registry.dragLayers()
 
     /**
      * Brings the per-split state in line with the editor windows: repins hidden tabs, disposes what belongs to closed splits and
      * creates what new splits need. Called on every file open / close / selection change and once at start-up (see
      * [TabBarEditorListener]); new splits always open a file, closed ones are `EditorWindow.isDisposed`. No-op without a host.
      */
-    internal fun sync() {
-        val h = host ?: return
-        noteCurrentWindow()
-        bars.values.forEach { it.adapter.repinHidden() }
-        val current = FileEditorManagerEx.getInstanceEx(project).windows.toSet()
-        for ((w, bar) in bars.entries.toList()) {
-            if (w !in current || w.isDisposed) {
-                bars.remove(w)
-                temporary.windowGone(w, bar) // SPLIT-6: a temporary split that went without its placeholder being closed
-                Disposer.dispose(bar)
-                // An unsplit adds the tabs of the merged-away split to the surviving one in the same event, and that split's report of them
-                // (SPLIT-2) is queued: the host must still know the disposed split's groups when it gets it, so it hears of the disposal after.
-                if (bars.values.any { it.hasPendingReport }) {
-                    SwingUtilities.invokeLater { if (host === h) h.splitDisposed(SplitHandle(w)) }
-                }
-                else h.splitDisposed(SplitHandle(w))
-            }
-        }
-        for (w in current) if (!w.isDisposed) ensureBar(w)
-        temporary.settle()
-    }
+    internal fun sync() = registry.sync()
 
     /**
      * [file] was closed in some split. MEM-1: tells the host about every split whose applied groups list the file although it has no
      * tab there any more. The close of the tabs of a group that is being moved to another split is not reported for the source
      * split, because the source has been told about its new groups first and its index no longer lists the file.
      */
-    internal fun fileClosed(file: VirtualFile) {
-        temporary.fileClosed(file)
-        sync()
-        val h = host ?: return
-        for (bar in bars.values.toList()) {
-            if (bar.groupIdOf(file) == null) continue
-            if (TabClose.openTabs(bar.split.window, listOf(file)).isNotEmpty()) continue // still open in this split
-            h.tabClosed(bar.split, file)
-        }
-    }
+    internal fun fileClosed(file: VirtualFile) = registry.fileClosed(file)
 
     /**
      * [file] was pinned or unpinned somewhere (`FileEditorManagerListener.filePinStateChanged` names no window). MEM-3: tells the host
      * about every split in which the groups last applied list the file as a member and the file now has a pinned tab. No-op without a host.
      */
-    internal fun filePinStateChanged(file: VirtualFile) {
-        val h = host ?: return
-        for (bar in bars.values.toList()) {
-            if (TabClose.openTabs(bar.split.window, listOf(file)).isNotEmpty()) bar.adapter.pinChanged() // no group shifts (see pinChanged)
-            bar.adapter.recheckSort() // IDE-2: pinned tabs sort first
-        }
-        for (bar in bars.values.toList()) {
-            if (bar.groupIdOf(file) == null) continue
-            if (!isPinned(bar.split, file)) continue
-            h.tabPinned(bar.split, file)
-        }
-    }
-
-    private fun barFor(split: SplitHandle): SplitBar? {
-        val w = split.window
-        if (w.isDisposed) return null
-        return bars[w] ?: ensureBar(w)
-    }
-
-    /** The bar of [window], created (and announced to the host) if the split is new. */
-    private fun ensureBar(window: EditorWindow): SplitBar {
-        bars[window]?.let { return it }
-        val bar = SplitBar(SplitHandle(window), this, this, reportInitial = !attaching)
-        bars[window] = bar
-        if (rulePreview != null) applyRulePreview(bar)
-        host?.splitAppeared(bar.split)
-        return bar
-    }
+    internal fun filePinStateChanged(file: VirtualFile) = registry.filePinStateChanged(file)
 
     private fun detach() {
         if (!project.isDisposed && host != null) temporary.closeAll() // SPLIT-6: the placeholders are not left behind without a host
-        rulePreview = null
-        val all = bars.values.toList()
-        bars.clear()
-        all.forEach { Disposer.dispose(it) }
+        previews.clear()
+        registry.detach()
     }
 
     override fun dispose() {

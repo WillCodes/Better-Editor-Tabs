@@ -21,7 +21,9 @@ object DropRules {
      * - between a group's pill and its first tab, or between two of its tabs: joins at once (DRAG-1, DRAG-2);
      * - right behind its last tab (trailing slot), or right behind the pill of an empty group (a [PillCell.empty] is that group's whole
      *   body: its trailing slot): outside, unless [joiningGroup] is that group (hold-to-join, DRAG-3); the slot in front of the pill is outside;
-     * - before a pill, or after a collapsed pill: outside (DRAG-6, the collapsed group is one unit);
+     * - before a pill: outside (DRAG-6, the collapsed group is one unit); right behind a collapsed pill (a partly shown group's unit
+     *   included, COLL-8) is the group's trailing slot like behind an empty group's pill: outside, unless [joiningGroup] is that
+     *   group (the hold completed there, which makes the drag expand the group, so that the slots inside it apply);
      * - a pinned tab never joins (DRAG-4) and, if it was dropped inside a group, goes in front of the pill; with
      *   [keepPinnedFirst] pinned tabs stay in the leading pinned zone and other tabs stay out of it (INV-3).
      */
@@ -53,6 +55,8 @@ object DropRules {
             prev is TabCell && prev.groupId != null && inside == null -> prev.groupId
             // an empty group (its pill alone) has a trailing edge right behind its pill: held there, the tab joins (DRAG-3)
             prev is PillCell && prev.empty && inside == null -> prev.groupId
+            // COLL-8: so has a collapsed group (full or partly shown): held there, the tab joins it and the group expands for the drag
+            prev is PillCell && prev.collapsed && inside == null -> prev.groupId
             else -> null
         }
 
