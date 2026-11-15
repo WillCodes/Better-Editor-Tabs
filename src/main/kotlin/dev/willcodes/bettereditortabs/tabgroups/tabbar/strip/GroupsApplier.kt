@@ -136,9 +136,13 @@ internal class GroupsApplier(
             // groups with open tabs)
             if (running == null && was.members.none { it in open }) continue
             // What is on screen before (where a running animation ends, if one runs) and after; only the tabs that
-            // change animate: a collapse shrinks the ones that go, an expand grows the ones that come
-            val after = PartialExpand.shown(g.members, open, g.collapsed, g.peek)
-            val start = animator.targetOf(g.id) ?: PartialExpand.shown(was.members, open, was.collapsed, was.peek).toSet()
+            // change animate: a collapse shrinks the ones that go, an expand grows the ones that come. Only tabs that are members
+            // before and after count: a tab that joins or leaves the group (a menu action) is not collapsing or expanding, it
+            // just shows or hides at once
+            val stays = was.members.toHashSet().apply { retainAll(g.members.toSet()) }
+            val after = PartialExpand.shown(g.members, open, g.collapsed, g.peek).filter { it in stays }
+            val start = (animator.targetOf(g.id) ?: PartialExpand.shown(was.members, open, was.collapsed, was.peek).toSet())
+                .filterTo(HashSet()) { it in stays }
             val change = PartialExpand.change(start, after)
             if (change.none) {
                 if (running != null) {
