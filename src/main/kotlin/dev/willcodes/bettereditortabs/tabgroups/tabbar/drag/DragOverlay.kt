@@ -57,6 +57,9 @@ internal class DragOverlay(private val owner: JComponent) : JComponent() {
 
     override fun contains(x: Int, y: Int): Boolean = false
 
+    /** The drop area shown now (screen coordinates), or null; for tests. */
+    internal val shownDropArea: Rectangle? get() = dropArea?.let { Rectangle(it) }
+
     companion object {
         /** Opacity of the floating picture: the platform shows its drag image window with alpha ratio 0.1. */
         const val GHOST_OPACITY = 0.9f

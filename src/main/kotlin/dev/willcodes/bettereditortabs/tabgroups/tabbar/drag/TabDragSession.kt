@@ -5,9 +5,11 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.ExpandSlot
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.Landing
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
@@ -35,6 +37,14 @@ private val LOG = logger<TabDragSession>()
  * - **another split's strip, file already open there**: as the own strip (that tab is the one that moves), with the picture made from
  *   the dragged tab's text and icon; dropping re-orders and re-groups it there and closes the source tab ([moveTabToSplit]).
  * [OwnGroupStay] (DRAG-3) only applies to the own strip: in another split the tab is no member of any group.
+ *
+ * Expand on hold (DRAG-6, Stage 11.5 fix rounds 2-3): the pointer held for the DRAG-3 hold right behind a collapsed group's unit (behind
+ * its pill; a partly shown group's unit ends with its "+N" count), the same hold and zone as behind an expanded group's last tab, expands
+ * the group ([expandForDrag], the COLL-7 animation, the group's tint): the placeholder becomes the group's first slot, right behind its
+ * header, and until the tab leaves the group every slot between its header and its end counts as inside, the trailing one without a
+ * further hold ([TabDropPlanner.expandedInto], the rules of [dev.willcodes.bettereditortabs.tabgroups.model.strip.OwnGroupStay]). The
+ * group **stays expanded**: leaving it, Esc, a hand-over or a drop anywhere keep it so ([TabBarDnd.expandedByDrag], committed when the drag
+ * ends; a drop on this strip folds it into its own result, [commit]).
  *
  * A session can be [suspend]ed (strip back as it was, placeholder gone) and [resume]d, which the home session does while the pointer
  * is over another split's strip; a session for another strip is simply dropped ([restoreOriginal], [end]).
@@ -80,7 +90,17 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
     private var gapRoom = 0
     private var lastPointer: Point? = null
     private val hold = DragHold { lastPointer?.let { refresh(it) } }
+
     private val planner = TabDropPlanner(target, hold)
+
+    /** COLL-8: the collapsed (or partly shown) group that is expanded for the rest of this drag (a hold behind its unit completed), or null. */
+    private var expanded: String? = null
+
+    /** What the slot rules last decided, to tell a changed decision from a repeated one. */
+    private var lastResult: Landing? = null
+
+    /** The group whose colour the dragged picture shows now (the landing group). */
+    private var tintedAs: String? = null
 
     /** The tab of [file] in the target strip, if the strip has one. */
     private fun tabInTarget(): TabInfo? = if (!foreign) dragged.info else StripReader.infoOf(tabs, file)
@@ -97,18 +117,24 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         hasTab = own != null
         if (own?.isHidden == true) return false
         val strip = adapter.stripUnits()
-        origGroups = target.model.groups()
+        // DRAG-6: a group this drag expanded earlier (on this strip, before the pointer went to another one) is still expanded
+        origGroups = target.model.groups().map { if (it.id in target.expandedByDrag) it.copy(collapsed = false, peek = null) else it }
         origFlat = target.reorder.completeOrder(TabDropPlanner.flatten(strip, origGroups))
         shownFlat = origFlat
         origSeq = TabDropPlanner.sequenceOf(strip, origGroups)
         shownSeq = origSeq
         applied = null
+        expanded = null
+        lastResult = null
+        tintedAs = null
+        hold.reset()
         lastPointer = screen
         if (hasTab) {
             val at = strip.indexOfFirst { it is StripUnit.Tab && it.file == file }
             if (at < 0 || strip[at].rect.isEmpty) return false
-            slot = at
-            if (!keepStay) planner.start(if (foreign) null else origGroups.firstOrNull { file in it.members }?.id)
+            // the cells in front of the tab (a partly shown group's peek and count are no cells of their own, COLL-8)
+            slot = TabDropPlanner.slotOf(strip, file, parkedGroups) ?: return false
+            if (!keepStay) planner.start(startGroup())
             adapter.drag.beginTabDrag(file)
             adapter.drag.setDragGap(listOf(file), emptyList())
         }
@@ -199,36 +225,147 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         repeat(SETTLE_STEPS) { if (!step(screen)) return }
     }
 
+    /** The group the drag began with the tab a member of (the own strip only), for [TabDropPlanner.start]. */
+    private fun startGroup(): String? = if (foreign) null else origGroups.firstOrNull { file in it.members }?.id
+
     /** One evaluation; true if it changed the strip. */
     private fun step(screen: Point): Boolean {
         target.validateNow()
+        val open = expanded
         val strip = adapter.stripUnits()
         val cells = TabDropPlanner.cellsOf(strip, file, parkedGroups)
+        // the group's tabs are growing under the pointer: the placeholder stays at the group's first slot until they have (a release judges
+        // the end state); it is shown inside the group meanwhile
+        if (open != null && adapter.collapseAnimator.direction(open) == false) {
+            if (applied != null) return false
+            apply(cells, Landing(slot, open, open))
+            return true
+        }
         val gap = if (hasTab) strip.filterIsInstance<StripUnit.Tab>().firstOrNull { it.file == file }?.rect else adapter.drag.foreignGapRect()
         val result = planner.landingFor(gap, cells, dragged.pinned, slot, screen)
         val moved = result.slot != slot
         slot = result.slot
-        val before = applied
-        if (before?.landing == result) return false
+        heldCollapsedGroup(cells, result)?.let {
+            expandForDrag(it, screen)
+            return true
+        }
+        if (open != null && result.groupId != open) {
+            // DRAG-6 (fix round 3): the group stays expanded; from here on its slots follow the ordinary rules (DRAG-1..3), the tab having
+            // left it (coming back to its end needs the hold)
+            expanded = null
+            planner.start(null)
+        }
+        if (applied != null && lastResult == result) return false
         if (!hasTab && moved) openGap(cells, slot)
-        apply(cells, result, groupChanged = before == null || before.landing.groupId != result.groupId)
+        apply(cells, result)
         return true
     }
 
-    private fun apply(cells: List<StripCell<VirtualFile>>, landing: Landing, groupChanged: Boolean) {
-        val seq = TabDropPlanner.sequenceOrder(cells, landing, file, origGroups)
-        val flat = target.reorder.completeOrder(seq.files())
+    /**
+     * The collapsed group that the hold behind its unit has made the tab join ([result] joins it while its cell is a collapsed pill, which
+     * only a completed hold does, [dev.willcodes.bettereditortabs.tabgroups.model.strip.DropRules.landing]), or null. Empty groups have
+     * their own hold (MEM-5 / RULE-6) and the dragged tab's own parked group is one too (DRAG-8); a pinned tab never joins (DRAG-4).
+     */
+    private fun heldCollapsedGroup(cells: List<StripCell<VirtualFile>>, result: Landing): String? {
+        if (dragged.pinned) return null
+        val id = result.groupId ?: return null
+        val pill = cells.firstOrNull { it is PillCell && it.groupId == id } as? PillCell ?: return null
+        return id.takeIf { pill.collapsed && !pill.empty }
+    }
+
+    /** The groups as the strip shows them for this drag: the group that was expanded by a hold behind it is expanded (COLL-8). */
+    private fun dragGroups(): List<GroupDecoration> {
+        val id = expanded ?: return origGroups
+        return origGroups.map { if (it.id == id) it.copy(collapsed = false, peek = null) else it }
+    }
+
+    /**
+     * The groups the strip is given for the drag: [dragGroups], and a partly shown group whose peek is the dragged tab without the tab once
+     * [landing] takes it out of the group (it is an ordinary tab from there on and the group is collapsed fully, COLL-8).
+     */
+    private fun shownGroups(landing: Landing?): List<GroupDecoration> {
+        val base = dragGroups()
+        val stays = hasTab && landing != null && origGroups.any { it.collapsed && it.peek == file && landing.groupId == it.id }
+        return if (stays) base else base.map { g -> if (g.peek == file) g.copy(peek = null, members = g.members - file) else g }
+    }
+
+    /**
+     * DRAG-6 (Stage 11.5 fix rounds 2-3, user requests): the hold behind the unit of collapsed (or partly shown) group [id] completed: it
+     * expands, animated (COLL-7), with its tint, and **stays expanded** for the rest of the drag and after it, whatever the drop (recorded
+     * in [TabBarDnd.expandedByDrag]; the drag's end commits it). The placeholder takes the slot of the group that the pointer at [screen]
+     * is at in the group's **expanded** layout (fix round 4: [openingSlot], worked out before the tabs grow, so they grow around it), inside
+     * the group ([TabDropPlanner.expandedInto]: also its trailing slot counts as inside without another hold until the tab leaves it).
+     */
+    private fun expandForDrag(id: String, screen: Point) {
+        val before = openingSlot(id, screen)
+        expanded = id
+        target.expandedByDrag += id
+        origGroups = origGroups.map { if (it.id == id) it.copy(collapsed = false, peek = null) else it }
+        planner.expandedInto(id)
+        adapter.expandForDrag(dragGroups())
+        target.validateNow()
+        val strip = adapter.stripUnits()
+        val cells = TabDropPlanner.cellsOf(strip, file, parkedGroups)
+        val pill = cells.indexOfFirst { it is PillCell && it.groupId == id }
+        // the k-th slot of the group: right behind its header for 0, else right behind its k-th tab (its tabs are cells in strip order now)
+        val tabsAt = cells.indices.filter { (cells[it] as? TabCell)?.groupId == id }
+        slot = if (before <= 0 || tabsAt.isEmpty()) pill + 1 else tabsAt[minOf(before, tabsAt.size) - 1] + 1
+        if (!hasTab) openGap(cells, slot)
+        lastResult = null
+        applied = null
+        LOG.info("tab drag: group $id expanded for the drag (hold behind its unit), placeholder behind $before of its tabs")
+    }
+
+    /**
+     * DRAG-6 fix round 4 (user request): how many of group [id]'s tabs stand in front of the placeholder when it expands, from the pointer
+     * at [screen] against the group's expanded layout ([ExpandSlot]): its header's end, then its tabs (those open here, in the strip's
+     * logical order, not the dragged one) at their natural length along the strip (a hidden label keeps its content's preferred size; in a
+     * side strip every tab is a row), and the placeholder's own length. Read before the expand changes the labels. 0 if anything is missing.
+     */
+    private fun openingSlot(id: String, screen: Point): Int {
+        val horizontal = target.horizontal
+        val pill = adapter.stripUnits().filterIsInstance<StripUnit.Pill>().firstOrNull { it.groupId == id } ?: return 0
+        val start = if (horizontal) pill.rect.x + pill.rect.width else pill.rect.y + pill.rect.height
+        val members = origGroups.firstOrNull { it.id == id }?.members?.toHashSet() ?: return 0
+        val inOrder = adapter.logicalOrder().filter { it in members && it != file }
+        val lengths = inOrder.mapNotNull { f ->
+            val label = StripReader.infoOf(tabs, f)?.let { tabs.getTabLabel(it) } ?: return@mapNotNull null
+            if (!horizontal) return@mapNotNull maxOf(label.preferredSize.height, label.height)
+            // the tab's own length: without the space it reserves for pills now (a partly shown group's peek hosts its header and count)
+            val (lead, trail) = adapter.reservedSpace(f) ?: (0 to 0)
+            (label.preferredSize.width - lead - trail).coerceAtLeast(0)
+        }
+        if (lengths.isEmpty()) return 0
+        val gap = if (hasTab) {
+            dragged.info.let { tabs.getTabLabel(it) }?.let { if (horizontal) it.width else it.height } ?: lengths.first()
+        }
+        else gapRoom
+        val p = target.toTabs(screen)
+        return ExpandSlot.choose(start, lengths, gap, if (horizontal) p.x else p.y)
+    }
+
+    /** Applies the decision to the strip and works out what the drop leaves ([TabDropPlanner.Applied]): the landing the slot rules chose. */
+    private fun apply(cells: List<StripCell<VirtualFile>>, landing: Landing) {
+        val groupChanged = applied == null || tintedAs != landing.groupId
+        // COLL-8: a partly shown group's peek dropped back where it is (behind its pill, still a member) changes nothing, the member order included
+        val stays = hasTab && origGroups.any { it.collapsed && it.peek == file && landing.groupId == it.id }
+        val seq = if (stays) origSeq else TabDropPlanner.sequenceOrder(cells, landing, file, dragGroups())
+        val flat = if (stays) origFlat else target.reorder.completeOrder(seq.files())
         if (hasTab) {
             // a pill of an empty group (RULE-6) is not in the file order: it stays behind the tab that is in front of it in the sequence
             if (flat != shownFlat || seq != shownSeq) {
-                target.reorder.reorder(origGroups, flat, EmptyPillSpots.derive(seq))
+                // COLL-8: a peek that leaves its group is an ordinary tab from here on: the group is collapsed fully, without it
+                target.reorder.reorder(shownGroups(landing), flat, EmptyPillSpots.derive(seq))
                 shownFlat = flat
                 shownSeq = seq
             }
             // after the groups were re-applied: the preview (pill placement and tint) follows the previewed membership
             adapter.drag.setDragPreview(file, landing.groupId, parkedSides(cells, landing))
         }
-        applied = TabDropPlanner.Applied(landing, flat, (cells.getOrNull(landing.slot) as? PillCell)?.groupId)
+        lastResult = landing
+        tintedAs = landing.groupId
+        val inFront = (cells.getOrNull(landing.slot) as? PillCell)?.groupId
+        applied = TabDropPlanner.Applied(landing, flat, inFront)
         if (groupChanged) {
             target.validateNow()
             snapshot() // the picture carries the live tint (DRAG-7)
@@ -241,6 +378,8 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
      * file ([moveTabToSplit]).
      */
     fun finishDrop(screen: Point): Outcome {
+        // a group that is still growing (or shrinking) after the pointer's last move is judged in its final layout
+        if (expanded != null) adapter.finishCollapseAnimations()
         refresh(screen)
         val outcome = Outcome(applied, origGroups, origFlat, origSeq, shownSeq)
         end()
@@ -264,8 +403,12 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         if (kept.isNotEmpty()) adapter.placeEmptyPills(kept)
     }
 
-    /** DRAG-8: the groups whose only tab is the dragged one (their pill is parked where the group was). */
-    private val parkedGroups: Set<String> get() = origGroups.filter { it.members == listOf(file) }.mapTo(HashSet()) { it.id }
+    /**
+     * DRAG-8: the groups whose only tab is the dragged one (their pill is parked where the group was), and (COLL-8) the partly shown groups
+     * whose peek is the dragged tab: it can leave the group (dropped outside its unit) or stay (dropped back behind the pill, where it is a
+     * member at the group's trailing slot, [dev.willcodes.bettereditortabs.tabgroups.model.strip.OwnGroupStay]), and the group stays collapsed.
+     */
+    private val parkedGroups: Set<String> get() = origGroups.filter { it.members == listOf(file) || (it.collapsed && it.peek == file) }.mapTo(HashSet()) { it.id }
 
     /**
      * DRAG-8: for each group whose only tab is the dragged one (its pill is parked where the group was), whether [landing] puts the tab in
@@ -291,11 +434,16 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
     /** Back to the order and membership the drag started with, preview and gap removed. */
     fun restoreOriginal() {
         adapter.drag.clearDragPreview()
-        if (shownFlat != origFlat || shownSeq != origSeq) {
+        if (shownFlat != origFlat || shownSeq != origSeq || expanded != null) {
+            // the groups as the drag began, but a group the drag expanded stays expanded (DRAG-6, [origGroups] has it so)
             target.reorder.reorder(origGroups, origFlat, EmptyPillSpots.derive(origSeq))
             shownFlat = origFlat
             shownSeq = origSeq
         }
+        if (expanded != null) planner.start(startGroup())
+        expanded = null
+        lastResult = null
+        tintedAs = null
         applied = null
     }
 

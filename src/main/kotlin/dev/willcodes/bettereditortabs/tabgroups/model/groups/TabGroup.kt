@@ -24,17 +24,41 @@ class TabGroup(val id: String, var name: String, var color: GroupColor, var rule
  * A group's presence in one split (§2): its member files in tab order and its [collapsed] flag. Mutated only by [GroupsState],
  * which enforces INV-1 (a file is in at most one instance per split).
  */
-class GroupInstance<F> internal constructor(val groupId: String, members: List<F>, var collapsed: Boolean) {
+class GroupInstance<F> internal constructor(val groupId: String, members: List<F>, collapsed: Boolean) {
     private val list: MutableList<F> = members.toMutableList()
 
     /** Members in tab order. */
     val members: List<F> get() = list
 
+    /** COLL-1: the group's tabs are hidden (all of them, or all but [peek]). Setting it clears [peek]. */
+    var collapsed: Boolean = collapsed
+        set(value) {
+            field = value
+            peek = null
+        }
+
+    /**
+     * COLL-8, partial expand: while [collapsed], the one member shown beside the header (the file the user navigated to); null = fully
+     * collapsed. Cleared when the instance is expanded or collapsed again ([collapsed]) and when the file leaves the group. Session
+     * only: not persisted (PERS-1 stores the collapsed flag).
+     */
+    var peek: F? = null
+        internal set
+
+    /** COLL-8: the number of members hidden now: all while collapsed without a peek, all but the peek with one, none when expanded. */
+    val hiddenCount: Int get() = if (!collapsed) 0 else if (peek != null) list.size - 1 else list.size
+
     operator fun contains(file: F): Boolean = file in list
 
     internal fun add(file: F) { list.add(file) }
-    internal fun remove(file: F): Boolean = list.remove(file)
+    internal fun remove(file: F): Boolean {
+        if (peek == file) peek = null
+        return list.remove(file)
+    }
 }
 
-/** One instance of a split as given by a drag result (`replaceSplit`): group id, members in order, collapsed flag. */
-class InstanceLayout<F>(val groupId: String, val members: List<F>, val collapsed: Boolean)
+/**
+ * One instance of a split as given by a drag result (`replaceSplit`): group id, members in order, collapsed flag, and the member shown
+ * partially (COLL-8; kept only if the instance is still collapsed and still has it).
+ */
+class InstanceLayout<F>(val groupId: String, val members: List<F>, val collapsed: Boolean, val peek: F? = null)

@@ -9,6 +9,10 @@ import java.awt.Rectangle
  *
  * A pill is a unit of its own, even though its layout space is borrowed from a tab label (see [TabLabelSpace]): its [rect] is the
  * pill's own slot, and the [Tab.rect] of the host tab does not include it.
+ *
+ * A partly shown group (COLL-8) is, in strip order: its [Pill] (collapsed, with the [Pill.peek]), the peek's [Tab] and the [Count] (in
+ * Left / Right strips the count has a row of its own right below the peek, like the pill has one above it). The drag layer sees the three as one
+ * unit, a collapsed group's (DRAG-6).
  */
 internal sealed class StripUnit {
     /** The element's own area in tab-component coordinates, cut to the visible part of the strip. Empty when scrolled out of view. */
@@ -25,5 +29,10 @@ internal sealed class StripUnit {
         val header: GroupHeader,
         /** An empty instance (RULE-6): the group has no tab here and its pill stands alone ([collapsed] is true then). */
         val empty: Boolean = false,
+        /** COLL-8: the member a partly shown group shows beside its pill (a collapsed pill with a peek), else null. */
+        val peek: VirtualFile? = null,
     ) : StripUnit()
+
+    /** The "+N" count of a partly shown group (COLL-8): its own slot behind the peek (Top / Bottom) or a row of its own below it (Left / Right). */
+    data class Count(val groupId: String, override val rect: Rectangle) : StripUnit()
 }

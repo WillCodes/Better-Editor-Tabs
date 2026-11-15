@@ -1,5 +1,6 @@
 package dev.willcodes.bettereditortabs.tabgroups.tabbar.strip
 
+import com.intellij.ui.ColorUtil
 import com.intellij.util.ui.JBUI
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.Contrast
 import java.awt.Color
@@ -30,6 +31,9 @@ internal object PillPainter {
 
     /** Corner arc diameter of a named pill: a rounded rectangle rather than a full capsule (user request, 2026-11-13). */
     private const val PILL_ARC = 10
+
+    /** How much of the group colour a count pill has (COLL-8, INT-6); the rest is the background it stands on. */
+    private const val COUNT_STRENGTH = 0.55
 
     /** The font of the name, the one the editor tabs use. */
     fun font(): Font = JBUI.CurrentTheme.EditorTabs.font()
@@ -74,5 +78,16 @@ internal object PillPainter {
         val tx = x + (w - fm.stringWidth(text)) / 2
         val ty = y + (h - fm.height) / 2 + fm.ascent
         g.drawString(text, tx.toFloat(), ty.toFloat())
+    }
+
+    /** The fill of a count pill (COLL-8 "+N", the drag chip's tab count): the group colour mixed into [background], lighter than the group's pill. */
+    fun countFill(background: Color, groupColor: Color): Color = ColorUtil.mix(background, groupColor, COUNT_STRENGTH)
+
+    /** Width of a count pill showing [text]: never narrower than [height] (a single digit is a rounded square). */
+    fun countWidth(fm: FontMetrics, text: String, height: Int): Int = maxOf(naturalWidth(fm, text, false), height)
+
+    /** The count pill filling `x, y, w, h`: [countFill] with [text] in the colour of better contrast on it. */
+    fun paintCount(g: Graphics2D, groupColor: Color, background: Color, text: String, x: Double, y: Double, w: Double, h: Double) {
+        paintNamed(g, countFill(background, groupColor), text, x, y, w, h)
     }
 }

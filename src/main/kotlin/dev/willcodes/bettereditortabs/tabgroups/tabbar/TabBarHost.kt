@@ -89,6 +89,13 @@ interface TabBarHost {
     fun hiddenTabSelected(split: SplitHandle, groupId: String, file: VirtualFile) {}
 
     /**
+     * The user selected [file] in [split] (a click, navigation, closing the selected tab; not the strip's own re-ordering or a drag's
+     * own selection). Reported before [hiddenTabSelected] when the tab was hidden. COLL-8: a partly shown group whose shown tab is no
+     * longer the selected one collapses again.
+     */
+    fun tabSelected(split: SplitHandle, file: VirtualFile) {}
+
+    /**
      * COLL-6: [file], a tab hidden by collapsed group [groupId], was picked in the strip's overflow ("more") list. An explicit request
      * like picking it in the hover list (INT-5): expand the group whatever SET-6 says, [TabBar.refresh] and select the tab. The tab bar
      * selects nothing itself. Default: treated like a navigation ([hiddenTabSelected]).

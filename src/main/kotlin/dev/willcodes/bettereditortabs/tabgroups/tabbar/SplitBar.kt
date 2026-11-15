@@ -108,6 +108,10 @@ internal class SplitBar(
         tabBar.host?.hiddenTabSelected(split, groupId, file)
     }
 
+    override fun tabSelected(file: VirtualFile) {
+        tabBar.host?.tabSelected(split, file)
+    }
+
     // IDE-2: like a drag result, the host takes the new order and the strip is refreshed. A sort never changes a collapsed flag, so
     // nothing flips; the refresh is an animating one only so that it leaves a running animation alone (the expand of a group dropped
     // in sorted mode), where a non-animating refresh would snap it to its end.

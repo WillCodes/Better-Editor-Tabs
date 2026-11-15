@@ -121,6 +121,9 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** The group was expanded when the drag began: it is collapsed for the drag and comes back expanded and animated. */
     private var wasExpanded = false
 
+    /** COLL-8: the group showed a peek and its count when the drag began: it is collapsed fully for the drag and arrives collapsed (no peek). */
+    private var wasPartial = false
+
     /** The selected file when the drag began (put back when it ends). */
     private var selectedBefore: VirtualFile? = null
     private var origFlat: List<VirtualFile> = emptyList()
@@ -179,9 +182,10 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
 
         // The group is its collapsed header for the drag: an expanded group is collapsed in the strip (not in the model).
         wasExpanded = !deco.collapsed
+        wasPartial = deco.collapsed && dnd.adapter.peekOf(group) != null
         selectedBefore = dnd.adapter.selectedFile()
-        dragGroups = origGroups.map { if (it.id == group) it.copy(collapsed = true) else it }
-        if (wasExpanded) {
+        dragGroups = origGroups.map { if (it.id == group) it.copy(collapsed = true, peek = null) else it }
+        if (wasExpanded || wasPartial) {
             // only the pill and the tabs leave the strip; the editor keeps showing even if the group was all of the split
             dnd.adapter.keepEditorDuringDrag(true)
             dnd.adapter.setGroups(dragGroups)
@@ -249,7 +253,8 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         }
         // the strip shows the result already for a drop in this split; for anything else it goes back first
         if (!ownTarget) restoreOwn()
-        val groups = origGroups
+        // COLL-8: a group dragged as its header arrives collapsed, without a peek
+        val groups = origGroups.map { if (it.id == group) it.copy(peek = null) else it }
         val selected = selectedBefore
         val expand = expanding
         val release = Point(lastPointer)
@@ -296,6 +301,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
      */
     private fun backInSource() {
         if (wasExpanded) dnd.adapter.expandDropped(origGroups, group)
+        else if (wasPartial) dnd.adapter.setGroups(origGroups)
         dnd.adapter.reselect(selectedBefore) // without focus: the target stays the current split
     }
 
@@ -316,13 +322,14 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** Puts the group back expanded in this strip with the expand animation, and the selection back (nothing was committed). */
     private fun backExpanded() {
         if (wasExpanded) dnd.adapter.expandDropped(origGroups, group)
+        else if (wasPartial) dnd.adapter.setGroups(origGroups) // COLL-8: its peek and count come back
         dnd.adapter.reselect(selectedBefore)
     }
 
     /** The collapse of [begin] is taken back at once (the drag could not start). */
     private fun undoCollapse() {
         dnd.adapter.keepEditorDuringDrag(false)
-        if (wasExpanded) dnd.adapter.setGroups(origGroups)
+        if (wasExpanded || wasPartial) dnd.adapter.setGroups(origGroups)
         dnd.adapter.reselect(selectedBefore)
     }
 

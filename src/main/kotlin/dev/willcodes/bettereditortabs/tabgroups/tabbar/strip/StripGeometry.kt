@@ -5,6 +5,7 @@ import com.intellij.ui.tabs.JBTabsPosition
 import com.intellij.ui.tabs.impl.JBEditorTabs
 import com.intellij.ui.tabs.impl.TabLabel
 import com.intellij.util.ui.JBUI
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.PartialExpand
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillHosting
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillRows
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
@@ -117,7 +118,12 @@ internal class StripGeometry(
         return right
     }
 
-    private class Areas(val pills: LinkedHashMap<GroupHeader, PillHosting.PillRect>, val spacer: Rectangle?)
+    private class Areas(
+        val pills: LinkedHashMap<GroupHeader, PillHosting.PillRect>,
+        val spacer: Rectangle?,
+        /** COLL-8: the count pills' slots by group id. */
+        val counts: LinkedHashMap<String, PillHosting.PillRect> = LinkedHashMap(),
+    )
 
     /**
      * Where every pill is, from the labels' current bounds: [PillHosting.PillRect.full] is the pill's whole slot (inside the
@@ -126,11 +132,18 @@ internal class StripGeometry(
      */
     fun pillAreas(): LinkedHashMap<GroupHeader, PillHosting.PillRect> = areas().pills
 
+    /**
+     * COLL-8: where every count pill is: in a Top / Bottom strip its slot in the trailing side of the peek's label, in a Left / Right
+     * strip a row of its own right below the peek's label (as tall as a pill row, as wide as the count needs); by group id.
+     */
+    fun countAreas(): LinkedHashMap<String, PillHosting.PillRect> = areas().counts
+
     /** The visible part of the space opened for a group dragged in from another split ([ForeignGap]), or null. */
     fun spacerRect(): Rectangle? = areas().spacer
 
     private fun areas(): Areas {
         val result = LinkedHashMap<GroupHeader, PillHosting.PillRect>()
+        val countRects = LinkedHashMap<String, PillHosting.PillRect>()
         var spacer: Rectangle? = null
         if (tabs.isHideTabs || tabs.width <= 0) return Areas(result, null)
         val horizontal = tabs.isHorizontalTabs
@@ -159,15 +172,17 @@ internal class StripGeometry(
                 if (bounds.width <= 0) continue // pushed out; a label shrunk to no height by the animation still hosts its pill rows
                 val viewport = Rectangle(bounds.x, 0, bounds.width, limit)
                 val row = rowHeightOf(label)
-                val heights = { l: List<SpaceItem> -> l.map { if (it.header != null) row else it.length } }
+                val heights = { l: List<SpaceItem> -> l.map { if (it.header != null || it.count != null) row else it.length } }
                 val blocks = PillRows.blocks(bounds, heights(lead), heights(trail))
                 rects = items.zip(blocks).map { (item, block) ->
-                    val full = if (item.header != null) Rectangle(block.x, block.y, minOf(item.length, block.width), block.height) else block
+                    val full = if (item.header != null || item.count != null) Rectangle(block.x, block.y, minOf(item.length, block.width), block.height) else block
                     PillHosting.PillRect(full, clip(full.intersection(viewport)), clip(block.intersection(viewport)))
                 }
             }
             for ((item, r) in items.zip(rects)) {
-                if (item.header != null) result[item.header] = r else spacer = r.visible
+                if (item.header != null) result[item.header] = r
+                else if (item.count != null) countRects[item.count] = r
+                else spacer = r.visible
             }
         }
         // No label to host these pills: every tab is collapsed (they sit in the otherwise empty strip), or only pinned tabs are left
@@ -188,7 +203,7 @@ internal class StripGeometry(
                 if (item.header != null) result[item.header] = r else spacer = r.visible
             }
         }
-        return Areas(result, spacer)
+        return Areas(result, spacer, countRects)
     }
 
     private fun clip(r: Rectangle): Rectangle = if (r.width <= 0 || r.height <= 0) Rectangle() else r
@@ -196,7 +211,8 @@ internal class StripGeometry(
     /** The pills' slots inside their host labels and where they meet the strip's border line, for [PillAwareTabsBorder]. */
     fun pillCuts(): List<PillCut> {
         if (!alive() || tabs.isHideTabs || tabs.isEmptyVisible) return emptyList()
-        val areas = pillAreas()
+        val all = areas()
+        val areas = all.pills
         val t = tabs.borderThickness
         val selected = tabs.selectedInfo?.let { tabs.getTabLabel(it) }
         val result = ArrayList<PillCut>()
@@ -214,6 +230,21 @@ internal class StripGeometry(
             }
             val band = slot.intersection(edge).let { if (it.width <= 0 || it.height <= 0) Rectangle() else it }
             result += PillCut(slot, band, label === selected)
+        }
+        // COLL-8: the count's slot is plain strip too (Top / Bottom: inside the peek's label)
+        for (c in layout.counts) {
+            val full = all.counts[c.groupId]?.full ?: continue
+            val lb = c.label.bounds
+            val slot = full.intersection(lb)
+            if (slot.width <= 0 || slot.height <= 0) continue
+            val edge = when (tabs.tabsPosition) {
+                JBTabsPosition.top -> Rectangle(lb.x, lb.y + lb.height - t, lb.width, t)
+                JBTabsPosition.bottom -> Rectangle(lb.x, lb.y, lb.width, t)
+                JBTabsPosition.left -> Rectangle(lb.x + lb.width - t, lb.y, t, lb.height)
+                JBTabsPosition.right -> Rectangle(lb.x, lb.y, t, lb.height)
+            }
+            val band = slot.intersection(edge).let { if (it.width <= 0 || it.height <= 0) Rectangle() else it }
+            result += PillCut(slot, band, c.label === selected)
         }
         // the slot of a dragged tab or group shows no selection either (its label is still the selected one underneath)
         val t2 = t
@@ -241,14 +272,17 @@ internal class StripGeometry(
      * Reads the labels' bounds as they are now, without validating (also usable while a layout pass is running).
      */
     fun units(): List<StripUnit> {
-        val areas = pillAreas()
+        val all = areas()
+        val areas = all.pills
         val horizontal = tabs.isHorizontalTabs
         val limitOf = limitFunction(horizontal)
         val groups = groups()
         fun pill(a: PillAssignment): StripUnit.Pill {
             val collapsed = groups.firstOrNull { it.id == a.header.groupId }?.collapsed ?: false
-            return StripUnit.Pill(a.header.groupId, Rectangle(areas[a.header]?.row ?: Rectangle()), collapsed, a.header, collapsed && isEmptyGroup(a.header.groupId))
+            val peek = groups.firstOrNull { it.id == a.header.groupId }?.peek?.takeIf { collapsed }
+            return StripUnit.Pill(a.header.groupId, Rectangle(areas[a.header]?.row ?: Rectangle()), collapsed, a.header, collapsed && isEmptyGroup(a.header.groupId), peek)
         }
+        fun count(c: CountAssignment): StripUnit.Count = StripUnit.Count(c.groupId, Rectangle(all.counts[c.groupId]?.visible ?: Rectangle()))
         val hosted = IdentityHashMap<TabLabel, MutableList<PillAssignment>>()
         for (a in layout.assignments) a.label?.let { hosted.getOrPut(it) { ArrayList() } += a }
         val units = ArrayList<StripUnit>()
@@ -269,6 +303,8 @@ internal class StripGeometry(
                 if (cut.width > 0 && cut.height > 0) own = cut
             }
             units += StripUnit.Tab(file, own, preview.effectiveGroupId(file, groups), info.isPinned)
+            // the count stands right behind its peek (Top / Bottom: in its label; Left / Right: in a row of its own below it), in front of the pills hosted behind it
+            layout.countHostedBy(label)?.let { units += count(it) }
             for (a in mine) if (!a.leading) units += pill(a)
         }
         for (a in layout.assignments) if (a.label == null) units += pill(a)

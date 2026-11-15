@@ -123,7 +123,7 @@ internal fun TabBarDnd.moveNow(
     target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))
     val mergedOpen = order.filter { it in merged }
     target.model.acceptGroup(
-        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed), expanding,
+        (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed, peek = null), expanding, // COLL-8: arrives collapsed, no peek
     )
     // the arriving empty pill is known to the target's strip only now: it stands at the drop place (a merge keeps the existing instance's)
     if (empty && existingUnit == null) target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))

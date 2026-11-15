@@ -70,8 +70,8 @@ internal class VerticalRows(
         val trail = ArrayList<Int>()
         for (label in labels) {
             val (l, t) = layout.itemsOf(label)
-            lead += l.sumOf { if (it.header != null) label.height else it.length }
-            trail += t.sumOf { if (it.header != null) label.height else it.length }
+            lead += l.sumOf { if (it.header != null || it.count != null) label.height else it.length }
+            trail += t.sumOf { if (it.header != null || it.count != null) label.height else it.length }
         }
         // COLL-7: a label of a group that collapses / expands is drawn at its animated height; the labels behind it move up by the rest.
         val drawn = IntArray(labels.size) { i ->

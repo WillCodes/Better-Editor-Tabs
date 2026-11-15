@@ -31,8 +31,15 @@ internal sealed class ForeignAnchor {
  */
 internal class ForeignGap(val anchor: ForeignAnchor, val length: Int, val pinned: Boolean = false)
 
-/** One element reserved next to a label (or in the empty strip): a pill (`header` set) or the foreign gap's space. */
-internal class SpaceItem(val header: GroupHeader?, val length: Int)
+/** One element reserved next to a label (or in the empty strip): a pill (`header` set), a count pill ([count] = its group's id, COLL-8) or the foreign gap's space. */
+internal class SpaceItem(val header: GroupHeader?, val length: Int, val count: String? = null)
+
+/**
+ * COLL-8: the "+N" count of the partly shown group [groupId], right behind its peek, whose [label] hosts it. [length] is the space it
+ * needs along the strip. In a Top / Bottom strip the space is reserved in the trailing side of [label]. In a Left / Right strip it is a row of its
+ * own right below the peek's label, like a pill's row ([VerticalRows], [StripGeometry]); nothing is reserved in the label.
+ */
+internal class CountAssignment(val groupId: String, val label: TabLabel, val length: Int)
 
 /** The foreign gap resolved against the current hosting: [label] null = in the empty strip. [before] null = at the front, unless [atEnd]. */
 internal class Spacer(
@@ -62,6 +69,8 @@ internal class PillLayout(
     private val preview: DragPreview,
     private val collapse: CollapseController,
     private val platformDraggedFile: () -> VirtualFile?,
+    /** The length of the count pill of a group ([CountPills.lengthOf], 0 = none), for the groups that show a peek (COLL-8). */
+    private val countLengthOf: (String) -> Int = { 0 },
     /** The tab that is out of the strip because its drag is over another split ([TabTransit]), or null. */
     private val inTransit: () -> TabTransit.State? = { null },
 ) {
@@ -73,6 +82,10 @@ internal class PillLayout(
 
     /** The space for a group dragged in from another split (see [ForeignGap]); set by [StripDragSurface.setForeignGap]. */
     var foreign: ForeignGap? = null
+
+    /** Where each count pill is hosted (COLL-8), as of the last [update]. */
+    var counts: List<CountAssignment> = emptyList()
+        private set
 
     /** [foreign] resolved against the hosting of the last [update]. */
     var spacer: Spacer? = null
@@ -115,13 +128,15 @@ internal class PillLayout(
         if (!tabs.isHideTabs) {
             for (g in groups) {
                 val header = headerOf(g.id) ?: continue
-                val members = preview.effectiveMembers(g)
+                // COLL-8: the peek that is being dragged is out of its group for the drag (it may leave it), the pill is parked behind it
+                val peekParked = g.collapsed && g.peek != null && g.peek == preview.draggedFile
+                val members = if (peekParked) emptySet() else preview.effectiveMembers(g)
                 val hasVisibleMember = files.any { it != null && it in members }
                 // every visible member is being dragged away by the plugin's drag: the group is parked, its pill stays behind
                 // (also a group whose only tab is out of the strip because its drag is over another split: DRAG-8, the pill stays)
                 val transitParked = transit != null && !g.collapsed && !hasVisibleMember && transit.file in g.members
-                val parked = transitParked || (!g.collapsed && !hasVisibleMember && files.any { it != null && it in g.members })
-                val before: Set<VirtualFile> = if (g.collapsed && !hasVisibleMember) {
+                val parked = transitParked || peekParked || (!g.collapsed && !hasVisibleMember && files.any { it != null && it in g.members })
+                val before: Set<VirtualFile> = if (g.collapsed && !hasVisibleMember && !peekParked) {
                     val snapshot = if (dragging) collapsedBefore[g.id] else null
                     snapshot ?: PillHosting.tabsBefore(files, collapse.anchorOf(g.id)).also { if (!dragging) collapsedBefore[g.id] = it }
                 }
@@ -146,6 +161,18 @@ internal class PillLayout(
         }
         if (!dragging) collapsedBefore.keys.retainAll(groups.filter { it.collapsed }.map { it.id }.toSet())
         assignments = orderSharedPills(list, ownHost, groups)
+        // COLL-8: a partly shown group's count stands right behind its peek, whose label hosts the header's pill
+        val countList = ArrayList<CountAssignment>()
+        for (a in list) {
+            if (a.header !in ownHost || !a.leading) continue
+            val g = groups.firstOrNull { it.id == a.header.groupId } ?: continue
+            val peek = g.peek ?: continue
+            val label = a.label ?: continue
+            if (label.info.`object` != peek) continue
+            val length = countLengthOf(g.id)
+            if (length > 0) countList += CountAssignment(g.id, label, length)
+        }
+        counts = countList
         lastOrder = files.filterNotNull()
         spacer = resolveSpacer(infos, list)
 
@@ -229,9 +256,14 @@ internal class PillLayout(
     fun itemsOf(label: TabLabel): Pair<List<SpaceItem>, List<SpaceItem>> {
         val lead = assignments.filter { it.label === label && it.leading }.mapTo(ArrayList()) { SpaceItem(it.header, it.length) }
         val trail = assignments.filter { it.label === label && !it.leading }.mapTo(ArrayList()) { SpaceItem(it.header, it.length) }
+        // COLL-8: the count stands right behind its peek (Top / Bottom: in its label; Left / Right: in a row of its own), in front of any pill that is hosted behind the peek too
+        trail.addAll(0, counts.filter { it.label === label }.map { SpaceItem(null, it.length, it.groupId) })
         spacer?.takeIf { it.label === label }?.let { sp -> insertSpacer(if (sp.leading) lead else trail, sp) }
         return lead to trail
     }
+
+    /** The group whose count is hosted by [label] (the peek's label), or null (COLL-8). */
+    fun countHostedBy(label: TabLabel): CountAssignment? = counts.firstOrNull { it.label === label }
 
     /** True if some pill has no host label (every tab collapsed, or only pinned tabs left beside a separate pinned row). */
     fun hasLoosePills(): Boolean = assignments.any { it.label == null }

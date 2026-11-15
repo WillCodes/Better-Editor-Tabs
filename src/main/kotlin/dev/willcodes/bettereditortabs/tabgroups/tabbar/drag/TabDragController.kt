@@ -2,6 +2,7 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 
 import com.intellij.ide.ui.UISettings
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.ui.tabs.JBTabsEx
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.InplaceButton
 import com.intellij.ui.MouseDragHelper
@@ -47,7 +48,9 @@ private val LOG = logger<TabDragController>()
  * - Pointer off every strip (more than the platform's drop tolerance beyond a strip's rows, or past its ends): the strips are
  *   restored and the gesture is handed over to the platform's drag-out ([DragHandOff]); from then on it is exactly the platform drag
  *   (split edges, a new window, tool windows). If the pointer comes back onto any strip the platform's session is cancelled and the
- *   drag continues here (a new drag), so a release over a strip always commits there.
+ *   drag continues here (a new drag), so a release over a strip always commits there. The same for the editor area of a split that shows
+ *   no tab but the dragged one ([CrossSplitTabDrag], [dev.willcodes.bettereditortabs.tabgroups.model.strip.TabEditorDrop]): the
+ *   platform's session offers no split edge there, so the drag stays ours and the edge makes the new split.
  * - With the platform's alphabetical sorting on and no group in the strip, the press is ignored and the platform's own drag runs (it
  *   re-sorts the strip itself and turns sorting off after a manual drag); so does a drag the platform starts itself (a file from the
  *   Project view). A strip with groups is sorted by the plugin ([dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripSort],
@@ -128,7 +131,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
                 return true
             }
             Phase.HANDED_OVER -> {
-                if (drag?.targets?.stripAt(Point(RelativePoint(e).screenPoint)) != null) handBack(e) else handOff?.process(e)
+                if (takesBack(Point(RelativePoint(e).screenPoint))) handBack(e) else handOff?.process(e)
                 return true
             }
             Phase.CANCELLED -> return true
@@ -176,7 +179,7 @@ internal class TabDragController(private val dnd: TabBarDnd) {
             }
             Phase.HANDED_OVER -> {
                 // a release over the strip always commits in the strip, whatever the last drag event said
-                if (drag?.targets?.stripAt(Point(RelativePoint(e).screenPoint)) != null) {
+                if (takesBack(Point(RelativePoint(e).screenPoint))) {
                     handBack(e)
                     if (phase == Phase.DRAGGING) drop(e) else finishHandOver(e)
                     return true
@@ -192,15 +195,42 @@ internal class TabDragController(private val dnd: TabBarDnd) {
         }
     }
 
+    /**
+     * The pointer at [screen] is back on a strip, or over the editor area of a split whose strip shows no tab but the dragged one (a "bare"
+     * split: the platform's drop session would see no visible tab there and offer no split edge, Stage 11.5 fix round 5): the drag is ours.
+     */
+    private fun takesBack(screen: Point): Boolean {
+        val d = drag ?: return false
+        return d.targets.stripAt(screen) != null || d.overBareEditor(screen)
+    }
+
     private fun finishHandOver(e: MouseEvent) {
         val h = handOff
         finish()
         try {
-            h?.finish(e)
+            if (dropsOnItsOwnEmptySplit()) {
+                // the split's only tab released on its own editor: the platform would close the tab first, which closes the split, and
+                // then open the file in the split that is current by then, another one (user report, Stage 11.5 fix round 4); the tab
+                // stays where it is instead, as if it had not moved
+                LOG.info("tab drag: the only tab of its split dropped on its own editor: nothing moves")
+                h?.cancel()
+            }
+            else h?.finish(e)
         }
         finally {
             DragHandOff.resetPlatformHelper(tabs, e)
         }
+    }
+
+    /**
+     * The release is over this strip's own editor area (the platform's drop target is this tab bar: `JBTabsEx.dropSide` is set while
+     * `DockableEditorTabbedContainer` is over it, -1 otherwise, `JBTabsImpl.resetDropOver`) and the split has no tab but the dragged one
+     * (`EditorWindow.tabCount` counts hidden tabs: a collapsed group's or a temporary split's placeholder keep the split alive, and then the
+     * platform's own drop is fine).
+     */
+    private fun dropsOnItsOwnEmptySplit(): Boolean {
+        val side = (tabs as? JBTabsEx)?.dropSide ?: return false
+        return side != -1 && dnd.adapter.window.tabCount <= 1
     }
 
     private fun drop(e: MouseEvent) {

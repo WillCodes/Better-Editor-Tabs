@@ -67,7 +67,8 @@ internal class DragPreview(tabs: JBEditorTabs) {
         draggedFile = file
         before.clear()
         for (g in groups) {
-            if (g.collapsed) continue
+            // COLL-8: a partly shown group whose peek is the dragged tab parks its pill like a group whose only tab is dragged
+            if (g.collapsed && g.peek != file) continue
             val first = visible.indexOfFirst { it in g.members }
             if (first >= 0) before[g.id] = visible.subList(0, first).toHashSet()
         }
@@ -124,6 +125,7 @@ internal class DragPreview(tabs: JBEditorTabs) {
             when (u) {
                 is StripUnit.Tab -> if (u.file in gapFiles) u.rect else null
                 is StripUnit.Pill -> if (u.groupId in gapPills) u.rect else null
+                is StripUnit.Count -> if (u.groupId in gapPills) u.rect else null
             }
         }
         gap.setRuns(GapRuns.merge(rects, horizontal) + extraRuns)
