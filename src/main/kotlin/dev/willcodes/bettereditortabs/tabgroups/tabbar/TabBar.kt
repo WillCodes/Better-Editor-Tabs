@@ -141,7 +141,7 @@ import javax.swing.SwingUtilities
  * `EditorWindow.split` answers null for a window without a tab, so a placeholder tab is that file). An empty pill never stands inside another group's span (bug 1):
  * when a group grows at its end, a pill that stood behind its old last tab stands behind the new one ([placeEmptyGroup] too).
  * Held at its own trailing slot, the only tab of a group leaves it like any member (bug 9, DRAG-3 `OwnGroupStay`), and the slot right
- * behind an empty pill in front of another group is a slot of its own (bug 10, `DropSlots.emptyTrailingSlot`). COLL-6's overflow list
+ * behind an empty pill in front of another group is a slot of its own (a pill is crossed as soon as the pointer enters it, like a tab: `DropSlots.select`). COLL-6's overflow list
  * has no row for it. IDE-2: with "Sort tabs alphabetically" the pill stands among the groups by name. A split with no tab at all shows
  * the pill in its otherwise empty strip when the platform shows that strip. Limit: when a collapsed group's pill stood right behind
  * the last tab of a group that then empties through several closes, the two pills can swap places.

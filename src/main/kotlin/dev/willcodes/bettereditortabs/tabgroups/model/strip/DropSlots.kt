@@ -44,8 +44,6 @@ object DropSlots {
      * @param lo,hi the slots that may be chosen (pinned tabs stay in the pinned zone, others out of it)
      * @param shift the room (along the strip) the dragged element takes in the live layout when [gap] is only the part of it that the
      *   pointer stands for (group drag); null = the gap's own length
-     * @param trailingZone how far (along the strip) behind an empty group's pill the pointer still means "right behind the pill"
-     *   ([emptyTrailingSlot]); the hold-to-join zone, scaled by the caller
      */
     fun <T> select(
         cells: List<StripCell<T>>,
@@ -56,7 +54,6 @@ object DropSlots {
         lo: Int = 0,
         hi: Int = cells.size,
         shift: Int? = null,
-        trailingZone: Int = HOLD_ZONE_PX,
     ): Int {
         val n = cells.size
         val low = lo.coerceIn(0, n)
@@ -86,15 +83,12 @@ object DropSlots {
         val pLine = if (rows) pointerRow(bands, pointer.y) else 0
         val gapLine = liveGap?.let { lineOf(it) } ?: pLine
 
-        // Fix round 2, bug 10: the slot right behind an empty group's pill is where a held tab joins it (DRAG-3), and a pill is much
-        // narrower than the placeholder, so the rules below skip that slot when it lies between two pills. A pointer on the pill's
-        // trailing half (as drawn) or just behind it means that slot, wherever the placeholder is.
-        if (!rows) emptyTrailingSlot(cells, liveGap, cur, at, horizontal, room, trailingZone)?.let { return it.coerceIn(low, high) }
-        // Round 6 (user report): an empty pill is crossed only where its drawn midpoint is crossed, in both directions. The general rules
-        // below cross a cell as soon as the pointer is within the placeholder's length of it, which passes a narrow pill long before the
-        // pointer reaches it (from the left the slot in front of the pill lasted a few pixels; it was hard to tell where the pill was).
-        fun emptyPill(i: Int): Rectangle? = (cells[i] as? PillCell)?.takeIf { it.empty && !rows }?.rect
-        fun mid(r: Rectangle) = (start(r) + end(r)) / 2
+        // Round 9 (user decision): a pill (a group's header: empty, collapsed or expanded) is crossed like a tab is felt to be crossed:
+        // as soon as the pointer enters it, or, for a pill wider than the placeholder, as soon as the pointer would land inside the
+        // placeholder after the swap. The general rules below cross a cell once the pointer is within the placeholder's length of it,
+        // which passes a narrow pill long before the pointer reaches it. One pill per step: the cells behind it are judged again in the
+        // layout that follows, where the pointer is inside the placeholder (so nothing flips back). Single line only.
+        fun pillAt(i: Int): Rectangle? = (cells[i] as? PillCell)?.takeIf { !rows && !it.rect.isEmpty }?.rect
 
         if (liveGap != null && at >= start(liveGap) && at < end(liveGap) && (!rows || gapLine == pLine)) {
             if (cur == logical) return cur
@@ -145,21 +139,20 @@ object DropSlots {
             }
             // the last visible cell, with hidden tabs behind it, is cut by the end of the strip: the gap would land out of view
             if (cutAtTheEnd(cells, s)) break
-            val pill = emptyPill(s)
-            if (if (pill != null) at < mid(pill) else !passedForward(u)) break
+            val pill = pillAt(s)
+            val crossed = if (pill != null) at >= maxOf(start(pill), end(pill) - (if (liveGap != null) room else 0)) else passedForward(u)
+            if (!crossed) break
             s++
-            // round 7: crossing an empty pill ends this step; the cells behind it are judged again in the layout that follows (a
-            // placeholder wider than the next tab would otherwise cross that tab in the same step)
             if (pill != null) break
         }
         if (s != cur) return s
         while (s > low) {
             val u = cells[s - 1].rect
             if (u.isEmpty || cutAtTheStart(cells, s - 1)) break
-            val pill = emptyPill(s - 1)
-            if (if (pill != null) at >= mid(pill) else !passedBackward(u)) break
+            val pill = pillAt(s - 1)
+            val crossed = if (pill != null) at < minOf(end(pill), start(pill) + probe) else passedBackward(u)
+            if (!crossed) break
             s--
-            // round 7 (user report: a wide tab coming back left over an empty pill went on past the tab in front of it): see above
             if (pill != null) break
         }
         return if (s == cur) logical else s
@@ -173,35 +166,6 @@ object DropSlots {
         val pill = cells.getOrNull(logical - 1) as? PillCell ?: return logical
         if (liveGap == null || pill.rect.isEmpty || DropSlots.isMultiRow(cells, liveGap, horizontal)) return logical
         return if (mainStart(liveGap, horizontal) < mainStart(pill.rect, horizontal)) logical - 1 else logical
-    }
-
-    /**
-     * The slot right behind an empty group's pill ([PillCell.empty], RULE-6) when the pointer [at] (along the strip) is on the pill's
-     * trailing half or within [zone] behind it, else null. The pill is judged where it is drawn (live rectangle). With several pills the
-     * last one whose area holds the pointer wins. Single line only (the caller skips wrapped strips). [liveGap], [cur] and [room] are
-     * not used any more (kept for the callers).
-     */
-    internal fun <T> emptyTrailingSlot(
-        cells: List<StripCell<T>>,
-        liveGap: Rectangle?,
-        cur: Int,
-        at: Int,
-        horizontal: Boolean,
-        room: Int,
-        zone: Int,
-    ): Int? {
-        var found: Int? = null
-        // Round 6 (user report): judged where the pill is drawn. Judging it where it would stand without the placeholder made its
-        // trailing half lie inside the placeholder in front of it, so "in front of the pill" lasted a few pixels of pointer travel, and
-        // was off by the tab gap besides (round 5). A pill behind the placeholder is pushed by it, and so is its zone.
-        for (c in cells) {
-            if (c !is PillCell || !c.empty || c.rect.isEmpty) continue
-            val i = cells.indexOf(c)
-            val start = mainStart(c.rect, horizontal)
-            val end = mainEnd(c.rect, horizontal)
-            if (at >= (start + end) / 2 && at < end + zone) found = i + 1
-        }
-        return found
     }
 
     /**

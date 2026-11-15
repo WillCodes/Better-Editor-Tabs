@@ -53,7 +53,7 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
         val leading = if (keepPinned) cells.takeWhile { it is TabCell && it.pinned }.size else 0
         val lo = if (keepPinned && !pinned) leading else 0
         val hi = if (keepPinned && pinned) leading else cells.size
-        val raw = DropSlots.select(cells, gap, slot, p, dnd.horizontal, lo, hi, null, JBUI.scale(DropSlots.HOLD_ZONE_PX))
+        val raw = DropSlots.select(cells, gap, slot, p, dnd.horizontal, lo, hi, null)
         fun landing(joining: String?) = DropRules.landing(cells, raw, pinned, keepPinned, stay.joining(joining))
         val first = landing(hold.joiningGroup)
         // hold-to-join only starts with the pointer near the group's last tab (Chrome: the tab has to be on the group's edge); a member
@@ -79,8 +79,8 @@ internal class TabDropPlanner(private val dnd: TabBarDnd, private val hold: Drag
 
         /**
          * [cellsOf] where the pills of [parked] groups (DRAG-8: their only tab is the dragged one) count as empty pills: without the
-         * dragged tab they have no tab, and the slot right behind such a narrow pill must be reachable like the one behind any empty
-         * pill (round 2, `DropSlots.emptyTrailingSlot`), so the tab can come back into its own group (user report, round 5).
+         * dragged tab they have no tab, so the slot right behind such a pill is that group's trailing slot, where the held tab joins it
+         * again (DRAG-3; user report, round 5: the tab could not come back into its own group).
          */
         fun cellsOf(strip: List<StripUnit>, dragged: VirtualFile, parked: Set<String>): List<StripCell<VirtualFile>> = strip.mapNotNull { u ->
             when (u) {
