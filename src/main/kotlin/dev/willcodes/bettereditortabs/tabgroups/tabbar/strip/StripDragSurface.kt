@@ -52,9 +52,13 @@ internal class StripDragSurface(
      * once (group colour of [groupId], or none); the space of the pill moves with the next layout pass (requested here).
      * Call [clearDragPreview] when the drag ends or is cancelled.
      */
-    fun setDragPreview(file: VirtualFile, groupId: String?) {
+    fun setDragPreview(file: VirtualFile, groupId: String?) = setDragPreview(file, groupId, emptyMap())
+
+    /** [setDragPreview] with the drag's decision for the parked groups (DRAG-8: group id -> the dragged tab stands in front of its pill). */
+    fun setDragPreview(file: VirtualFile, groupId: String?, parkedSides: Map<String, Boolean>) {
         if (!alive()) return
         preview.setMembership(file, groupId)
+        preview.setParkedSides(parkedSides)
         val group = groupId?.let { id -> shown().firstOrNull { it.id == id } }
         if (group != null) tint.setPreview(file, group.color) else tint.setPreviewUntinted(file)
         relayout()

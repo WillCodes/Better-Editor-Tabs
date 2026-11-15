@@ -49,6 +49,19 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
          */
         var linkedDeleteChoice by string(null)
 
+        /**
+         * MEM-5 amended "Don't ask again": the remembered answer to the "empty group, delete it?" question, `DELETE` or `KEEP`; null asks
+         * every time. (Added 2026-11-14; the settings page binds it in Stage 12.)
+         */
+        var emptyGroupChoice by string(null)
+
+        /**
+         * RULE-6 amended "Don't ask again": the remembered answer to the question about an empty group *with* an enabled rule ("keep it so
+         * that new matching files join it?"), `DELETE` or `KEEP`; null asks every time. Separate from [emptyGroupChoice]. (Added 2026-11-14;
+         * the settings page binds it in Stage 12.)
+         */
+        var emptyRuledGroupChoice by string(null)
+
         /** SET-10: animate collapsing and expanding groups (COLL-7). */
         var animateCollapse by property(true)
     }
@@ -88,6 +101,32 @@ class TabGroupsSettings : SimplePersistentStateComponent<TabGroupsSettings.State
     /** LIFE-3a "Don't ask again": remembers [answer] ([LinkedDeleteAnswer.MOVE] or [LinkedDeleteAnswer.CLOSE]). */
     fun rememberLinkedDelete(answer: LinkedDeleteAnswer) {
         if (answer == LinkedDeleteAnswer.MOVE || answer == LinkedDeleteAnswer.CLOSE) state.linkedDeleteChoice = answer.name
+    }
+
+    /** MEM-5 amended: the remembered answer of the empty-group question, or null to ask. */
+    val emptyGroupChoice: EmptyGroupAnswer?
+        get() = EmptyGroupAnswer.values().firstOrNull { it.name == state.emptyGroupChoice }
+
+    /** MEM-5 amended "Don't ask again": remembers [answer]. */
+    fun rememberEmptyGroup(answer: EmptyGroupAnswer) {
+        state.emptyGroupChoice = answer.name
+    }
+
+    /** RULE-6 amended: the remembered answer of the empty-group question for a group with an enabled rule, or null to ask. */
+    val emptyRuledGroupChoice: EmptyGroupAnswer?
+        get() = EmptyGroupAnswer.values().firstOrNull { it.name == state.emptyRuledGroupChoice }
+
+    /** RULE-6 amended "Don't ask again": remembers [answer] for groups with an enabled rule. */
+    fun rememberEmptyRuledGroup(answer: EmptyGroupAnswer) {
+        state.emptyRuledGroupChoice = answer.name
+    }
+
+    /** MEM-5 / RULE-6 amended: the remembered answer for a group [ruled] or not, or null to ask. */
+    fun emptyChoice(ruled: Boolean): EmptyGroupAnswer? = if (ruled) emptyRuledGroupChoice else emptyGroupChoice
+
+    /** MEM-5 / RULE-6 amended "Don't ask again": remembers [answer] for groups [ruled] or not. */
+    fun rememberEmpty(ruled: Boolean, answer: EmptyGroupAnswer) {
+        if (ruled) rememberEmptyRuledGroup(answer) else rememberEmptyGroup(answer)
     }
 
     companion object {

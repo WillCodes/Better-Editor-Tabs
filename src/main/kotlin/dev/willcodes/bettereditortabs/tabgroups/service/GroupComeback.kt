@@ -6,6 +6,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import dev.willcodes.bettereditortabs.BetterEditorTabsBundle
+import dev.willcodes.bettereditortabs.tabgroups.model.groups.AutoGroupRule
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupColor
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupRestore
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.GroupStash
@@ -40,6 +41,13 @@ internal fun groupDisplayName(name: String, color: GroupColor): String =
  * removes the entry; once the entry has been restored or removed through the stash, the record is stale and skipped (user request
  * 2026-11-14: Reopen Closed Tab also undoes a Stash Group).
  *
+ * **Rules and empty groups (RULE-1, RULE-6).** A stash entry and a record carry the group's auto-group rule and bring it back with the
+ * group. A group with an enabled rule can be empty (its instance stays, MEM-5): Stash Group and Delete Group then still leave an entry
+ * or a record, with no files. Restoring such an entry, or reopening such a record, makes an empty instance again (a restore whose
+ * files are all missing, with an enabled rule, does the same); the tab bar decides where its pill stands. An empty group's record
+ * counts like any other: it is the most recent close of its split unless something was closed after it ([TabBar.closeTabsQuietly]
+ * with no files only takes the mark), so Reopen Closed Tab right after deleting an empty group brings the group back.
+ *
  * Membership and order when a group comes back are [GroupRestore]'s rules; opening and ordering the tabs is [TabBar.openInOrder].
  */
 internal class GroupComeback(
@@ -69,6 +77,7 @@ internal class GroupComeback(
         val index: Int,
         val mark: ClosedMark,
         val stashEntry: String? = null,
+        val rule: AutoGroupRule? = null,
     )
 
     private val closed = HashMap<SplitHandle, ArrayList<ClosedGroup>>()
@@ -86,7 +95,7 @@ internal class GroupComeback(
         val group = state.group(groupId) ?: return
         val members = instance.members.filter { it.isValid }
         val entry = StashEntry(
-            UUID.randomUUID().toString(), groupId, group.name, group.color, members.map { it.url }, System.currentTimeMillis(),
+            UUID.randomUUID().toString(), groupId, group.name, group.color, members.map { it.url }, System.currentTimeMillis(), group.rule,
         )
         stash.add(entry)
         closeAndRecord(split, groupId, entry.id)
@@ -113,7 +122,11 @@ internal class GroupComeback(
         // an identity that lives on in another split keeps its live name and colour (GroupsState.acceptInstance)
         val live = state.group(entry.groupId)
         val shownName = groupDisplayName(live?.name ?: entry.name, live?.color ?: entry.color)
-        val restored = if (files.isEmpty()) 0 else bringBack(split, entry.groupId, entry.name, entry.color, files, RestorePlace.end())
+        val restored = when {
+            files.isNotEmpty() -> bringBack(split, entry.groupId, entry.name, entry.color, files, RestorePlace.end(), entry.rule)
+            entry.rule?.enabled == true -> bringBackEmpty(split, entry.groupId, entry.name, entry.color, entry.rule)
+            else -> 0
+        }
         if (restored == null) return true // nothing could be opened (no host or window): the entry stays, nothing is lost
         stash.remove(entryId)
         saved.capture()
@@ -132,13 +145,14 @@ internal class GroupComeback(
 
     /**
      * LIFE-3, LIFE-5: Delete Group for [split]'s instance of [groupId]: removes the instance, then closes its open tabs without
-     * Reopen Closed Tab entries and records the group for Reopen Closed Tab. A group without open tabs leaves no record.
+     * Reopen Closed Tab entries and records the group for Reopen Closed Tab. A group without open tabs leaves no record, unless it is an empty group with an enabled rule (RULE-6).
      */
     fun deleteGroup(split: SplitHandle, groupId: String) = closeAndRecord(split, groupId, stashEntry = null)
 
     /**
      * Removes [split]'s instance of [groupId], closes its open tabs without Reopen Closed Tab entries and records it for Reopen Closed
-     * Tab (LIFE-5; [stashEntry]: the entry a Stash Group just made). A group without open tabs leaves no record.
+     * Tab (LIFE-5; [stashEntry]: the entry a Stash Group just made). A group without open tabs leaves no record, unless it has an
+     * enabled rule (RULE-6: an empty group that is still there): then the record has no files.
      */
     private fun closeAndRecord(split: SplitHandle, groupId: String, stashEntry: String?) {
         val instance = state.instance(split, groupId) ?: return
@@ -149,9 +163,10 @@ internal class GroupComeback(
         // the instance goes first and the split is refreshed: no tab is hidden while it closes, and MEM-1 is not reported for it
         state.removeInstance(split, groupId)
         refresh(split)
-        if (tabs.isEmpty() || group == null) return
+        if (group == null || (tabs.isEmpty() && group.rule?.enabled != true)) return
+        // an empty group with an enabled rule is recorded too, with no files (the mark is then just the history's top now)
         val mark = tabBar.closeTabsQuietly(split, tabs)
-        val record = ClosedGroup(groupId, group.name, group.color, tabs, first?.let { order.getOrNull(it - 1) }, first ?: order.size, mark, stashEntry)
+        val record = ClosedGroup(groupId, group.name, group.color, tabs, first?.let { order.getOrNull(it - 1) }, first ?: order.size, mark, stashEntry, group.rule)
         val stack = closed.getOrPut(split) { ArrayList() }
         stack += record
         if (stack.size > MAX_RECORDS) stack.removeAt(0)
@@ -183,7 +198,11 @@ internal class GroupComeback(
         val place = if (record.anchor != null) RestorePlace.after(record.anchor, record.index) else RestorePlace.index(record.index)
         val live = state.group(record.groupId)
         val shownName = groupDisplayName(live?.name ?: record.name, live?.color ?: record.color)
-        val brought = if (files.isEmpty()) 0 else bringBack(split, record.groupId, record.name, record.color, files, place)
+        val brought = when {
+            files.isNotEmpty() -> bringBack(split, record.groupId, record.name, record.color, files, place, record.rule)
+            record.rule?.enabled == true -> bringBackEmpty(split, record.groupId, record.name, record.color, record.rule)
+            else -> 0
+        }
         val restored = brought ?: 0
         // the stash entry goes with it, unless nothing could be opened at all (then it stays in the stash, nothing is lost)
         if (record.stashEntry != null && brought != null && stash.remove(record.stashEntry)) {
@@ -203,7 +222,15 @@ internal class GroupComeback(
      * re-linked if its identity still exists (it then keeps its name and colour), else re-created with [name] and [color]; the
      * instance is expanded; the first tab that came back is selected and focused. Returns the number of tabs that joined the group, or null if the files could not be opened at all.
      */
-    private fun bringBack(split: SplitHandle?, groupId: String, name: String, color: GroupColor, files: List<VirtualFile>, place: RestorePlace<VirtualFile>): Int? {
+    private fun bringBack(
+        split: SplitHandle?,
+        groupId: String,
+        name: String,
+        color: GroupColor,
+        files: List<VirtualFile>,
+        place: RestorePlace<VirtualFile>,
+        rule: AutoGroupRule?,
+    ): Int? {
         attach()
         val order = if (split != null) tabBar.logicalOrder(split) else emptyList()
         val groups = if (split != null) state.instancesIn(split).map { it.groupId to it.members.toList() } else emptyList()
@@ -220,7 +247,7 @@ internal class GroupComeback(
         val joined = plan.joining.filter { tabBar.openTabs(target, listOf(it)).isNotEmpty() }
         val existing = state.instance(target, groupId)
         if (joined.isNotEmpty()) {
-            state.acceptInstance(target, groupId, name, color, joined, collapsed = false)
+            state.acceptInstance(target, groupId, name, color, joined, collapsed = false, rule = rule)
             if (existing?.collapsed == true) state.setCollapsed(target, groupId, false)
             // INV-4: a preview tab cannot be a member (MEM-7)
             for (file in joined) if (tabBar.isPreview(target, file)) tabBar.makePermanent(target, file)
@@ -230,6 +257,20 @@ internal class GroupComeback(
         joined.firstOrNull()?.let { tabBar.selectTab(target, it, true) }
         LOG.info("group $groupId brought back: ${joined.size} of ${files.size} tabs")
         return joined.size
+    }
+
+    /**
+     * An empty group with an enabled [rule] comes back (RULE-6): an empty, expanded instance in [split], re-linked if the identity
+     * lives on. Nothing is opened or moved; the tab bar puts its pill where it puts a group it never showed. Returns 0 (no tab came
+     * back), or null if there is no split to put it in (the entry or record then stays).
+     */
+    private fun bringBackEmpty(split: SplitHandle?, groupId: String, name: String, color: GroupColor, rule: AutoGroupRule?): Int? {
+        if (split == null || split !in tabBar.splits()) return null
+        attach()
+        state.acceptInstance(split, groupId, name, color, emptyList(), collapsed = false, rule = rule)
+        refresh(split)
+        arrange(split)
+        return 0
     }
 
     private companion object {

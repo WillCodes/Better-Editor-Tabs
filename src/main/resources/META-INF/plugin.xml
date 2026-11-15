@@ -49,6 +49,8 @@
         <!-- IDE-3: grouped tabs are exempt from the editor tab limit. -->
         <editorAutoClosingHandler implementation="dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabLimitHandler"/>
         <!-- The group popup and the delete confirmation; the service only knows the interface. -->
+        <!-- POP-4: the Project view marks the files the edited auto-group rule matches. -->
+        <projectViewNodeDecorator implementation="dev.willcodes.bettereditortabs.tabgroups.ui.projectview.RulePreviewDecorator"/>
         <projectService serviceInterface="dev.willcodes.bettereditortabs.tabgroups.service.TabGroupsUi"
                         serviceImplementation="dev.willcodes.bettereditortabs.tabgroups.ui.TabGroupsUiImpl"/>
     </extensions>
@@ -91,6 +93,10 @@
         <!-- LIFE-4: reachable through Find Action; Stage 12 adds it to Window > Editor Tabs > Tab Groups. No default shortcut. -->
         <action id="BetterEditorTabs.RestoreTabGroup"
                 class="dev.willcodes.bettereditortabs.tabgroups.actions.RestoreTabGroupAction"/>
+
+        <!-- CTX-5: New Tab Group (the tab strip's context menu has its own entry). No default shortcut. -->
+        <action id="BetterEditorTabs.NewEmptyGroup"
+                class="dev.willcodes.bettereditortabs.tabgroups.actions.NewEmptyGroupAction"/>
 
         <!-- CTX-1..CTX-4: tab context menu, one block after the pin / keep-open actions. No default shortcuts. -->
         <group id="BetterEditorTabs.TabMenu">

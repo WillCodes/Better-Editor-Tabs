@@ -19,7 +19,8 @@ object DropRules {
     /**
      * Decides membership and final position for a tab dropped into [requestedSlot]:
      * - between a group's pill and its first tab, or between two of its tabs: joins at once (DRAG-1, DRAG-2);
-     * - right behind its last tab (trailing slot): outside, unless [joiningGroup] is that group (hold-to-join, DRAG-3);
+     * - right behind its last tab (trailing slot), or right behind the pill of an empty group (a [PillCell.empty] is that group's whole
+     *   body: its trailing slot): outside, unless [joiningGroup] is that group (hold-to-join, DRAG-3); the slot in front of the pill is outside;
      * - before a pill, or after a collapsed pill: outside (DRAG-6, the collapsed group is one unit);
      * - a pinned tab never joins (DRAG-4) and, if it was dropped inside a group, goes in front of the pill; with
      *   [keepPinnedFirst] pinned tabs stay in the leading pinned zone and other tabs stay out of it (INV-3).
@@ -41,16 +42,26 @@ object DropRules {
         val inside: String? = when {
             next is TabCell && next.groupId != null && prev is TabCell && prev.groupId == next.groupId -> next.groupId
             next is TabCell && next.groupId != null && prev is PillCell && prev.groupId == next.groupId && !prev.collapsed -> next.groupId
-            // a pill with no tab behind it (the dragged tab was the group's only tab): still the group's inside
-            prev is PillCell && !prev.collapsed && !(next is TabCell && next.groupId == prev.groupId) -> prev.groupId
             else -> null
         }
-        val trailing: String? = if (prev is TabCell && prev.groupId != null && inside == null) prev.groupId else null
+        // a pill with no tab behind it: the dragged tab was the group's only tab. Right behind that pill is the group's trailing slot
+        // (fix round 2, bug 9): the tab is a member there while it counts as one ([joiningGroup], see OwnGroupStay), so that dropping it
+        // back changes nothing, and holding it there takes it out (DRAG-3, DRAG-8); without that it is outside, like any trailing slot
+        val lonePill: String? = if (prev is PillCell && !prev.collapsed && !prev.empty && !(next is TabCell && next.groupId == prev.groupId)) prev.groupId else null
+        val trailing: String? = when {
+            lonePill != null && inside == null -> lonePill
+            prev is TabCell && prev.groupId != null && inside == null -> prev.groupId
+            // an empty group (its pill alone) has a trailing edge right behind its pill: held there, the tab joins (DRAG-3)
+            prev is PillCell && prev.empty && inside == null -> prev.groupId
+            else -> null
+        }
 
         if (pinned) {
-            if (inside == null) return Landing(slot, null, null)
-            val pill = cells.indexOfFirst { it is PillCell && it.groupId == inside }
-            val first = cells.indexOfFirst { it is TabCell && it.groupId == inside }
+            // a pinned tab dropped right behind the pill of the group it was the only tab of still goes in front of the pill
+            val within = inside ?: lonePill
+            if (within == null) return Landing(slot, null, null)
+            val pill = cells.indexOfFirst { it is PillCell && it.groupId == within }
+            val first = cells.indexOfFirst { it is TabCell && it.groupId == within }
             return Landing(if (pill >= 0) pill else maxOf(first, 0), null, null)
         }
         val group = inside ?: trailing?.takeIf { it == joiningGroup }
@@ -61,14 +72,24 @@ object DropRules {
      * The tab order (files) after dropping [dragged] with [landing]: the cells in order with [dragged] inserted at the slot. A
      * collapsed pill stands for its hidden tabs, which [hiddenMembers] supplies. Expanded pills contribute nothing (their tabs are cells).
      */
-    fun <T> flatOrder(cells: List<StripCell<T>>, landing: Landing, dragged: T, hiddenMembers: (String) -> List<T>): List<T> {
-        val out = ArrayList<T>()
+    fun <T> flatOrder(cells: List<StripCell<T>>, landing: Landing, dragged: T, hiddenMembers: (String) -> List<T>): List<T> =
+        sequenceOrder(cells, landing, dragged, hiddenMembers).files()
+
+    /**
+     * [flatOrder] with the pills of empty groups kept in it (RULE-6): a collapsed pill whose [hiddenMembers] are none is an
+     * [StripItem.EmptyPill] at its place, so the caller can tell where it stands relative to the dropped tab ([EmptyPillSpots.derive]).
+     */
+    fun <T> sequenceOrder(cells: List<StripCell<T>>, landing: Landing, dragged: T, hiddenMembers: (String) -> List<T>): List<StripItem<T>> {
+        val out = ArrayList<StripItem<T>>()
         for (i in 0..cells.size) {
-            if (i == landing.slot) out += dragged
+            if (i == landing.slot) out += StripItem.Tab(dragged)
             val c = cells.getOrNull(i) ?: continue
             when (c) {
-                is TabCell -> out += c.key
-                is PillCell -> if (c.collapsed) out += hiddenMembers(c.groupId).filter { it != dragged }
+                is TabCell -> out += StripItem.Tab(c.key)
+                is PillCell -> if (c.collapsed) {
+                    val members = hiddenMembers(c.groupId).filter { it != dragged }
+                    if (members.isEmpty()) out += StripItem.EmptyPill(c.groupId) else members.mapTo(out) { StripItem.Tab(it) }
+                }
             }
         }
         return out

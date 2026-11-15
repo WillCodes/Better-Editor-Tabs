@@ -30,7 +30,9 @@ data class RestorePlan(val groups: List<StoredGroup>, val splits: List<PlannedSp
  *   group survives.
  * - Membership is restored only for tabs that actually reopened (in *that* matched split); members that did not are dropped. A file
  *   belongs to the first instance that lists it (INV-1).
- * - An instance without a reopened member is dropped, whatever its group (a rule does not exempt it, RULE-5 fills restored groups
+ * - An instance stored empty (PERS-3 amended: the user kept it, ruled or not) is restored empty at its stored place, counted in the tabs
+ *   that reopened.
+ * - An instance stored with members of which none reopened is dropped, whatever its group (a rule does not exempt it, RULE-5 fills restored groups
  *   separately). A group without any remaining instance is dropped (MEM-6). The stash (Stage 10) is stored apart from the
  *   groups and is not touched by a restore.
  * - Tab order: the stored order restricted to the files that reopened, then the reopened files it did not list in their current
@@ -50,6 +52,13 @@ object RestorePlanner {
             val instances = ArrayList<StoredInstance>()
             for (inst in s.instances) {
                 if (inst.groupId !in known) continue
+                if (inst.members.isEmpty()) {
+                    // PERS-3 amended: an instance stored empty (kept by the user) comes back empty at its place, counted in the tabs
+                    // that reopened (the place is a number of tabs of the stored order); no place stored = at the end.
+                    val place = inst.place?.let { p -> s.order.take(p.coerceAtLeast(0)).count { it in openSet } } ?: open.size
+                    instances += StoredInstance(inst.groupId, emptyList(), inst.collapsed, place.coerceIn(0, open.size))
+                    continue
+                }
                 val members = inst.members.filter { it in openSet && seen.add(it) }
                 if (members.isNotEmpty()) instances += StoredInstance(inst.groupId, members, inst.collapsed)
             }
@@ -59,8 +68,39 @@ object RestorePlanner {
             val manual = s.manualOrder.filter { it in openSet }.distinct()
             splits += PlannedSplit(ci, listed + open.filter { it !in listedSet }, instances, manual)
         }
+        restoreStrays(stored, current, matches.keys, known, splits)
         val used = splits.flatMapTo(HashSet()) { p -> p.instances.map { it.groupId } }
         return RestorePlan(stored.groups.filter { it.id in used }, splits)
+    }
+
+    /**
+     * SPLIT-6: the empty instances of the stored splits that held no tab at all ([StoredSplit.isEmptyOnly]: a temporary split, or a
+     * window whose tabs had closed) and that no current split matched come back in the main area's first split that has an open tab,
+     * at the end of its strip (an instance already there is not doubled). With no such split (nothing reopened) they are dropped, as every
+     * group is when nothing reopened. Adds to [splits], the planned splits (appends to the target's entry, or creates it).
+     */
+    private fun restoreStrays(
+        stored: StoredGroups,
+        current: List<CurrentSplit>,
+        matched: Set<Int>,
+        known: Map<String, StoredGroup>,
+        splits: MutableList<PlannedSplit>,
+    ) {
+        val strays = stored.splits.filterIndexed { i, s -> i !in matched && s.isEmptyOnly }.flatMap { it.instances }
+        if (strays.isEmpty()) return
+        val ci = current.indexOfFirst { it.key.container == SplitKey.MAIN && it.files.isNotEmpty() }
+        if (ci < 0) return
+        val open = current[ci].files
+        val at = splits.indexOfFirst { it.current == ci }
+        val here = if (at >= 0) splits[at].instances.mapTo(HashSet()) { it.groupId } else HashSet()
+        val added = ArrayList<StoredInstance>()
+        for (inst in strays) {
+            if (inst.groupId !in known || !here.add(inst.groupId)) continue
+            added += StoredInstance(inst.groupId, emptyList(), inst.collapsed, open.size)
+        }
+        if (added.isEmpty()) return
+        if (at >= 0) splits[at] = splits[at].copy(instances = splits[at].instances + added)
+        else splits += PlannedSplit(ci, open, added)
     }
 
     private fun match(stored: StoredGroups, current: List<CurrentSplit>): Map<Int, Int> {
@@ -79,7 +119,8 @@ object RestorePlanner {
      */
     fun pending(stored: StoredGroups, current: List<CurrentSplit>, detachedOnly: Boolean = false): StoredGroups {
         val matched = match(stored, current).keys
-        val splits = stored.splits.filterIndexed { i, s -> i !in matched && (!detachedOnly || s.splitKey().container != SplitKey.MAIN) }
+        // a split that held no tab at all has no file to wait for: its empty instances were handled by [plan] ([restoreStrays])
+        val splits = stored.splits.filterIndexed { i, s -> i !in matched && !s.isEmptyOnly && (!detachedOnly || s.splitKey().container != SplitKey.MAIN) }
         val used = splits.flatMapTo(HashSet()) { s -> s.instances.map { it.groupId } }
         return StoredGroups(stored.groups.filter { it.id in used }, splits)
     }

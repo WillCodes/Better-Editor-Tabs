@@ -6,12 +6,14 @@ import com.intellij.util.ui.JBUI
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.DropRules
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.DropSlots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.EditorSide
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.GroupDropRules
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.GroupLanding
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.HeaderDragGeometry
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripCell
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripDragGeometry
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.TabCell
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripUnit
@@ -51,6 +53,14 @@ private val LOG = logger<GroupDrag>()
  * With Ctrl held at the release (the platform's copy modifier for a tab) every target outside this split's strip gets a copy: the
  * files open there as a linked instance of the group (SPLIT-2) and the group stays in this split as it was.
  * After a move or copy the split that received the group is the current one ([focusArrival]).
+ * **An empty group** (RULE-6: an instance with no tab, shown as its pill alone) is dragged like a collapsed group, with no tabs to take
+ * along. Within its own strip it moves like any pill; over another split's strip (a pill-sized gap opens at the boundary) or the middle of
+ * another split's editor area (appended) it moves there: the host hears [SplitGroups.commit] for this split and [SplitGroups.acceptGroup]
+ * for the other, with an empty member list, and a pill appears at the drop place. A copy (Ctrl) is a move for it. The edge of an editor
+ * area and the outside of every editor make a temporary split or window for it (SPLIT-6, round 3): a new split or window needs a file
+ * to open with (`EditorWindow.split` returns null for a window without a tab, and its file argument opens in the new split;
+ * `openFileInNewWindow` takes a file), and a hidden placeholder tab is that file ([GroupSplitMove]). Its place in the strip is not in the file order, so the live order here is a sequence of strip
+ * items ([StripItem]) and the pill is moved with [dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.TabBarAdapter.placeEmptyPills].
  * The choice is pure ([GroupDropRules]: strip > edge > centre > new window); the platform's own geometry decides the side
  * ([dropSideAt], `TabsUtil.getDropSideFor`) and the highlight ([dropAreaScreen]).
  *
@@ -116,6 +126,13 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     private var origFlat: List<VirtualFile> = emptyList()
     private var shownFlat: List<VirtualFile> = emptyList()
 
+    /** [origFlat] / [shownFlat] with the pills of empty groups in them (see the class comment): what decides whether the strip changed. */
+    private var origSeq: List<StripItem<VirtualFile>> = emptyList()
+    private var shownSeq: List<StripItem<VirtualFile>> = emptyList()
+
+    /** The dragged group is an empty instance (RULE-6): it has no tabs to take along, and no copy is made of it. */
+    private var emptyGroup = false
+
     /** The live-moving placeholder is shown in this split's strip (the pointer is over it). */
     private var gapShown = false
 
@@ -179,6 +196,9 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         minBoundary = DropRules.leadingPinned(startUnits)
         origFlat = dnd.reorder.completeOrder(startUnits.flatMap { it.keys })
         shownFlat = origFlat
+        origSeq = startUnits.flatMap { it.items() }
+        shownSeq = origSeq
+        emptyGroup = startUnits[from].isEmptyPill
         val unit = startUnits[from]
         // the pill's whole length, not the part on screen: a pill cut at the end of a scrolled strip opens a full-size gap elsewhere
         // (user report 2026-11-13); in a side strip the pill is a whole row, which is never cut along the strip
@@ -210,11 +230,13 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** The release: the group is dropped where the live strip shows it, in another split's strip, or nowhere (it goes back). */
     fun finish(copy: Boolean = false) {
         autoScroll.stop()
+        // an empty instance has nothing to copy: Ctrl or not, it moves
+        val copying = copy && !emptyGroup
         val t = target
         val unitsAtStart = startUnits
         val index = from
         val flat = shownFlat
-        val unchanged = flat == origFlat
+        val unchanged = flat == origFlat && shownSeq == origSeq
         val ownTarget = t is Target.Strip && t.dnd === dnd
         // A move to another split: both strips are frozen as they look now (drop gap open) before anything below changes them. A move
         // to a split that does not exist yet has only this strip to freeze.
@@ -245,21 +267,21 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                     dnd.adapter.reselect(selected)
                 }
                 else {
-                    dnd.moveGroupToSplit(unit, t.dnd, t.units, t.boundary, freezes, selected, expand, copy)
-                    if (copy) backInSource()
+                    dnd.moveGroupToSplit(unit, t.dnd, t.units, t.boundary, freezes, selected, expand, copying)
+                    if (copying) backInSource()
                 }
                 is Target.IntoSplit -> {
                     // INT-6: the middle of another split's area is a drop on the split, not at a slot: merged, or appended at the end
                     val units = t.dnd.buildUnits()
-                    dnd.moveGroupToSplit(unit, t.dnd, units, units.size, freezes, selected, expand, copy)
-                    if (copy) backInSource()
+                    dnd.moveGroupToSplit(unit, t.dnd, units, units.size, freezes, selected, expand, copying)
+                    if (copying) backInSource()
                 }
                 is Target.SplitEdge ->
-                    if (!dnd.moveGroupToNewSplit(unit, t.dnd, t.side, freezes, selected, expand, copy)) notMoved(freezes)
-                    else if (copy) backInSource()
+                    if (!dnd.moveGroupToNewSplit(unit, t.dnd, t.side, freezes, selected, expand, copying)) notMoved(freezes)
+                    else if (copying) backInSource()
                 Target.NewWindow ->
-                    if (!dnd.moveGroupToNewWindow(unit, release, freezes, selected, expand, copy)) notMoved(freezes)
-                    else if (copy) backInSource()
+                    if (!dnd.moveGroupToNewWindow(unit, release, freezes, selected, expand, copying)) notMoved(freezes)
+                    else if (copying) backInSource()
             }
         }
         catch (e: Exception) {
@@ -335,6 +357,7 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
                 setTransit(true)
                 if (foreign.isElsewhere(other)) foreign.close()
                 val groupSize = size
+                // SPLIT-6: an empty group makes a split or a window with a placeholder tab (a temporary split)
                 if (other == null) editorTarget(screen)
                 else if (groupSize == null) null
                 else {
@@ -400,9 +423,11 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
             val moved = ArrayList(others)
             moved.add(slot, units[at])
             val flat = dnd.reorder.completeOrder(moved.flatMap { it.keys })
-            if (flat == shownFlat) return units
-            dnd.reorder.reorder(dragGroups, flat)
+            val seq = moved.flatMap { it.items() }
+            if (flat == shownFlat && seq == shownSeq) return units
+            dnd.reorder.reorder(dragGroups, flat, EmptyPillSpots.derive(seq))
             shownFlat = flat
+            shownSeq = seq
             dnd.validateNow()
             units = dnd.buildUnits()
         }
@@ -422,9 +447,10 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
     /** The strip goes back to the order the drag began with, and the placeholder goes away. */
     private fun restoreOwn() {
         showOwnGap(false)
-        if (shownFlat != origFlat && origFlat.isNotEmpty()) {
-            dnd.reorder.reorder(dragGroups, origFlat)
+        if ((shownFlat != origFlat || shownSeq != origSeq) && origSeq.isNotEmpty()) {
+            dnd.reorder.reorder(dragGroups, origFlat, EmptyPillSpots.derive(origSeq))
             shownFlat = origFlat
+            shownSeq = origSeq
         }
     }
 
@@ -442,6 +468,9 @@ internal class GroupDrag(private val dnd: TabBarDnd, private val group: String) 
         startUnits = emptyList()
         origFlat = emptyList()
         shownFlat = emptyList()
+        origSeq = emptyList()
+        shownSeq = emptyList()
+        emptyGroup = false
     }
 
     /** The strip is going away: only timers and the picture are released. */

@@ -5,6 +5,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.SplitGroups
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.drag.TabBarDnd
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.PreviewPromotion
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabPlacement
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.GroupHeader
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripEvents
@@ -44,12 +45,17 @@ internal class SplitBar(
 
     private val placement: TabPlacement
 
+    /** RULE-2: reports preview tabs that become normal tabs ([TabBarHost.tabMadePermanent]). */
+    val promotion: PreviewPromotion
+
     init {
         Disposer.register(parent, this)
         placement = TabPlacement(
-            adapter, { groups }, { dnd.isTabDragActive }, { files -> tabBar.host?.tabsOpened(split, files) }, reportInitial, dnd,
+            adapter, { groups }, { dnd.isTabDragActive }, { files -> tabBar.host?.tabsOpened(split, files) }, reportInitial,
+            { tabBar.temporary.schedule(split.window) }, dnd,
         )
         dnd.acknowledgeOpened = placement::acknowledge
+        promotion = PreviewPromotion(split.window, { dnd.isDragActive }, { file -> tabBar.host?.tabMadePermanent(split, file) }, this)
         adapter.events = this
     }
 
@@ -90,6 +96,10 @@ internal class SplitBar(
         tabBar.host?.headerMiddleClicked(ref(header), event)
     }
 
+    override fun stripRightClicked(component: javax.swing.JComponent, point: java.awt.Point) {
+        tabBar.host?.stripRightClicked(split, component, point)
+    }
+
     override fun headerHoverChanged(header: GroupHeader, hovering: Boolean) {
         tabBar.host?.headerHoverChanged(ref(header), hovering)
     }
@@ -113,7 +123,14 @@ internal class SplitBar(
 
     // ---- SplitGroups -----------------------------------------------------------------------------------------------------
 
-    override fun groups(): List<GroupDecoration> = groups
+    /**
+     * The groups last applied, without any the host no longer lists (bug 10: a group the host has deleted must never be moved with
+     * another group or reported back to it, whatever the strip still shows of it until the host's next refresh).
+     */
+    override fun groups(): List<GroupDecoration> {
+        val live = tabBar.host?.groupsIn(split)?.mapTo(HashSet()) { it.id } ?: return groups
+        return if (groups.all { it.id in live }) groups else groups.filter { it.id in live }
+    }
 
     // Drag results land as they are, never animated (COLL-7): a drag may have expanded collapsed groups for a moment (live re-order,
     // a group arriving from another split), and the refresh that collapses them again is not a user toggle.

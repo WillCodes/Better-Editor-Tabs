@@ -105,6 +105,11 @@ internal class PillAwareTabsBorder(
     val delegate: JBTabsBorder,
     private val cuts: () -> List<PillCut>,
     private val spareRow: () -> Rectangle? = { null },
+    /**
+     * Called at the end of every border pass with the tab component's graphics: whatever must be drawn over the platform's post-children
+     * border layer (the selected tab's indicator, the Islands outline) goes here ([RuleOutline.paintAfterChildren], POP-4, fix round 2).
+     */
+    private val afterPaint: (Graphics) -> Unit = {},
 ) : JBTabsBorder(bar) {
     override val effectiveBorder: Insets get() = delegate.effectiveBorder
 
@@ -115,6 +120,7 @@ internal class PillAwareTabsBorder(
     override fun paintBorder(c: Component, g: Graphics, x: Int, y: Int, width: Int, height: Int) {
         paintCut(c, g, x, y, width, height)
         paintSpareRowLine(g, x, width)
+        afterPaint(g)
     }
 
     /**
@@ -178,10 +184,17 @@ internal class PillAwareTabsBorder(
 
     companion object {
         /** Installs the wrapper on [tabs]; returns it, or null if that is not possible. */
-        fun installOn(tabs: JBTabsImpl, cuts: () -> List<PillCut>, spareRow: () -> Rectangle? = { null }): PillAwareTabsBorder? {
+        fun installOn(
+            tabs: JBTabsImpl,
+            cuts: () -> List<PillCut>,
+            spareRow: () -> Rectangle? = { null },
+            afterPaint: (Graphics) -> Unit = {},
+        ): PillAwareTabsBorder? {
             val current = PlatformInternals.tabBorder(tabs) ?: return null
             if (current is PillAwareTabsBorder) return current
-            return PillAwareTabsBorder(tabs, current, cuts, spareRow).also { PlatformInternals.setTabBorder(tabs, it) }
+            val wrapper = PillAwareTabsBorder(tabs, current, cuts, spareRow, afterPaint)
+            // the field is replaced; if that failed (platform change) nothing is wrapped and the caller must not rely on afterPaint
+            return if (PlatformInternals.setTabBorder(tabs, wrapper)) wrapper else null
         }
 
         fun uninstallFrom(tabs: JBTabsImpl) {

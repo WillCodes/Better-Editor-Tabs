@@ -14,7 +14,15 @@ sealed class StripCell<T> {
 
 data class TabCell<T>(val key: T, val groupId: String?, val pinned: Boolean, override val rect: Rectangle) : StripCell<T>()
 
-data class PillCell<T>(val groupId: String, val collapsed: Boolean, override val rect: Rectangle) : StripCell<T>()
+/**
+ * [empty]: the pill of an empty group instance (RULE-6: no tab at all, whatever its collapsed flag says). It is one unit like any collapsed
+ * pill (a tab is never dropped into it at once), but the slot right behind it is a trailing edge: a tab held there joins the group
+ * ([DropRules.landing], DRAG-3); the slot in front of it is outside.
+ */
+data class PillCell<T>(val groupId: String, val collapsed: Boolean, override val rect: Rectangle, val empty: Boolean) : StripCell<T>() {
+    /** A pill of a group with tabs (or an expanded one): not [empty]. */
+    constructor(groupId: String, collapsed: Boolean, rect: Rectangle) : this(groupId, collapsed, rect, false)
+}
 
 /**
  * The outcome of dropping a tab into a slot.
@@ -43,4 +51,11 @@ data class MoveUnit<T>(
      * their union, which also covers other tabs of those rows. An outline of the unit draws these.
      */
     val runs: List<Rectangle> = listOf(bounds),
-)
+) {
+    /** The pill of an empty group instance (RULE-6): a collapsed group unit with no tab. It is dragged within its own strip only. */
+    val isEmptyPill: Boolean get() = groupId != null && collapsed && keys.isEmpty()
+
+    /** The unit as strip items: its tabs, or the one empty pill. */
+    fun items(): List<StripItem<T>> =
+        if (isEmptyPill) listOf(StripItem.EmptyPill(groupId!!)) else keys.map { StripItem.Tab(it) }
+}

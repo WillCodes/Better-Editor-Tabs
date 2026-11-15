@@ -3,8 +3,12 @@ package dev.willcodes.bettereditortabs.tabgroups.tabbar.drag
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.tabs.TabInfo
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.PillCell
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.Landing
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripCell
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripUnit
@@ -39,7 +43,14 @@ private val LOG = logger<TabDragSession>()
  */
 internal class TabDragSession(private val target: TabBarDnd, val dragged: DraggedTab, private val feedback: GroupDragFeedback) {
     /** What a drop leaves behind: the landing the strip shows and the state the drag began with. Passed to [commit]. */
-    class Outcome(val applied: TabDropPlanner.Applied?, val groups: List<GroupDecoration>, val unchangedOrder: List<VirtualFile>)
+    class Outcome(
+        val applied: TabDropPlanner.Applied?,
+        val groups: List<GroupDecoration>,
+        val unchangedOrder: List<VirtualFile>,
+        /** The strip as it was when the drag began and as the drop leaves it, with the pills of empty groups (DRAG-8 keeps a pill's place). */
+        val origSeq: List<StripItem<VirtualFile>> = emptyList(),
+        val finalSeq: List<StripItem<VirtualFile>> = emptyList(),
+    )
 
     private val tabs get() = target.tabs
     private val adapter get() = target.adapter
@@ -54,11 +65,15 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
 
     private var active = false
     private var origFlat: List<VirtualFile> = emptyList()
+
+    /** [origFlat] with the pills of empty groups in it (RULE-6): they have no file, so the order alone does not say where they stand. */
+    private var origSeq: List<StripItem<VirtualFile>> = emptyList()
     private var origGroups: List<GroupDecoration> = emptyList()
     private var applied: TabDropPlanner.Applied? = null
 
     /** The order the strip shows now (re-ordering is skipped when the slot change does not change it). */
     private var shownFlat: List<VirtualFile> = emptyList()
+    private var shownSeq: List<StripItem<VirtualFile>> = emptyList()
 
     /** The slot the placeholder sits in now (index into the cells without the dragged tab). */
     private var slot = 0
@@ -85,6 +100,8 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         origGroups = target.model.groups()
         origFlat = target.reorder.completeOrder(TabDropPlanner.flatten(strip, origGroups))
         shownFlat = origFlat
+        origSeq = TabDropPlanner.sequenceOf(strip, origGroups)
+        shownSeq = origSeq
         applied = null
         lastPointer = screen
         if (hasTab) {
@@ -98,7 +115,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
         else {
             gapRoom = gapLength() ?: return false
             if (!keepStay) planner.start(null)
-            val cells = TabDropPlanner.cellsOf(strip, file)
+            val cells = TabDropPlanner.cellsOf(strip, file, parkedGroups)
             slot = planner.startSlot(cells, screen)
             openGap(cells, slot)
         }
@@ -186,7 +203,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
     private fun step(screen: Point): Boolean {
         target.validateNow()
         val strip = adapter.stripUnits()
-        val cells = TabDropPlanner.cellsOf(strip, file)
+        val cells = TabDropPlanner.cellsOf(strip, file, parkedGroups)
         val gap = if (hasTab) strip.filterIsInstance<StripUnit.Tab>().firstOrNull { it.file == file }?.rect else adapter.drag.foreignGapRect()
         val result = planner.landingFor(gap, cells, dragged.pinned, slot, screen)
         val moved = result.slot != slot
@@ -199,16 +216,19 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
     }
 
     private fun apply(cells: List<StripCell<VirtualFile>>, landing: Landing, groupChanged: Boolean) {
-        val flat = target.reorder.completeOrder(TabDropPlanner.flatOrder(cells, landing, file, origGroups))
+        val seq = TabDropPlanner.sequenceOrder(cells, landing, file, origGroups)
+        val flat = target.reorder.completeOrder(seq.files())
         if (hasTab) {
-            if (flat != shownFlat) {
-                target.reorder.reorder(origGroups, flat)
+            // a pill of an empty group (RULE-6) is not in the file order: it stays behind the tab that is in front of it in the sequence
+            if (flat != shownFlat || seq != shownSeq) {
+                target.reorder.reorder(origGroups, flat, EmptyPillSpots.derive(seq))
                 shownFlat = flat
+                shownSeq = seq
             }
             // after the groups were re-applied: the preview (pill placement and tint) follows the previewed membership
-            adapter.drag.setDragPreview(file, landing.groupId)
+            adapter.drag.setDragPreview(file, landing.groupId, parkedSides(cells, landing))
         }
-        applied = TabDropPlanner.Applied(landing, flat)
+        applied = TabDropPlanner.Applied(landing, flat, (cells.getOrNull(landing.slot) as? PillCell)?.groupId)
         if (groupChanged) {
             target.validateNow()
             snapshot() // the picture carries the live tint (DRAG-7)
@@ -222,7 +242,7 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
      */
     fun finishDrop(screen: Point): Outcome {
         refresh(screen)
-        val outcome = Outcome(applied, origGroups, origFlat)
+        val outcome = Outcome(applied, origGroups, origFlat, origSeq, shownSeq)
         end()
         return outcome
     }
@@ -238,7 +258,29 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
             adapter.setGroups(groups)
             return
         }
+        // DRAG-8: a group left without a member (this was its only tab) keeps its pill where the tab was, not where the tab landed
+        val kept = TabDropPlanner.pillsKept(newGroups, groups, file, outcome.origSeq, outcome.finalSeq, a.inFrontOfPill)
         target.model.commit(newGroups)
+        if (kept.isNotEmpty()) adapter.placeEmptyPills(kept)
+    }
+
+    /** DRAG-8: the groups whose only tab is the dragged one (their pill is parked where the group was). */
+    private val parkedGroups: Set<String> get() = origGroups.filter { it.members == listOf(file) }.mapTo(HashSet()) { it.id }
+
+    /**
+     * DRAG-8: for each group whose only tab is the dragged one (its pill is parked where the group was), whether [landing] puts the tab in
+     * front of that pill: the landing slot is at or before the pill's cell. The strip hosts the parked pill accordingly, so it shows what
+     * the slot says (user report, round 3: otherwise the strip and the slot disagreed and the slot flipped on every step).
+     */
+    private fun parkedSides(cells: List<StripCell<VirtualFile>>, landing: Landing): Map<String, Boolean> {
+        val parked = parkedGroups
+        if (parked.isEmpty()) return emptyMap()
+        val sides = HashMap<String, Boolean>()
+        for (id in parked) {
+            val at = cells.indexOfFirst { it is PillCell && it.groupId == id }
+            if (at >= 0) sides[id] = landing.slot <= at
+        }
+        return sides
     }
 
     /** The target strip's placeholder and previews go away (the strip keeps the order it shows). */
@@ -249,9 +291,10 @@ internal class TabDragSession(private val target: TabBarDnd, val dragged: Dragge
     /** Back to the order and membership the drag started with, preview and gap removed. */
     fun restoreOriginal() {
         adapter.drag.clearDragPreview()
-        if (shownFlat != origFlat) {
-            target.reorder.reorder(origGroups, origFlat)
+        if (shownFlat != origFlat || shownSeq != origSeq) {
+            target.reorder.reorder(origGroups, origFlat, EmptyPillSpots.derive(origSeq))
             shownFlat = origFlat
+            shownSeq = origSeq
         }
         applied = null
     }

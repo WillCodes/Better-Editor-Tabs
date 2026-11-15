@@ -170,6 +170,7 @@ internal class TabBarDnd(
         val strip = adapter.stripUnits()
         val groups = model.groups().associateBy { it.id }
         val memberTabs = strip.filterIsInstance<StripUnit.Tab>().filter { it.groupId != null }.groupBy { it.groupId!! }
+        val open by lazy(LazyThreadSafetyMode.NONE) { StripReader.allFiles(tabs).toHashSet() }
         val units = ArrayList<MoveUnit<VirtualFile>>()
         for (u in strip) {
             when (u) {
@@ -179,8 +180,9 @@ internal class TabBarDnd(
                     val shown = memberTabs[u.groupId].orEmpty()
                     val rect = Rectangle(u.rect)
                     for (t in shown) if (!t.rect.isEmpty) rect.add(t.rect)
-                    // a collapsed group's members are hidden tabs: they come from the model
-                    val keys = if (u.collapsed) group?.members.orEmpty() else shown.map { it.file }
+                    // a collapsed group's members are hidden tabs: they come from the model (the ones that are open: an empty group's
+                    // pill, RULE-6, is a collapsed unit with no key at all)
+                    val keys = if (u.collapsed) group?.members.orEmpty().filter { it in open } else shown.map { it.file }
                     val rects = (listOf(u.rect) + shown.map { it.rect }).filter { !it.isEmpty }
                     val runs = GapRuns.merge(rects, horizontal).ifEmpty { listOf(rect) }
                     units += MoveUnit(u.groupId, keys, rect, false, runs.first(), Rectangle(u.rect), u.collapsed, runs)

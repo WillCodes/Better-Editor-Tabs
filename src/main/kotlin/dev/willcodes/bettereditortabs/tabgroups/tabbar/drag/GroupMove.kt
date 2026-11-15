@@ -5,7 +5,10 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.impl.EditorWindow
 import com.intellij.openapi.vfs.VirtualFile
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.MoveUnit
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.StripItem
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.strip.StripReader
 
 private val LOG = logger<TabBarDnd>()
 
@@ -78,7 +81,9 @@ internal fun TabBarDnd.moveNow(
 ) {
     val groupId = unit.groupId ?: return
     val files = unit.keys
-    if (files.isEmpty()) return
+    // fix round 2, bug 7: an empty instance (RULE-6: no tab, its pill alone) moves too; it has no files, and its pill is placed at the drop
+    val empty = files.isEmpty()
+    if (empty && !unit.isEmptyPill) return
     val sourceGroups = model.groups()
     val group = sourceGroups.firstOrNull { it.id == groupId } ?: return
     val selected = selectedBefore
@@ -88,13 +93,18 @@ internal fun TabBarDnd.moveNow(
     val existingUnit = targetUnits.firstOrNull { it.groupId == groupId }
     val merged: List<VirtualFile>
     val targetOrder: List<VirtualFile>
+    // the target's order with the pills of its empty groups in it (RULE-6), to keep them in place around the arrival
+    val targetSequence: List<StripItem<VirtualFile>>
     if (existingUnit != null) {
         merged = existingUnit.keys + files.filter { it !in existingUnit.keys }
         targetOrder = targetUnits.flatMap { if (it === existingUnit) merged else it.keys }
+        targetSequence = targetUnits.flatMap { if (it === existingUnit) merged.map { f -> StripItem.Tab(f) } else it.items() }
     }
     else {
         merged = files
         targetOrder = targetUnits.take(boundary).flatMap { it.keys } + files + targetUnits.drop(boundary).flatMap { it.keys }
+        val arriving: List<StripItem<VirtualFile>> = if (empty) listOf(StripItem.EmptyPill(groupId)) else files.map { StripItem.Tab(it) }
+        targetSequence = targetUnits.take(boundary).flatMap { it.items() } + arriving + targetUnits.drop(boundary).flatMap { it.items() }
     }
     val targetGroups = target.model.groups()
 
@@ -107,15 +117,18 @@ internal fun TabBarDnd.moveNow(
         transferFile(file, target, close = !copy, keepHistory = false, disposeSource = i == files.lastIndex)
     }
 
-    val open = target.tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
+    val open = StripReader.allFiles(target.tabs)
     val order = (targetOrder.filter { it in open }.distinct() + open.filter { it !in targetOrder })
     target.adapter.applyOrder(order)
+    target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))
     val mergedOpen = order.filter { it in merged }
     target.model.acceptGroup(
         (targetGroups.firstOrNull { it.id == groupId } ?: group).copy(members = mergedOpen, collapsed = group.collapsed), expanding,
     )
+    // the arriving empty pill is known to the target's strip only now: it stands at the drop place (a merge keeps the existing instance's)
+    if (empty && existingUnit == null) target.adapter.placeEmptyPills(EmptyPillSpots.derive(targetSequence))
     if (focus) focusArrival(targetWindow, if (selected != null && selected in files && !group.collapsed) selected else null)
-    LOG.info("group $groupId ${if (copy) "copied" else "moved"}: ${files.size} files to another split, merged=${existingUnit != null}")
+    LOG.info("group $groupId ${if (copy) "copied" else "moved"}: ${files.size} files${if (empty) " (an empty instance)" else ""} to another split, merged=${existingUnit != null}")
 }
 
 /**

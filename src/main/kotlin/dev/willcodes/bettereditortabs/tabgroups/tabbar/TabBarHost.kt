@@ -50,6 +50,12 @@ interface TabBarHost {
     fun headerMiddleClicked(header: HeaderRef, event: MouseEvent) {}
 
     /**
+     * CTX-5 (user request 2026-11-14): a right click on the tab strip of [split] where there is no tab and no header (the free part of
+     * the strip, also a strip that shows only pills). [component] and [point] (in its coordinates) are where a context menu opens.
+     */
+    fun stripRightClicked(split: SplitHandle, component: JComponent, point: java.awt.Point) {}
+
+    /**
      * INT-5: the pointer entered ([hovering] true) or left (false) the header. A press on the header (click or the start of a drag)
      * also reports false. Called for expanded and collapsed groups alike; the host decides what to show (the tab list of a collapsed
      * group, after a delay).
@@ -121,11 +127,31 @@ interface TabBarHost {
      */
     fun tabsOpened(split: SplitHandle, files: List<VirtualFile>) {}
 
+    /**
+     * RULE-2: the preview tab of [file] in [split] has just become a normal tab (a double click on it, an edit in it, opening the file
+     * again for good, ...). Not reported for [TabBar.makePermanent] (the host's own call), for tabs that were never preview tabs, or
+     * while a drag runs. The host may make the file a member of a group; it then calls [TabBar.refresh] itself. EDT.
+     */
+    fun tabMadePermanent(split: SplitHandle, file: VirtualFile) {}
+
     /** A split appeared (also called once for every existing split when the host is attached). */
     fun splitAppeared(split: SplitHandle) {}
 
     /** A split was closed; its state can be dropped. */
     fun splitDisposed(split: SplitHandle) {}
+
+    /**
+     * SPLIT-6: the user is closing, or has closed, the temporary split [split], a split that holds nothing but empty groups ([groups],
+     * the groups last applied there, all of them without a tab) and is kept open by a hidden placeholder tab. Asked once per split
+     * (Unsplit, Close All in it, closing the detached window, anything that closes the placeholder or disposes the split), never for a
+     * split the tab bar ends itself (its last group is gone, a real tab arrived) and never while the project closes.
+     *
+     * The host moves each group to the split used last that has tabs ([TabBar.recentSplits]; the end of that strip) or deletes it
+     * when there is none, and says so ([TabBar.refresh] the target itself). Usually called before the split is disposed, with its
+     * strip still in place; when the platform gives no warning (an unsplit merges the split away, its window is closed) it is called
+     * after the disposal, and [split] is no longer a live split: the host must work on its own state only. EDT.
+     */
+    fun temporarySplitClosing(split: SplitHandle, groups: List<GroupDecoration>) {}
 
     // ---- LIFE-5 --------------------------------------------------------------------------------------------------------------
 

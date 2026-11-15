@@ -128,7 +128,11 @@ internal class PillLayout(
                 else if (transitParked) transit!!.tabsBefore[g.id].orEmpty()
                 else if (parked) preview.tabsBefore(g.id) ?: files.subList(0, files.indexOfFirst { it != null && it in g.members }).filterNotNull().toSet()
                 else emptySet()
-                val host = PillHosting.hostFor(hostFiles, if (parked) preview.draggedFile else dragged, { it in members }, before)
+                // DRAG-8: a parked pill follows the drag's decision on which side of it the dragged tab stands (PillHosting.hostForParked)
+                val side = if (parked && !transitParked) preview.draggedInFrontOf(g.id) else null
+                val draggedHere = preview.draggedFile
+                val host = (if (side != null && draggedHere != null) PillHosting.hostForParked(hostFiles, draggedHere, before, side) else null)
+                    ?: PillHosting.hostFor(hostFiles, if (parked) preview.draggedFile else dragged, { it in members }, before)
                     ?.takeUnless { pinnedApart && infos[it.index].isPinned }
                 val label = host?.let { tabs.getTabLabel(infos[it.index]) }
                 if (host != null && label != null && (hasVisibleMember || g.collapsed || parked)) {

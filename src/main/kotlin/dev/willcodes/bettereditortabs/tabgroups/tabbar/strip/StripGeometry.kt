@@ -34,6 +34,8 @@ internal class StripGeometry(
      * drawn shorter than its row ([VerticalRows], COLL-7), so its own height cannot be used.
      */
     private val rowHeightOf: (TabLabel) -> Int = { it.height },
+    /** RULE-6: the group is an empty instance (its pill stands alone). */
+    private val isEmptyGroup: (String) -> Boolean = { false },
 ) {
     fun stripThickness(horizontal: Boolean): Int {
         val fit = tabs.headerFitSize
@@ -245,7 +247,7 @@ internal class StripGeometry(
         val groups = groups()
         fun pill(a: PillAssignment): StripUnit.Pill {
             val collapsed = groups.firstOrNull { it.id == a.header.groupId }?.collapsed ?: false
-            return StripUnit.Pill(a.header.groupId, Rectangle(areas[a.header]?.row ?: Rectangle()), collapsed, a.header)
+            return StripUnit.Pill(a.header.groupId, Rectangle(areas[a.header]?.row ?: Rectangle()), collapsed, a.header, collapsed && isEmptyGroup(a.header.groupId))
         }
         val hosted = IdentityHashMap<TabLabel, MutableList<PillAssignment>>()
         for (a in layout.assignments) a.label?.let { hosted.getOrPut(it) { ArrayList() } += a }

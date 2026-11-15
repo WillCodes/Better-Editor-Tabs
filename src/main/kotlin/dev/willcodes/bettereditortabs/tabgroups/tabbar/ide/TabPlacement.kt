@@ -44,6 +44,8 @@ internal class TabPlacement(
     private val isDragActive: () -> Boolean,
     private val opened: (List<VirtualFile>) -> Unit,
     reportInitial: Boolean,
+    /** A tab label was added to the strip (any tab, also a placeholder): SPLIT-6 looks at the split once the event is over. */
+    private val tabsAdded: () -> Unit,
     parent: Disposable,
 ) {
     private val tabs = StripReader.tabsOf(adapter.window)
@@ -77,7 +79,7 @@ internal class TabPlacement(
         known = files()
     }
 
-    private fun files(): Set<VirtualFile> = tabs.tabs.mapNotNullTo(LinkedHashSet()) { it.`object` as? VirtualFile }
+    private fun files(): Set<VirtualFile> = StripReader.allFiles(tabs).toCollection(LinkedHashSet())
 
     private fun schedule() {
         if (scheduled) return
@@ -89,6 +91,7 @@ internal class TabPlacement(
     }
 
     private fun place() {
+        tabsAdded()
         val now = files()
         val added = now - known
         known = now
@@ -103,7 +106,7 @@ internal class TabPlacement(
         if (groups.isEmpty()) return
         val members = groups.flatMapTo(HashSet()) { it.members }
         val spans = groups.map { TabPlacementRules.Span<VirtualFile>(it.id, it.members.toSet(), it.collapsed) }
-        var order = tabs.tabs.mapNotNull { it.`object` as? VirtualFile }
+        var order = StripReader.allFiles(tabs)
         var changed = false
         for (file in added) {
             if (file in members) continue

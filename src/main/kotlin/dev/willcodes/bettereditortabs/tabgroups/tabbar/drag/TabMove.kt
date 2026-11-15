@@ -6,7 +6,9 @@ import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.CopyJoin
 import dev.willcodes.bettereditortabs.tabgroups.model.groups.instanceStripOrder
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.EmptyPillSpots
 import dev.willcodes.bettereditortabs.tabgroups.model.strip.Landing
+import dev.willcodes.bettereditortabs.tabgroups.model.strip.files
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.GroupDecoration
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.ide.TabClose
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.platform.PlatformInternals
@@ -98,7 +100,8 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
     val targetGroups = target.model.groups()
     // the order the target gets: its strip as it is now, without the file, and the file at the landing
     val cells = TabDropPlanner.cellsOf(target.adapter.stripUnits(), file)
-    val flat = TabDropPlanner.flatOrder(cells, landing, file, targetGroups)
+    val sequence = TabDropPlanner.sequenceOrder(cells, landing, file, targetGroups)
+    val flat = sequence.files()
 
     // 1. the source lets go of the file
     if (!copy && sourceGroups.any { file in it.members }) {
@@ -118,6 +121,7 @@ private fun TabBarDnd.moveTabNow(file: VirtualFile, pinned: Boolean, target: Tab
     val open = StripReader.allFiles(target.tabs)
     val order = flat.filter { it in open }.distinct() + open.filter { it !in flat }
     target.adapter.applyOrder(order)
+    target.adapter.placeEmptyPills(EmptyPillSpots.derive(sequence)) // RULE-6: the pills of empty groups keep their place around the arrival
     val copiedFrom = if (copy && !pinned) sourceGroups.firstOrNull { file in it.members } else null
     if (copiedFrom != null) target.model.commit(joinOwnGroup(target, targetGroups, copiedFrom, file, order))
     else target.model.commit(TabDropPlanner.groupsAfterDrop(targetGroups, file, TabDropPlanner.Applied(landing, order)))

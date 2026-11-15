@@ -19,6 +19,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import dev.willcodes.bettereditortabs.tabgroups.model.CloseScope
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.SplitHandle
 import dev.willcodes.bettereditortabs.tabgroups.tabbar.TabBar
+import dev.willcodes.bettereditortabs.tabgroups.tabbar.splits.isPlaceholder
 
 private typealias CloseCandidates = List<Pair<EditorComposite, EditorWindow>>
 
@@ -41,7 +42,18 @@ internal object CloseScoping {
         val tabBar = activeTabBar(project)
         if (tabBar == null || candidates.isEmpty()) return candidates
         val contextGroup = contextGroupId(e, project, tabBar)
-        return CloseScope.filter(contextGroup, candidates) { tabBar.groupIdOf(SplitHandle(it.second), it.first.file) }
+        val scoped = CloseScope.filter(contextGroup, candidates) { tabBar.groupIdOf(SplitHandle(it.second), it.first.file) }
+        return withoutPlaceholders(scoped)
+    }
+
+    /**
+     * SPLIT-6: the placeholder of a temporary split is not a tab of the user's; no close action takes it along with real tabs (it
+     * closes by itself when a real tab is there). A split that holds nothing else is closed by an action that names it, which is the
+     * user closing the temporary split (its groups move to another split, `TabBarHost.temporarySplitClosing`).
+     */
+    private fun withoutPlaceholders(candidates: CloseCandidates): CloseCandidates {
+        val withReal = candidates.filter { !isPlaceholder(it.first.file) }.mapTo(HashSet()) { it.second }
+        return candidates.filter { !isPlaceholder(it.first.file) || it.second !in withReal }
     }
 
     /** The window the action works on: the one in the data context (editor/tab popup), else the current window (main menu, shortcut). */

@@ -53,7 +53,7 @@ object SplitIdentity {
                 result += SplitInfo(
                     handle = SplitHandle(window),
                     key = keyOf(window),
-                    files = window.fileList,
+                    files = window.fileList.filterNot(::isPlaceholder),
                     isDetached = owner.isFloating,
                 )
             }
